@@ -1,0 +1,18 @@
+[project]
+name = "fedrl"
+version = "0.1.0"
+description = "Clustered Federated Learning framework for chess"
+readme = "README.md"
+requires-python = ">=3.12"
+
+dependencies = [
+    "loguru>=0.7.3",
+    "numpy>=2.3.3",
+    "torch>=2.9.0.dev20250720",
+    "torchaudio>=2.8.0.dev20250720",
+    "torchvision>=0.24.0.dev20250720",
+]
+
+[tool.uv]
+    index-strategy = "unsafe-best-match"
+    extra-index-url = ["https://download.pytorch.org/whl/nightly/cu128"]
