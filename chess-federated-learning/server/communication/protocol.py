@@ -14,7 +14,7 @@ Key Components:
 from enum import Enum
 from dataclasses import dataclass, asdict
 from loguru import logger
-from typing import Dict, Any, Optional
+from typing import Dict, Any, List, Optional, Union
 import json
 import time
 
