@@ -530,3 +530,205 @@ class FederatedLearningServer:
         log.info(f"Disconnect request from {node_id}")
         
         await self._cleanup_node_connection(node_id)
+        
+    async def _send_error(self, node_id: str, error_message: str):
+        """
+        Send an error message to a specific node.
+        
+        Args:
+            node_id: Unique identifier for the target node
+            error_message: Error message to send
+        """
+        log = logger.bind(context="FederatedLearningServer._send_error")
+        log.info(f"Sending error to node {node_id}: {error_message}")
+        
+        if node_id not in self.connected_nodes:
+            log.warning(f"Cannot send error, node {node_id} not connected")
+            return
+
+        node = self.connected_nodes[node_id]
+        error_msg = MessageFactory.create_error(
+            node_id=node_id,
+            cluster_id=node.cluster_id,
+            error_message=error_message
+        )
+        
+        try:
+            await node.websocket.send(error_msg.to_json())
+            log.info(f"Error message sent to node {node_id}")
+        except Exception as e:
+            log.error(f"Error sending error message to node {node_id}: {e}")
+            
+    async def broadcast_to_cluster(self, cluster_id: str, message: Message):
+        """
+        Broadcast a message to all nodes in a specific cluster.
+        
+        Args:
+            cluster_id: Target cluster identifier
+            message: Message object to broadcast
+        """
+        log = logger.bind(context="FederatedLearningServer.broadcast_to_cluster")
+        log.info(f"Broadcasting message of type {message.type} to cluster {cluster_id}")
+        
+        if cluster_id not in self.connections_by_cluster:
+            log.warning(f"No nodes found in cluster {cluster_id} for broadcast")
+            return
+        
+        nodes = self.connections_by_cluster[cluster_id]
+        log.info(f"Broadcasting to {len(nodes)} nodes in cluster {cluster_id}")
+        
+        # Send to all nodes in cluster
+        send_tasks = []
+        for node_id in nodes:
+            if node_id in self.connected_nodes:
+                task = asyncio.create_task(self._send_message_to_node(node_id, message))
+                send_tasks.append(task)
+                
+        # Wait for all sends to complete
+        await asyncio.gather(*send_tasks, return_exceptions=True)
+        
+        # Log broadcast completion
+        successful = sum(1 for task in send_tasks if not isinstance(task.result(), Exception))
+        log.info(f"Broadcast to cluster {cluster_id} complete: {successful}/{len(nodes)} successful")
+        
+    async def broadcast_to_all(self, message: Message):
+        """
+        Broadcast a message to all connected nodes.
+        
+        Args:
+            message: Message object to broadcast
+        """
+        log = logger.bind(context="FederatedLearningServer.broadcast_to_all")
+        log.info(f"Broadcasting message of type {message.type} to all connected nodes")
+        
+        if not self.connected_nodes:
+            log.warning("No connected nodes for broadcast")
+            return
+        
+        nodes = list(self.connected_nodes.keys())
+        log.info(f"Broadcasting to {len(nodes)} connected nodes")
+        
+        # Send to all connected nodes
+        send_tasks = []
+        for node_id in nodes:
+            task = asyncio.create_task(self._send_message_to_node(node_id, message))
+            send_tasks.append(task)
+                
+        # Wait for all sends to complete
+        await asyncio.gather(*send_tasks, return_exceptions=True)
+        
+        # Log broadcast completion
+        successful = sum(1 for task in send_tasks if not isinstance(task.result(), Exception))
+        log.info(f"Broadcast to all nodes complete: {successful}/{len(nodes)} successful")
+        
+    async def _send_message_to_node(self, node_id: str, message: Message):
+        """
+        Send message to specific node.
+        
+        Args:
+            node_id: Target node
+            message: Message to send
+        """
+        log = logger.bind(context="FederatedLearningServer._send_message_to_node")
+        log.info(f"Sending message of type {message.type} to node {node_id}")
+        
+        if node_id not in self.connected_nodes:
+            log.warning(f"Cannot send message, node {node_id} not connected")
+            return
+        
+        node = self.connected_nodes[node_id]
+        
+        try:
+            await node.websocket.send(message.to_json())
+            log.trace(f"Message of type {message.type} sent to node {node_id}")
+        except websockets.ConnectionClosed:
+            log.warning(f"Connection to node {node_id} closed while sending message")
+            await self._cleanup_node_connection(node_id)
+        except Exception as e:
+            log.error(f"Error sending message to node {node_id}: {e}")
+            raise
+        
+    async def _disconnect_node(self, node_id: str, reason: str):
+        """
+        Disconnect a specific node.
+        
+        Args:
+            node_id: Node to disconnect
+            reason: Reason for disconnection
+        """
+        log = logger.bind(context="FederatedLearningServer._disconnect_node")
+        log.info(f"Disconnecting node {node_id}: {reason}")
+        
+        if node_id not in self.connected_nodes:
+            log.warning(f"Cannot disconnect, node {node_id} not connected")
+            return
+        
+        node = self.connected_nodes[node_id]
+        
+        try:
+            # Send disconnect message
+            disconnect_msg = MessageFactory.create_disconnect(
+                node_id=node_id,
+                cluster_id=node.cluster_id,
+                reason=reason
+            )
+            await node.websocket.send(disconnect_msg.to_json())
+            
+            # Close the WebSocket connection
+            await node.websocket.close()
+            log.info(f"Node {node_id} disconnected successfully")
+        
+        except Exception as e:
+            log.error(f"Error disconnecting node {node_id}: {e}")
+            
+        await self._cleanup_node_connection(node_id)
+        
+    async def _cleanup_node_connection(self, node_id: str):
+        """
+        Clean up node connection data.
+        
+        Args:
+            node_id: Node to clean up
+        """
+        log = logger.bind(context="FederatedLearningServer._cleanup_node_connection")
+        log.info(f"Cleaning up connection for node {node_id}")
+
+        if node_id not in self.connected_nodes:
+            log.warning(f"Node {node_id} not found in connected nodes during cleanup")
+            return
+
+        node = self.connected_nodes[node_id]
+        cluster_id = node.cluster_id
+        
+        # Remove from connected nodes
+        del self.connected_nodes[node_id]
+        
+        if cluster_id in self.connections_by_cluster:
+            self.connections_by_cluster[cluster_id].discard(node_id)
+            # Remove cluster entry if empty
+            if not self.connections_by_cluster[cluster_id]:
+                del self.connections_by_cluster[cluster_id]
+                
+        # Update cluster manager if available
+        if self.cluster_manager:
+            self.cluster_manager.unregister_node(node_id, cluster_id)
+            
+        connection_time = time.time() - node.registration_time
+        log.info(f"Cleaned up node {node_id} (connected for {connection_time:.1f}s)")
+        log.info(f"Remaining nodes: {len(self.connected_nodes)}")
+    
+    def get_connected_nodes(self) -> Dict[str, ConnectedNode]:
+        """Get dictionary of all connected nodes."""
+        return self.connected_nodes.copy()
+    
+    def get_cluster_nodes(self, cluster_id: str) -> List[str]:
+        """Get list of node IDs in a specific cluster."""
+        return list(self.connections_by_cluster.get(cluster_id, set()))
+    
+    def get_node_count(self) -> int:
+        """Get total number of connected nodes."""
+        return len(self.connected_nodes)
+    
+    def get_cluster_count(self) -> int:
+        """Get number of clusters with connected nodes."""
+        return len(self.connections_by_cluster)
