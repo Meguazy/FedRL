@@ -26,6 +26,7 @@ from typing import Dict, Set, List, Optional, Any, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
 import time
+from datetime import datetime
 from loguru import logger
 
 
@@ -68,8 +69,8 @@ class Cluster:
         # Auto-generate expected node IDs if not provided
         if not self.expected_nodes:
             self.expected_nodes = {
-                f"{self.node_prefix}_{i:03d}" 
-                for i in range(self.node_count + 1)
+                f"{self.node_prefix}_{i+1:03d}" 
+                for i in range(self.node_count)
             }
         
             log.debug(f"Generated {len(self.expected_nodes)} expected nodes for {self.cluster_id}")
@@ -395,7 +396,7 @@ class ClusterManager:
         # Add node to active nodes if not already present
         if node_id not in cluster.active_nodes:
             cluster.active_nodes.add(node_id)            
-            log.info(f"Node {node_id} registered as active in cluster {cluster_id}. Total registrations: {self.total_registrations}")
+            log.info(f"Node {node_id} registered as active in cluster {cluster_id}. Total registrations: {self.total_registrations + 1}")
             cluster.update_activity()
             
         # Update tracking data
@@ -555,7 +556,7 @@ class ClusterManager:
         if threshold is None:
             threshold = self.default_threshold
             
-        ready_clusters = [cid for cid in self.clusters.items() if self.is_cluster_ready(cid, threshold)]
+        ready_clusters = [cluster_id for cluster_id, _ in self.clusters.items() if self.is_cluster_ready(cluster_id, threshold)]
 
         log.info(f"Found {len(ready_clusters)} ready clusters.")
         log.debug(f"Found {len(ready_clusters)} ready clusters (threshold={threshold})")
@@ -620,7 +621,7 @@ class ClusterManager:
                 "inactive_nodes": len(cluster.inactive_nodes),
                 "readiness_ratio": cluster.get_readiness_ratio(),
                 "is_ready": cluster.is_ready(self.default_threshold),
-                "last_activity": cluster.last_activity
+                "last_activity": datetime.fromtimestamp(cluster.last_activity).strftime("%Y-%m-%d %H:%M:%S") if cluster.last_activity else "Never"
             }
         
         log.debug(f"Generated statistics: {len(stats)} top-level fields")
@@ -682,15 +683,42 @@ class ClusterManager:
             log.error(f"Failed to save configuration to {path}: {e}")
             raise e
         
+    def get_expected_nodes(self, cluster_id: str) -> Set[str]:
+        """Return a set of all expected node IDs across all clusters."""
+        log = logger.bind(context="ClusterManager.get_expected_nodes")
+        log.debug(f"Getting expected nodes for cluster {cluster_id}")
+        expected_nodes = set()
+        if cluster_id not in self.clusters:
+            log.warning(f"Cluster {cluster_id} does not exist.")
+            return expected_nodes
+        
+        cluster = self.clusters.get(cluster_id)
+        if cluster:
+            expected_nodes.update(cluster.expected_nodes)
+        log.debug(f"Total expected nodes for cluster {cluster_id}: {len(expected_nodes)}")
+        return expected_nodes
+
 # Example usage:
 if __name__ == "__main__":
     # Load from config file
-    manager = ClusterManager("config/cluster_topology.yaml")
+    log = logger.bind(context="Main")
+    manager = ClusterManager("/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/cluster_topology.yaml")
 
     # Register nodes
     manager.register_node("agg_001", "cluster_aggressive")
     manager.register_node("pos_001", "cluster_positional")
+    manager.register_node("agg_002", "cluster_aggressive")
+    manager.register_node("pos_002", "cluster_positional")
+    manager.register_node("agg_003", "cluster_aggressive")
+    manager.register_node("pos_003", "cluster_positional")
+    manager.register_node("agg_004", "cluster_aggressive")
+    manager.register_node("pos_004", "cluster_positional")
 
+    expected_aggressive = manager.get_expected_nodes("cluster_aggressive")
+    expected_positional = manager.get_expected_nodes("cluster_positional")
+    
+    log.info(f"Expected aggressive nodes: {expected_aggressive}")
+    log.info(f"Expected positional nodes: {expected_positional}")
     # Check cluster readiness
     if manager.is_cluster_ready("cluster_aggressive"):
         nodes = manager.get_cluster_nodes("cluster_aggressive")
@@ -698,3 +726,12 @@ if __name__ == "__main__":
 
     # Get statistics
     stats = manager.get_statistics()
+    # Formatting stats for better readability
+    import pprint
+    pprint.pprint(stats)
+    
+    manager.unregister_node("agg_002")
+    manager.unregister_node("pos_002")
+    
+    stats = manager.get_statistics()
+    pprint.pprint(stats)

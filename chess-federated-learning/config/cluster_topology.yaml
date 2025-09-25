@@ -1,0 +1,25 @@
+# Cluster topology configuration for federated learning chess engines
+# This file defines the cluster structure, node assignments, and playstyles
+# for the federated learning system.
+
+clusters:
+  # Aggressive playstyle cluster - focused on tactical, attacking chess
+  - id: "cluster_aggressive"
+    playstyle: "aggressive"
+    description: "Tactical, attacking chess with piece sacrifices and sharp positions"
+    node_count: 4                   # Number of nodes for this cluster
+    node_prefix: "agg"               # Prefix for node IDs (generates agg_001, agg_002, etc.)
+
+  # Positional playstyle cluster - focused on strategic, long-term planning
+  - id: "cluster_positional"
+    playstyle: "positional"
+    description: "Strategic, long-term planning with focus on pawn structure and space control"
+    node_count: 4                    # Number of nodes for this cluster  
+    node_prefix: "pos"               # Prefix for node IDs (generates pos_001, pos_002, etc.)
+
+# Configuration notes:
+# - Total nodes: 64 (32 aggressive + 32 positional)
+# - Node IDs are auto-generated: agg_001 through agg_032, pos_001 through pos_032
+# - Each cluster represents a different chess playing style
+# - Node count can be adjusted based on available computational resources
+# - For testing, you can reduce node_count to smaller values (e.g., 4 per cluster)
