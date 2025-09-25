@@ -443,8 +443,8 @@ class MessageFactory:
     def create_error(
         node_id: str,
         cluster_id: str,
-        error_code: int,
-        message: str
+        error_msg: str,
+        error_code: int = 1000
     ) -> Message:
         """
         Create an error notification message.
@@ -467,7 +467,7 @@ class MessageFactory:
             cluster_id=cluster_id,
             payload={
                 "error_code": error_code,
-                "message": message
+                "message": error_msg
             },
             timestamp=time.time()
         )
@@ -498,6 +498,39 @@ class MessageFactory:
             node_id=node_id,
             cluster_id=cluster_id,
             payload={},
+            timestamp=time.time()
+        )
+
+    @staticmethod
+    def create_disconnect(
+        node_id: str,
+        cluster_id: str,
+        reason: str = "client_disconnect"
+    ) -> Message:
+        """
+        Create a disconnect message.
+
+        This message is sent when either the client or server
+        wants to gracefully disconnect.
+
+        Args:
+            node_id: Unique node identifier
+            cluster_id: Cluster this node belongs to
+            reason: Reason for disconnection
+
+        Returns:
+            Message: Disconnect message ready to send
+        """
+        log = logger.bind(context="MessageFactory.create_disconnect")
+        log.info(f"Creating DISCONNECT message for node={node_id}, cluster={cluster_id}, reason={reason}")
+
+        return Message(
+            type=MessageType.DISCONNECT.value,
+            node_id=node_id,
+            cluster_id=cluster_id,
+            payload={
+                "reason": reason
+            },
             timestamp=time.time()
         )
         

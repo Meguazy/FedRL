@@ -28,7 +28,7 @@ import websockets
 from loguru import logger
 
 from .protocol import Message, MessageType, MessageFactory
-from server.cluster_manager import ClusterManager
+#from server.cluster_manager import ClusterManager
 
 
 class NodeState(Enum):
@@ -90,7 +90,7 @@ class FederatedLearningServer:
         self,
         host: str = "localhost",
         port: int = 8765,
-        cluster_manager: Optional[ClusterManager] = None,
+        #cluster_manager: Optional[ClusterManager] = None,
     ):
         """
         Initialize the federated learning server.
@@ -105,7 +105,7 @@ class FederatedLearningServer:
         
         self.port = port
         self.host = host
-        self.cluster_manager = cluster_manager
+        self.cluster_manager = None
         
         # Connection management
         self.connected_nodes: Dict[str, ConnectedNode] = {}
@@ -220,7 +220,7 @@ class FederatedLearningServer:
         uptime = time.time() - self.start_time
         log.info(f"FL server stopped. Uptime: {uptime:.2f} seconds")
         
-    async def _handle_client_connection(self, websocket: websockets.WebSocketServerProtocol, path: str):
+    async def _handle_client_connection(self, websocket: websockets.WebSocketServerProtocol):
         """
         Handle a new client connection.
         
@@ -229,7 +229,6 @@ class FederatedLearningServer:
         
         Args:
             websocket: Active WebSocket connection
-            path: Request path
         """
         client_addr = f"{websocket.remote_address[0]}:{websocket.remote_address[1]}"
         log = logger.bind(context="FederatedLearningServer._handle_client_connection")
@@ -449,26 +448,31 @@ class FederatedLearningServer:
         message_type = MessageType(message.type)
         
         # Handle built in message types
-        if message_type == MessageType.HEARTBEAT.value:
+        handled_builtin = False
+        if message_type == MessageType.HEARTBEAT:
             await self._handle_heartbeat(node_id, message)
-        elif message_type == MessageType.MODEL_UPDATE.value:
+            handled_builtin = True
+        elif message_type == MessageType.MODEL_UPDATE:
             await self._handle_model_update(node_id, message)
-        elif message_type == MessageType.METRICS.value:
+            handled_builtin = True
+        elif message_type == MessageType.METRICS:
             await self._handle_metrics(node_id, message)
-        elif message_type == MessageType.DISCONNECT.value:
+            handled_builtin = True
+        elif message_type == MessageType.DISCONNECT:
             await self._handle_disconnect_request(node_id, message)
-        else:
-            # Route to external handler if registered
-            if message_type in self.message_handlers:
-                log.debug(f"Routing {message.type} to custom handler")
-                try:
-                    await self.message_handlers[message_type](node_id, message)
-                except Exception as e:
-                    log.error(f"Error in custom handler for {message.type} from node {node_id}: {e}")
-                    await self._send_error(node_id, f"Handler error: {str(e)}")
-            else:
-                log.warning(f"No handler registered for message type {message.type} from node {node_id}")
-                await self._send_error(node_id, f"No handler for message type {message.type}")
+            handled_builtin = True
+
+        # Always check for external handlers (in addition to built-in ones)
+        if message_type in self.message_handlers:
+            log.debug(f"Routing {message.type} to custom handler")
+            try:
+                await self.message_handlers[message_type](node_id, message)
+            except Exception as e:
+                log.error(f"Error in custom handler for {message.type} from node {node_id}: {e}")
+                await self._send_error(node_id, f"Handler error: {str(e)}")
+        elif not handled_builtin:
+            log.warning(f"No handler registered for message type {message.type} from node {node_id}")
+            await self._send_error(node_id, f"No handler for message type {message.type}")
             
     async def _handle_heartbeat(self, node_id: str, message: Message):
         """
@@ -498,7 +502,7 @@ class FederatedLearningServer:
             message: Parsed Message object
         """
         log = logger.bind(context="FederatedLearningServer._handle_model_update")
-        log.info(f"Received model update from node {node_id} for round {message.round_number}")
+        log.info(f"Received model update from node {node_id} for round {message.round_num}")
         
         # Update node state
         node = self.connected_nodes.get(node_id)
@@ -524,7 +528,7 @@ class FederatedLearningServer:
         log = logger.bind(context="FederatedLearningServer._handle_metrics")
         log.info(f"Received metrics from node {node_id}: {message.payload}")
         
-    async def _handle_disconnect(self, node_id: str, message: Message):
+    async def _handle_disconnect_request(self, node_id: str, message: Message):
         """Handle disconnect message from node."""
         log = logger.bind(context="FederatedLearningServer._handle_disconnect")
         log.info(f"Disconnect request from {node_id}")
@@ -550,7 +554,7 @@ class FederatedLearningServer:
         error_msg = MessageFactory.create_error(
             node_id=node_id,
             cluster_id=node.cluster_id,
-            error_message=error_message
+            error_msg=error_message
         )
         
         try:
