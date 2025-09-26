@@ -14,11 +14,13 @@ Note: Aggregation modules are currently stubs and need implementation.
 """
 
 # Import aggregator classes once implemented
-# from .base_aggregator import BaseAggregator
+from .base_aggregator import BaseAggregator, AggregationMetrics
 # from .intra_cluster_aggregator import IntraClusterAggregator
 # from .inter_cluster_aggregator import InterClusterAggregator
 
 __all__ = [
+    BaseAggregator.__name__,
+    AggregationMetrics.__name__,
     # Will be populated when aggregator classes are implemented
 ]
 
