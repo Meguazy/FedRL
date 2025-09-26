@@ -388,13 +388,26 @@ class ClientDemo:
 async def main():
     print("🎯 Federated Learning Client Demo")
     print("This script demonstrates the FL client with an interactive menu.")
+    print("\n📋 Available clusters and valid node IDs:")
+    print("Cluster 'cluster_aggressive' (aggressive playstyle):")
+    print("  Valid node IDs: agg_001, agg_002, agg_003, agg_004")
+    print("Cluster 'cluster_positional' (positional playstyle):")
+    print("  Valid node IDs: pos_001, pos_002, pos_003, pos_004")
 
     # Get client configuration
-    node_id = input("Enter node ID (default: demo_node_001): ").strip()
-    node_id = node_id if node_id else "demo_node_001"
+    node_id = input("\nEnter node ID (e.g., agg_001 or pos_001): ").strip()
+    if not node_id:
+        node_id = "agg_001"  # Default to first aggressive node
 
-    cluster_id = input("Enter cluster ID (default: demo_cluster): ").strip()
-    cluster_id = cluster_id if cluster_id else "demo_cluster"
+    # Auto-determine cluster_id based on node_id prefix
+    if node_id.startswith("agg_"):
+        cluster_id = "cluster_aggressive"
+    elif node_id.startswith("pos_"):
+        cluster_id = "cluster_positional"
+    else:
+        print("⚠️  Warning: Node ID doesn't match expected patterns (agg_XXX or pos_XXX)")
+        cluster_id = input("Enter cluster ID (cluster_aggressive or cluster_positional): ").strip()
+        cluster_id = cluster_id if cluster_id else "cluster_aggressive"
 
     server_host = input("Enter server host (default: localhost): ").strip()
     server_host = server_host if server_host else "localhost"
@@ -406,6 +419,11 @@ async def main():
     print(f"Node ID: {node_id}")
     print(f"Cluster ID: {cluster_id}")
     print(f"Server: {server_host}:{server_port}")
+
+    if cluster_id == "cluster_aggressive":
+        print(f"🗡️  Playstyle: Aggressive (tactical, attacking chess)")
+    elif cluster_id == "cluster_positional":
+        print(f"🏰 Playstyle: Positional (strategic, long-term planning)")
 
     demo = ClientDemo(node_id, cluster_id, server_host, server_port)
 

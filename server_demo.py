@@ -12,7 +12,13 @@ from server.communication.protocol import Message, MessageType, MessageFactory
 
 class ServerDemo:
     def __init__(self):
-        self.server = FederatedLearningServer(host="localhost", port=8765)
+        # Path to cluster configuration
+        cluster_config_path = "chess-federated-learning/config/cluster_topology.yaml"
+        self.server = FederatedLearningServer(
+            host="localhost",
+            port=8765,
+            cluster_config_path=cluster_config_path
+        )
         self.is_running = False
 
     async def start_server(self):
@@ -293,17 +299,38 @@ class ServerDemo:
         print(f"❌ Disconnected node {node_id}")
 
     async def _show_server_stats(self):
-        print(f"\n📊 Server Statistics:")
-        print(f"Connected nodes: {self.server.get_node_count()}")
-        print(f"Active clusters: {self.server.get_cluster_count()}")
-        print(f"Messages handled: {self.server.total_messages_handled}")
-        print(f"Current round: {self.server.current_round}")
-        print(f"Server uptime: {time.time() - self.server.start_time:.1f}s")
+        stats = self.server.get_server_statistics()
 
-        print(f"\n🏷️  Clusters:")
+        print(f"\n📊 Server Statistics:")
+        print(f"Connected nodes: {stats['connections']['total_connected_nodes']}")
+        print(f"Active clusters: {stats['connections']['total_active_clusters']}")
+        print(f"Messages handled: {stats['server']['total_messages_handled']}")
+        print(f"Current round: {stats['server']['current_round']}")
+        print(f"Server uptime: {stats['server']['uptime_seconds']:.1f}s")
+
+        print(f"\n🏗️  Cluster Manager Statistics:")
+        cm_stats = stats['cluster_manager']
+        print(f"Total clusters: {cm_stats['cluster_count']}")
+        print(f"Total expected nodes: {cm_stats['total_expected_nodes']}")
+        print(f"Total registered nodes: {cm_stats['total_registered_nodes']}")
+        print(f"Active nodes: {cm_stats['total_active_nodes']}")
+        print(f"Ready clusters: {cm_stats['ready_clusters']}")
+        print(f"Uptime: {cm_stats['uptime_seconds']:.1f}s")
+
+        print(f"\n🏷️  Cluster Readiness:")
+        cluster_readiness = stats['cluster_readiness']
+        for cluster_id, readiness in cluster_readiness.items():
+            status = "✅" if readiness['is_ready'] else "❌"
+            ratio = readiness.get('readiness_ratio', 0.0)
+            active = readiness.get('active_nodes', 0)
+            expected = readiness.get('expected_nodes', 0)
+            playstyle = readiness.get('playstyle', 'unknown')
+            print(f"  {status} {cluster_id} ({playstyle}): {active}/{expected} nodes ({ratio:.1%})")
+
+        print(f"\n🔗 Connected Clusters:")
         for cluster_id in self.server.connections_by_cluster:
             node_count = len(self.server.connections_by_cluster[cluster_id])
-            print(f"  {cluster_id}: {node_count} nodes")
+            print(f"  {cluster_id}: {node_count} connected nodes")
 
 
 async def main():
