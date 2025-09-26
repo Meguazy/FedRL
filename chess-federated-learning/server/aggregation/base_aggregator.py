@@ -140,22 +140,12 @@ class BaseAggregator(ABC):
             models: Dictionary mapping participant IDs to their model states
             weights: Dictionary mapping participant IDs to their weights
             round_number: Current training round number
-
-        Returns:
-        of models and their corresponding weights, performs the aggregation
-        according to the specific strategy, and returns the aggregated model
-        along with relevant metrics.
-        
-        Args:
-            models: Dictionary mapping participant IDs to their model states
-            weights: Dictionary mapping participant IDs to their weights
-            round_number: Current training round number
-        
+            
         Returns:
             A tuple containing:
                 - The aggregated model state
                 - An AggregationMetrics instance with details about the aggregation
-        
+                
         Raises:
             NotImplementedError: If the method is not implemented in a subclass
         """
