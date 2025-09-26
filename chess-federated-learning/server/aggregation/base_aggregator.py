@@ -116,7 +116,7 @@ class BaseAggregator(ABC):
         self.creation_time = time.time()
         
         # Configuration
-        self.validate_inputs = True  # Whether to validate input models
+        self._validate_inputs = True  # Whether to validate input models
         self.collect_metrics = True  # Whether to collect aggregation metrics
         self.min_participants = 1    # Minimum participants required for aggregation
         self.max_participants = 1000  # Maximum participants allowed for aggregation
