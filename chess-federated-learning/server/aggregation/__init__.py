@@ -10,18 +10,21 @@ Modules:
     intra_cluster_aggregator: Aggregation within clusters (same playstyle)
     inter_cluster_aggregator: Cross-cluster aggregation for global models
 
-Note: Aggregation modules are currently stubs and need implementation.
+Available aggregation implementations:
+- IntraClusterAggregator: FedAvg-based aggregation within clusters
+- InterClusterAggregator: Cross-cluster aggregation for global models
 """
 
-# Import aggregator classes once implemented
+# Import aggregator classes
 from .base_aggregator import BaseAggregator, AggregationMetrics
-# from .intra_cluster_aggregator import IntraClusterAggregator
-# from .inter_cluster_aggregator import InterClusterAggregator
+from .intra_cluster_aggregator import IntraClusterAggregator
+from .inter_cluster_aggregator import InterClusterAggregator
 
 __all__ = [
     BaseAggregator.__name__,
     AggregationMetrics.__name__,
-    # Will be populated when aggregator classes are implemented
+    IntraClusterAggregator.__name__,
+    InterClusterAggregator.__name__,
 ]
 
 __version__ = '1.0.0'
