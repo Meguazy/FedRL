@@ -73,6 +73,25 @@ class MockModel:
         log.trace(f"Model has {total} parameters")
         return total
 
+def generate_dummy_model(layer_sizes: List[Tuple[int, int]] = None) -> MockModel:
+    """
+    Generate a dummy mock model for testing.
+    
+    Args:
+        layer_sizes: List of (input_size, output_size) tuples for each layer
+    
+    Returns:
+        MockModel: Generated model instance
+    """
+    log = logger.bind(context="generate_dummy_model")
+    
+    if layer_sizes is None:
+        layer_sizes = [(784, 128), (128, 64), (64, 10)]  # Default sizes
+    
+    model = MockModel(layer_sizes)
+    log.info(f"Generated dummy model with {len(layer_sizes)} layers, {model.get_parameter_count()} parameters")
+    
+    return model
 
 def generate_random_model(seed: int = None) -> MockModel:
     """
