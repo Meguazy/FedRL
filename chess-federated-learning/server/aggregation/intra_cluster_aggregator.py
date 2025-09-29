@@ -20,7 +20,7 @@ Architecture:
 """
 
 import time
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Tuple
 from loguru import logger
 
 from .base_aggregator import BaseAggregator, AggregationMetrics, validate_participant_metrics, normalize_weights
@@ -88,7 +88,7 @@ class IntraClusterAggregator(BaseAggregator):
         models: Dict[str, Any],
         weights: Dict[str, float],
         round_num: int = 0
-    ):
+    ) -> Tuple[Any, AggregationMetrics]:
         """
         Aggregate models from nodes within a cluster using FedAvg.
         
