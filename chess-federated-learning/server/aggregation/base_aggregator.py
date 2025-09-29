@@ -103,7 +103,7 @@ class BaseAggregator(ABC):
         
         # Initialize model serializer
         try:
-            self.serializer: ModelSerializer = get_serializer(framework, compression)
+            self.serializer: ModelSerializer = get_serializer(framework, compression=compression)
             log.info(f"Using serializer: {self.serializer.__class__.__name__}")
         except Exception as e:
             log.exception("Failed to initialize model serializer")

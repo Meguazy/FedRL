@@ -116,7 +116,7 @@ class IntraClusterAggregator(BaseAggregator):
         
         try:
             # Step 1: Validate inputs
-            if self._validate_inputs():
+            if self._validate_inputs:
                 log.debug("Step 1: Validating inputs...")
                 self.validate_inputs(models, weights)
                 self.check_model_compatibility(models)

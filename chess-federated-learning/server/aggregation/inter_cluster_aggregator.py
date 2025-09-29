@@ -180,7 +180,7 @@ class InterClusterAggregator(BaseAggregator):
         
         try:
             # Step 1: Validate inputs
-            if  self._validate_inputs:
+            if self._validate_inputs:
                 log.debug("Step 1: Validating inputs...")
                 self.validate_inputs(models, weights)
                 self.check_model_compatibility(models)
@@ -211,7 +211,7 @@ class InterClusterAggregator(BaseAggregator):
             # Step 4: Aggregate shared layers across clusters
             log.debug("Step 4: Aggregating shared layers across clusters...")
             aggregated_shared_layers = self._aggregate_shared_layers(
-                models, normalized_weights, shared_layers
+                models, shared_layers, normalized_weights
             )
             log.info("Shared layers aggregated successfully")
             
