@@ -403,6 +403,7 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
         assert 'residual.7.conv1.weight' in model
         assert 'residual.8.conv1.weight' in model
         assert 'residual.9.conv1.weight' in model
+        assert 'residual.10.conv1.weight' not in model
         assert 'policy_head.fc.weight' in model
         assert 'value_head.fc2.weight' in model
     
@@ -444,3 +445,61 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     log.info("✓ Full aggregation pipeline test passed")
     log.info("✓ Diversity preservation verified")
     log.info("✓ Selective layer sharing verified")
+    
+@pytest.mark.asyncio
+async def test_expected_intra_cluster_aggregation():
+    """Test intra-cluster aggregation produces expected averaged weights."""
+    from server.aggregation.intra_cluster_aggregator import IntraClusterAggregator
+    from tests.fixtures.model_utils import generate_alphazero_model
+
+    # Create two simple models with known weights for deterministic aggregation
+    model1 = generate_alphazero_model(num_residual_blocks=2, seed=42)
+    model2 = generate_alphazero_model(num_residual_blocks=2, seed=43)
+    state1 = model1.state_dict()
+    state2 = model2.state_dict()
+
+    # Manually set a layer to known values for both models
+    state1['input_conv.weight'] = [1.0, 2.0, 3.0]
+    state2['input_conv.weight'] = [4.0, 5.0, 6.0]
+
+    node_models = {
+        'node1': state1,
+        'node2': state2
+    }
+    node_metrics = {
+        'node1': {'samples': 2, 'loss': 0.1},
+        'node2': {'samples': 2, 'loss': 0.2}
+    }
+
+    aggregator = IntraClusterAggregator(
+        framework='pytorch',
+        weighting_strategy='samples'
+    )
+    weights = aggregator.get_aggregation_weights(node_metrics)
+    aggregated_model, metrics = await aggregator.aggregate(node_models, weights, round_num=1)
+
+    # The weights should be averaged equally (since samples are equal)
+    expected = [(a + b) / 2 for a, b in zip(state1['input_conv.weight'], state2['input_conv.weight'])]
+    assert aggregated_model['input_conv.weight'] == expected
+
+    # Check metrics
+    assert metrics.participant_count == 2
+    assert metrics.total_samples == 4
+
+    # Now test with different sample counts (weighted average)
+    node_metrics = {
+        'node1': {'samples': 1, 'loss': 0.1},
+        'node2': {'samples': 3, 'loss': 0.2}
+    }
+    weights = aggregator.get_aggregation_weights(node_metrics)
+    aggregated_model, metrics = await aggregator.aggregate(node_models, weights, round_num=2)
+
+    # Weighted average: (1*[1,2,3] + 3*[4,5,6]) / 4 = ([1+12, 2+15, 3+18]/4) = [13/4, 17/4, 21/4]
+    expected_weighted = [
+        (1*1.0 + 3*4.0)/4,
+        (1*2.0 + 3*5.0)/4,
+        (1*3.0 + 3*6.0)/4
+    ]
+    assert aggregated_model['input_conv.weight'] == expected_weighted
+    assert metrics.participant_count == 2
+    assert metrics.total_samples == 4
