@@ -205,3 +205,28 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# .gitignore additions for storage/
+
+# Storage layer - ignore all data, keep structure
+storage/**/*
+
+# Exceptions: Keep structural files
+!storage/.gitkeep
+!storage/**/.gitkeep
+!storage/README.md
+!storage/.metadata/
+storage/.metadata/*
+!storage/.metadata/version.json
+
+# Temporary files
+*.tmp
+*.cache
+*.lock
+
+# MLflow artifacts (if added later)
+mlruns/
+.trash/
+
+# Jupyter notebook checkpoints
+.ipynb_checkpoints/
