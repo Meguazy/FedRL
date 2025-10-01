@@ -503,3 +503,71 @@ async def test_expected_intra_cluster_aggregation():
     assert aggregated_model['input_conv.weight'] == expected_weighted
     assert metrics.participant_count == 2
     assert metrics.total_samples == 4
+    
+pytest.mark.asyncio
+async def test_expected_inter_cluster_aggregation():
+    """Test inter-cluster aggregation with selective layer sharing."""
+    from server.aggregation.inter_cluster_aggregator import InterClusterAggregator
+    from tests.fixtures.model_utils import generate_alphazero_model
+
+    # Create two cluster models with known weights for deterministic aggregation
+    cluster1 = generate_alphazero_model(num_residual_blocks=2, seed=100)
+    cluster2 = generate_alphazero_model(num_residual_blocks=2, seed=200)
+    state1 = cluster1.state_dict()
+    state2 = cluster2.state_dict()
+
+    # Manually set a shared layer to known values for both clusters
+    state1['input_conv.weight'] = [1.0, 2.0, 3.0]
+    state2['input_conv.weight'] = [4.0, 5.0, 6.0]
+
+    cluster_models = {
+        'cluster1': state1,
+        'cluster2': state2
+    }
+    cluster_metrics = {
+        'cluster1': {'samples': 2, 'loss': 0.1},
+        'cluster2': {'samples': 2, 'loss': 0.2}
+    }
+
+    aggregator = InterClusterAggregator(
+        framework='pytorch',
+        shared_layer_patterns=['input_conv.*'],
+        cluster_specific_patterns=['policy_head.*', 'value_head.*', 'residual.[0-9].*'],
+        weighting_strategy='uniform'
+    )
+    weights = aggregator.get_aggregation_weights(cluster_metrics)
+    updated_models, metrics = await aggregator.aggregate(cluster_models, weights, round_num=1)
+
+    # The shared layer should be averaged equally (since samples are equal)
+    expected = [(a + b) / 2 for a, b in zip(state1['input_conv.weight'], state2['input_conv.weight'])]
+    assert updated_models['cluster1']['input_conv.weight'] == expected
+    assert updated_models['cluster2']['input_conv.weight'] == expected
+
+    # Cluster-specific layers should remain unchanged
+    assert updated_models['cluster1']['policy_head.fc.weight'] == state1['policy_head.fc.weight']
+    assert updated_models['cluster2']['policy_head.fc.weight'] == state2['policy_head.fc.weight']
+
+    # Check metrics
+    assert metrics.participant_count == 2
+    assert metrics.additional_metrics['shared_layer_count'] >= 1
+    assert metrics.additional_metrics['cluster_specific_count'] >= 1
+    
+    # Now test with different sample counts (weighted average)
+    cluster_metrics = {
+        'cluster1': {'samples': 1, 'loss': 0.1},
+        'cluster2': {'samples': 3, 'loss': 0.2}
+    }
+    weights = aggregator.get_aggregation_weights(cluster_metrics)
+    updated_models, metrics = await aggregator.aggregate(cluster_models, weights, round_num=2)
+    
+    # Weighted average: (1*[1,2,3] + 3*[4,5,6]) / 4 = ([1+12, 2+15, 3+18]/4) = [13/4, 17/4, 21/4]
+    expected_weighted = [
+        (1*1.0 + 3*4.0)/4,
+        (1*2.0 + 3*5.0)/4,
+        (1*3.0 + 3*6.0)/4
+    ]
+    assert updated_models['cluster1']['input_conv.weight'] == expected_weighted
+    assert updated_models['cluster2']['input_conv.weight'] == expected_weighted
+    assert metrics.participant_count == 2
+    assert metrics.additional_metrics['shared_layer_count'] >= 1
+    assert metrics.additional_metrics['cluster_specific_count'] >= 1
