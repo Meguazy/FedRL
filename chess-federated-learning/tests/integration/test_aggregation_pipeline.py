@@ -553,13 +553,21 @@ async def test_expected_inter_cluster_aggregation():
     assert metrics.additional_metrics['cluster_specific_count'] >= 1
     
     # Now test with different sample counts (weighted average)
+    # Create new aggregator with samples-based weighting
+    aggregator_weighted = InterClusterAggregator(
+        framework='pytorch',
+        shared_layer_patterns=['input_conv.*'],
+        cluster_specific_patterns=['policy_head.*', 'value_head.*', 'residual.[0-9].*'],
+        weighting_strategy='samples'
+    )
+
     cluster_metrics = {
         'cluster1': {'samples': 1, 'loss': 0.1},
         'cluster2': {'samples': 3, 'loss': 0.2}
     }
-    weights = aggregator.get_aggregation_weights(cluster_metrics)
-    updated_models, metrics = await aggregator.aggregate(cluster_models, weights, round_num=2)
-    
+    weights = aggregator_weighted.get_aggregation_weights(cluster_metrics)
+    updated_models, metrics = await aggregator_weighted.aggregate(cluster_models, weights, round_num=2)
+
     # Weighted average: (1*[1,2,3] + 3*[4,5,6]) / 4 = ([1+12, 2+15, 3+18]/4) = [13/4, 17/4, 21/4]
     expected_weighted = [
         (1*1.0 + 3*4.0)/4,
