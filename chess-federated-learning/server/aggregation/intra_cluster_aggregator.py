@@ -20,10 +20,12 @@ Architecture:
 """
 
 import time
-from typing import Dict, List, Any, Tuple
+from typing import Dict, List, Any, Tuple, Optional
 from loguru import logger
 
 from .base_aggregator import BaseAggregator, AggregationMetrics, validate_participant_metrics, normalize_weights
+from server.storage.base import EntityType, ExperimentTracker
+from server.storage.plugins.metric_registry import MetricRegistry
 
 
 class IntraClusterAggregator(BaseAggregator):
@@ -52,101 +54,171 @@ class IntraClusterAggregator(BaseAggregator):
         >>> aggregated, metrics = await aggregator.aggregate(models, weights, round_num=1)
     """
     def __init__(self, framework: str = "pytorch", compression: bool = True,
-                 weighting_strategy: str = "samples"):
+                 weighting_strategy: str = "samples",
+                 experiment_tracker: Optional[ExperimentTracker] = None,
+                 metric_registry: Optional[MetricRegistry] = None):
         """
         Initialize the intra-cluster aggregator.
-        
+
         Args:
             framework: ML framework to use ('pytorch' or 'tensorflow')
             compression: Whether to use compression for model serialization
             weighting_strategy: How to weight node contributions ('samples', 'uniform', 'loss')
-        
+            experiment_tracker: Optional experiment tracker for logging metrics and checkpoints
+            metric_registry: Optional metric registry for custom metric computation
+
         Raises:
             ValueError: If weighting strategy is not supported
         """
         log = logger.bind(context="IntraClusterAggregator.__init__")
         log.info(f"Initializing IntraClusterAggregator with {weighting_strategy} weighting")
-        
+
         # Initialize base aggregator
         super().__init__(framework=framework, compression=compression)
-        
+
         # Validate weighting strategy
         valid_strategies = ["samples", "uniform", "loss"]
         if weighting_strategy not in valid_strategies:
             log.error(f"Invalid weighting strategy: {weighting_strategy}")
             raise ValueError(f"Weighting strategy must be one of {valid_strategies}")
         self.weighting_strategy = weighting_strategy
-        
+
         # Intra-cluster specific attributes
         self.min_participants = 1  # Minimum nodes required for aggregation
         self.max_participants = 100  # Max nodes to consider for aggregation
-        
+
+        # Storage integration
+        self.experiment_tracker = experiment_tracker
+        self.metric_registry = metric_registry
+
+        if experiment_tracker:
+            log.info("Storage integration enabled with experiment tracker")
+        if metric_registry:
+            log.info(f"Metric registry enabled with {len(metric_registry.list_computers())} computers")
+
         log.info("IntraClusterAggregator initialized successfully")
         
     async def aggregate(
         self,
         models: Dict[str, Any],
         weights: Dict[str, float],
-        round_num: int = 0
+        round_num: int = 0,
+        cluster_id: str = "default_cluster",
+        run_id: Optional[str] = None
     ) -> Tuple[Any, AggregationMetrics]:
         """
         Aggregate models from nodes within a cluster using FedAvg.
-        
+
         This method combines multiple node models into a single cluster-level
         model by computing a weighted average of all parameters. The weights
         are typically based on the number of training samples each node used.
-        
+
         Args:
             models: Dictionary mapping node_id -> model_state_dict
             weights: Dictionary mapping node_id -> aggregation_weight
             round_num: Current training round number
-        
+            cluster_id: Identifier for the cluster being aggregated
+            run_id: Optional run ID for storage (required if experiment_tracker is set)
+
         Returns:
             Tuple of (aggregated_model_state, metrics)
-        
+
         Raises:
             ValueError: If inputs are invalid
             RuntimeError: If aggregation fails
         """
         log = logger.bind(context="IntraClusterAggregator.aggregate")
-        log.info(f"Starting intra-cluster aggregation for round {round_num}")
+        log.info(f"Starting intra-cluster aggregation for round {round_num}, cluster {cluster_id}")
         log.info(f"Aggregating {len(models)} models with {self.weighting_strategy} weighting")
-        
+
         start_time = time.time()
-        
+
         try:
             # Step 1: Validate inputs
             if self._validate_inputs:
                 log.debug("Step 1: Validating inputs...")
                 self.validate_inputs(models, weights)
                 self.check_model_compatibility(models)
-                
+
             # Step 2: Normalize weights
             log.debug("Step 2: Normalizing aggregation weights...")
             normalized_weights = normalize_weights(weights)
             log.debug(f"Normalized weights: {normalized_weights}")
-            
+
             # Step 3: Perform FedAvg aggregation
             log.debug("Step 3: Performing FedAvg aggregation...")
             aggregated_model = self._fedavg_aggregate(models, normalized_weights)
-            
+
             # Step 4: Collect metrics
             log.debug("Step 4: Collecting aggregation metrics...")
             aggregation_time = time.time() - start_time
-            
+
             metrics = self._collect_metrics(
                 models=models,
                 weights=weights,
                 aggregation_time=aggregation_time,
                 round_num=round_num
             )
-            
-            # Step 5: Update internal statistics
+
+            # Step 5: Compute custom metrics via plugin registry
+            custom_metrics = {}
+            if self.metric_registry:
+                log.debug("Step 5a: Computing custom metrics via registry...")
+                context = {
+                    "models": {node_id: model for node_id, model in models.items()},
+                    "aggregated_model": aggregated_model,
+                    "weights": normalized_weights,
+                    "round": round_num,
+                    "cluster_id": cluster_id,
+                    "aggregation_start_time": start_time,
+                    "aggregation_end_time": time.time(),
+                    "node_count": len(models)
+                }
+                custom_metrics = self.metric_registry.compute_all(context, skip_on_error=True)
+                log.debug(f"Computed {len(custom_metrics)} custom metrics")
+
+            # Step 6: Store metrics and checkpoint if tracker is available
+            if self.experiment_tracker and run_id:
+                log.debug("Step 6a: Logging metrics to storage...")
+
+                # Combine standard and custom metrics
+                all_metrics = {
+                    "aggregation_time": aggregation_time,
+                    "participant_count": len(models),
+                    "total_samples": int(sum(weights.values())),
+                    "weighting_strategy": self.weighting_strategy,
+                    **custom_metrics
+                }
+
+                # Log cluster-level metrics
+                self.experiment_tracker.log_metrics(
+                    run_id=run_id,
+                    entity_type=EntityType.CLUSTER,
+                    entity_id=cluster_id,
+                    round_num=round_num,
+                    metrics=all_metrics
+                )
+
+                log.debug("Step 6b: Saving cluster model checkpoint...")
+
+                # Save cluster model checkpoint
+                checkpoint_metrics = {"loss": metrics.average_loss} if metrics.average_loss else {}
+                self.experiment_tracker.save_checkpoint(
+                    run_id=run_id,
+                    cluster_id=cluster_id,
+                    round_num=round_num,
+                    model_state=aggregated_model,
+                    metrics=checkpoint_metrics
+                )
+
+                log.info(f"Stored metrics and checkpoint for cluster {cluster_id}, round {round_num}")
+
+            # Step 7: Update internal statistics
             self._update_statistics(len(models), aggregation_time)
-            
+
             log.info(f"Intra-cluster aggregation successful: {len(models)} models -> 1 cluster model")
             return aggregated_model, metrics
-        
+
         except Exception as e:
             log.error(f"Aggregation failed: {e}")
             raise RuntimeError(f"Aggregation failed: {e}")
@@ -426,28 +498,34 @@ class IntraClusterAggregator(BaseAggregator):
 def create_intra_cluster_aggregator(config: Dict[str, Any]) -> IntraClusterAggregator:
     """
     Factory function to create an intra-cluster aggregator from configuration.
-    
+
     Args:
         config: Configuration dictionary with keys:
                - framework: 'pytorch' or 'tensorflow'
                - compression: bool
                - weighting_strategy: 'samples', 'uniform', or 'loss'
-    
+               - experiment_tracker: Optional ExperimentTracker instance
+               - metric_registry: Optional MetricRegistry instance
+
     Returns:
         Configured IntraClusterAggregator instance
     """
     log = logger.bind(context="create_intra_cluster_aggregator")
     log.info("Creating intra-cluster aggregator from configuration")
-    
+
     framework = config.get('framework', 'pytorch')
     compression = config.get('compression', True)
     weighting_strategy = config.get('weighting_strategy', 'samples')
-    
+    experiment_tracker = config.get('experiment_tracker', None)
+    metric_registry = config.get('metric_registry', None)
+
     aggregator = IntraClusterAggregator(
         framework=framework,
         compression=compression,
-        weighting_strategy=weighting_strategy
+        weighting_strategy=weighting_strategy,
+        experiment_tracker=experiment_tracker,
+        metric_registry=metric_registry
     )
-    
+
     log.info("Intra-cluster aggregator created successfully")
     return aggregator
