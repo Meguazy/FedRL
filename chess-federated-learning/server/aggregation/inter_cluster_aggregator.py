@@ -34,15 +34,17 @@ Example:
 
 import time
 import re
-from typing import Dict, List, Any, Set, Tuple
+from typing import Dict, List, Any, Set, Tuple, Optional
 from loguru import logger
 
 from .base_aggregator import (
-    BaseAggregator, 
-    AggregationMetrics, 
-    validate_participant_metrics, 
+    BaseAggregator,
+    AggregationMetrics,
+    validate_participant_metrics,
     normalize_weights
 )
+from server.storage.base import EntityType, ExperimentTracker
+from server.storage.plugins.metric_registry import MetricRegistry
 
 
 class InterClusterAggregator(BaseAggregator):
@@ -84,16 +86,18 @@ class InterClusterAggregator(BaseAggregator):
     """
     
     def __init__(
-        self, 
+        self,
         framework: str = "pytorch",
         compression: bool = True,
         shared_layer_patterns: List[str] = None,
         cluster_specific_patterns: List[str] = None,
-        weighting_strategy: str = "samples"
+        weighting_strategy: str = "samples",
+        experiment_tracker: Optional[ExperimentTracker] = None,
+        metric_registry: Optional[MetricRegistry] = None
     ):
         """
         Initialize the inter-cluster aggregator.
-        
+
         Args:
             framework: ML framework to use ('pytorch' or 'tensorflow')
             compression: Whether to use compression for model serialization
@@ -102,41 +106,52 @@ class InterClusterAggregator(BaseAggregator):
             cluster_specific_patterns: List of layer name patterns to keep cluster-specific
                                        Supports wildcards (e.g., "policy_head.*", "value_head.*")
             weighting_strategy: How to weight cluster contributions ('samples', 'uniform')
-        
+            experiment_tracker: Optional experiment tracker for logging metrics and checkpoints
+            metric_registry: Optional metric registry for custom metric computation
+
         Raises:
             ValueError: If weighting strategy is not supported
         """
         log = logger.bind(context="InterClusterAggregator.__init__")
         log.info(f"Initializing InterClusterAggregator with {weighting_strategy} weighting")
         super().__init__(framework, compression)
-        
+
         # Validate weighting strategy
         if weighting_strategy not in ["samples", "uniform"]:
             log.error(f"Unsupported weighting strategy: {weighting_strategy}")
             raise ValueError(f"Unsupported weighting strategy: {weighting_strategy}")
         self.weighting_strategy = weighting_strategy
-        
+
         # Set default layer patterns if none provided
         if shared_layer_patterns is None:
             shared_layer_patterns = [
                 "input_conv"
             ]
             log.warning(f"No shared_layer_patterns provided, using defaults: {shared_layer_patterns}")
-            
+
         if cluster_specific_patterns is None:
             cluster_specific_patterns = [
                 "policy_head.*",
                 "value_head.*"
             ]
             log.warning(f"No cluster_specific_patterns provided, using defaults: {cluster_specific_patterns}")
-            
+
         self.shared_layer_patterns = shared_layer_patterns
         self.cluster_specific_patterns = cluster_specific_patterns
-        
+
         # Inter-cluster specific attributes
         self.min_participants = 2  # Need at least 2 clusters to aggregate
-        self.max_participants = 10 
-        
+        self.max_participants = 10
+
+        # Storage integration
+        self.experiment_tracker = experiment_tracker
+        self.metric_registry = metric_registry
+
+        if experiment_tracker:
+            log.info("Storage integration enabled with experiment tracker")
+        if metric_registry:
+            log.info(f"Metric registry enabled with {len(metric_registry.list_computers())} computers")
+
         log.info(f"Configured with {len(self.shared_layer_patterns)} shared patterns")
         log.info(f"Configured with {len(self.cluster_specific_patterns)} cluster-specific patterns")
         log.debug(f"Shared patterns: {self.shared_layer_patterns}")
@@ -147,27 +162,29 @@ class InterClusterAggregator(BaseAggregator):
         self,
         models: Dict[str, Any],
         weights: Dict[str, float],
-        round_num: int = 0
+        round_num: int = 0,
+        run_id: Optional[str] = None
     ) -> Tuple[Dict[str, Any], AggregationMetrics]:
         """
         Aggregate shared layers across cluster models while preserving cluster-specific layers.
-        
+
         This method performs selective aggregation:
         1. Identifies which layers are shared vs. cluster-specific
         2. Aggregates only shared layers using weighted averaging
         3. Updates each cluster model with aggregated shared layers
         4. Preserves cluster-specific layers exactly as they were
-        
+
         Args:
             models: Dictionary mapping cluster_id -> cluster_model_state_dict
             weights: Dictionary mapping cluster_id -> aggregation_weight
             round_num: Current training round number
-        
+            run_id: Optional run ID for storage (required if experiment_tracker is set)
+
         Returns:
             Tuple of (updated_cluster_models, metrics)
             - updated_cluster_models: Dict[cluster_id, model_state] with shared layers updated
             - metrics: AggregationMetrics instance with details about the aggregation
-        
+
         Raises:
             ValueError: If inputs are invalid
             RuntimeError: If aggregation fails
@@ -175,24 +192,24 @@ class InterClusterAggregator(BaseAggregator):
         log = logger.bind(context="InterClusterAggregator.aggregate")
         log.info(f"Starting inter-cluster aggregation for round {round_num}")
         log.info(f"Aggregating {len(models)} cluster models with {self.weighting_strategy} weighting")
-        
+
         start_time = time.time()
-        
+
         try:
             # Step 1: Validate inputs
             if self._validate_inputs:
                 log.debug("Step 1: Validating inputs...")
                 self.validate_inputs(models, weights)
                 self.check_model_compatibility(models)
-                
+
             # Step 2: Identify shared vs. cluster-specific layers
             log.debug("Step 2: Identifying shared vs. cluster-specific layers...")
             first_cluster = next(iter(models))
             all_layers_name = set(models[first_cluster].keys())
-            
+
             shared_layers = self._identify_shared_layers(all_layers_name)
             cluster_specific_layers = self._identify_cluster_specific_layers(all_layers_name)
-            
+
             log.info(f"Identified {len(shared_layers)} shared layers")
             log.info(f"Identified {len(cluster_specific_layers)} cluster-specific layers")
             log.debug(f"Shared layers: {list(shared_layers)[:5]}...")  # Log first 5
@@ -202,26 +219,26 @@ class InterClusterAggregator(BaseAggregator):
             self._validate_layer_identification(
                 all_layers_name, shared_layers, cluster_specific_layers
             )
-            
+
             # Step 3: Normalize weights
             log.debug("Step 3: Normalizing weights...")
             normalized_weights = normalize_weights(weights)
             log.debug(f"Normalized weights: {normalized_weights}")
-            
+
             # Step 4: Aggregate shared layers across clusters
             log.debug("Step 4: Aggregating shared layers across clusters...")
             aggregated_shared_layers = self._aggregate_shared_layers(
                 models, shared_layers, normalized_weights
             )
             log.info("Shared layers aggregated successfully")
-            
+
             # Step 5: Update each cluster model with aggregated shared layers
             log.debug("Step 5: Updating cluster models with aggregated shared layers...")
             updated_models = self._update_cluster_models(
                 models, aggregated_shared_layers, cluster_specific_layers
             )
             log.info("Cluster models updated successfully")
-            
+
             # Step 6: Collect metrics
             log.debug("Step 6: Collecting aggregation metrics...")
             aggregation_time = time.time() - start_time
@@ -233,15 +250,68 @@ class InterClusterAggregator(BaseAggregator):
                 aggregation_time=aggregation_time,
                 round_num=round_num
             )
-            
-            # Step 7: Update internal statistics
+
+            # Step 7: Compute custom metrics via plugin registry
+            custom_metrics = {}
+            if self.metric_registry:
+                log.debug("Step 7a: Computing custom metrics via registry...")
+                context = {
+                    "models": {cluster_id: model for cluster_id, model in models.items()},
+                    "updated_models": updated_models,
+                    "weights": normalized_weights,
+                    "round": round_num,
+                    "shared_layer_patterns": self.shared_layer_patterns,
+                    "aggregation_start_time": start_time,
+                    "aggregation_end_time": time.time(),
+                    "node_count": len(models)
+                }
+                custom_metrics = self.metric_registry.compute_all(context, skip_on_error=True)
+                log.debug(f"Computed {len(custom_metrics)} custom metrics")
+
+            # Step 8: Store metrics and checkpoints if tracker is available
+            if self.experiment_tracker and run_id:
+                log.debug("Step 8a: Logging global metrics to storage...")
+
+                # Combine standard and custom metrics for global aggregation
+                all_metrics = {
+                    "aggregation_time": aggregation_time,
+                    "cluster_count": len(models),
+                    "shared_layer_count": len(shared_layers),
+                    "cluster_specific_count": len(cluster_specific_layers),
+                    "weighting_strategy": self.weighting_strategy,
+                    **custom_metrics
+                }
+
+                # Log global inter-cluster metrics
+                self.experiment_tracker.log_metrics(
+                    run_id=run_id,
+                    entity_type=EntityType.GLOBAL,
+                    entity_id="global",
+                    round_num=round_num,
+                    metrics=all_metrics
+                )
+
+                # Save updated cluster models as checkpoints
+                log.debug("Step 8b: Saving updated cluster model checkpoints...")
+                for cluster_id, updated_model in updated_models.items():
+                    self.experiment_tracker.save_checkpoint(
+                        run_id=run_id,
+                        cluster_id=cluster_id,
+                        round_num=round_num,
+                        model_state=updated_model,
+                        metrics={}
+                    )
+
+                log.info(f"Stored global metrics and {len(updated_models)} cluster checkpoints for round {round_num}")
+
+            # Step 9: Update internal statistics
             self._update_statistics(len(models), aggregation_time)
-            
+
             log.info(f"Inter-cluster aggregation successful: {len(models)} clusters processed")
             log.info(f"Preserved diversity in {len(cluster_specific_layers)} cluster-specific layers")
-            
+
             return updated_models, metrics
-        
+
         except Exception as e:
             log.error(f"Aggregation failed: {e}")
             raise RuntimeError(f"Inter-cluster aggregation failed: {e}")
