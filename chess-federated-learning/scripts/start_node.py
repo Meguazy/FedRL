@@ -152,7 +152,7 @@ def main():
         help="Games per training round (default: 100)"
     )
     
-    args:  = parser.parse_args()
+    args = parser.parse_args()
     
     # Load or create configuration
     if args.config:
