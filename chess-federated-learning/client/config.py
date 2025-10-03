@@ -194,8 +194,3 @@ def load_config_with_overrides(yaml_path: str, **overrides) -> NodeConfig:
     config = NodeConfig.from_yaml(yaml_path)
     config.update(**overrides)
     return config
-
-
-# Example YAML configuration template
-EXAMPLE_CONFIG_YAML = """
-"""
