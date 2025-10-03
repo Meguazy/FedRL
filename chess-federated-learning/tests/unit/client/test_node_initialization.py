@@ -10,7 +10,6 @@ from unittest.mock import MagicMock, patch
 
 from client.node import FederatedLearningNode, NodeLifecycleState
 from client.trainer.trainer_interface import TrainerInterface, TrainingConfig
-from client.communication.client_socket import ClientState
 from server.communication.protocol import MessageType
 
 
