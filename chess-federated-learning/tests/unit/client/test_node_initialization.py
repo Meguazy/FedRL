@@ -67,7 +67,7 @@ def test_node_initialization_basic(mock_trainer):
     assert node.trainer is mock_trainer
 
     # Verify lifecycle state
-    assert node.lyfecycle_state == NodeLifecycleState.INITIALIZING
+    assert node.lifecycle_state == NodeLifecycleState.INITIALIZING
     assert node.is_running is False
 
     # Verify model state
@@ -78,7 +78,7 @@ def test_node_initialization_basic(mock_trainer):
     assert node.training_task is None
 
     # Verify statistics initialization
-    assert node.round_completed == 0
+    assert node.rounds_completed == 0
     assert node.total_training_time == 0.0
     assert node.total_samples == 0
     assert node.start_time == 0.0
@@ -159,13 +159,13 @@ def test_node_trainer_association(mock_trainer):
 
 def test_node_statistics_counters_initialized(mock_trainer):
     """Test that all statistics counters are properly initialized to zero."""
-    node = FederatedLearningNode(
+    node: FederatedLearningNode = FederatedLearningNode(
         node_id="stats_node",
         cluster_id="stats_cluster",
         trainer=mock_trainer
     )
 
-    assert node.round_completed == 0
+    assert node.rounds_completed == 0
     assert node.total_training_time == 0.0
     assert node.total_samples == 0
     assert node.start_time == 0.0
@@ -180,7 +180,7 @@ def test_node_initial_state_values(mock_trainer):
     )
 
     # Lifecycle and running state
-    assert node.lyfecycle_state == NodeLifecycleState.INITIALIZING
+    assert node.lifecycle_state == NodeLifecycleState.INITIALIZING
     assert node.is_running is False
 
     # Model and round state
