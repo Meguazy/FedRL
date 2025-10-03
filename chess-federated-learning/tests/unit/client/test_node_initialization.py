@@ -11,6 +11,7 @@ from unittest.mock import MagicMock, patch
 from client.node import FederatedLearningNode, NodeLifecycleState
 from client.trainer.trainer_interface import TrainerInterface, TrainingConfig
 from client.communication.client_socket import ClientState
+from server.communication.protocol import MessageType
 
 
 class MockTrainer(TrainerInterface):
@@ -241,3 +242,99 @@ def test_node_initialization_with_different_clusters(training_config):
 
         assert node.cluster_id == cluster
         assert node.node_id == f"node_{i}"
+
+
+def test_node_message_handlers_registered(mock_trainer):
+    """Test that message handlers are registered during initialization."""
+    node = FederatedLearningNode(
+        node_id="handler_node",
+        cluster_id="handler_cluster",
+        trainer=mock_trainer
+    )
+
+    # Verify handlers are registered for expected message types
+    expected_handlers = [
+        MessageType.START_TRAINING,
+        MessageType.CLUSTER_MODEL,
+        MessageType.ERROR,
+        MessageType.REGISTER_ACK,
+    ]
+
+    for message_type in expected_handlers:
+        assert message_type in node.client.message_handlers, \
+            f"Handler for {message_type} not registered"
+        assert node.client.message_handlers[message_type] is not None, \
+            f"Handler for {message_type} is None"
+
+
+def test_node_handler_methods_exist(mock_trainer):
+    """Test that handler methods exist on the node instance."""
+    node = FederatedLearningNode(
+        node_id="method_node",
+        cluster_id="method_cluster",
+        trainer=mock_trainer
+    )
+
+    # Verify handler methods exist
+    expected_methods = [
+        "_handle_start_training",
+        "_handle_cluster_model",
+        "_handle_server_error",
+        "_handle_register_ack",
+    ]
+
+    for method_name in expected_methods:
+        assert hasattr(node, method_name), \
+            f"Node missing handler method: {method_name}"
+        assert callable(getattr(node, method_name)), \
+            f"Handler {method_name} is not callable"
+
+
+def test_node_handlers_bound_correctly(mock_trainer):
+    """Test that handlers are bound to the correct node instance."""
+    node = FederatedLearningNode(
+        node_id="binding_node",
+        cluster_id="binding_cluster",
+        trainer=mock_trainer
+    )
+
+    # Get a handler from the client
+    handler = node.client.message_handlers.get(MessageType.START_TRAINING)
+
+    # Verify it's bound to the node instance
+    assert handler is not None
+    # The handler should be a method bound to this specific node instance
+    if hasattr(handler, '__self__'):
+        assert handler.__self__ is node, \
+            "Handler not bound to correct node instance"
+
+
+def test_node_setup_message_handlers_called(mock_trainer):
+    """Test that _setup_message_handlers is called during initialization."""
+    with patch.object(FederatedLearningNode, '_setup_message_handlers') as mock_setup:
+        node = FederatedLearningNode(
+            node_id="setup_node",
+            cluster_id="setup_cluster",
+            trainer=mock_trainer
+        )
+
+        # Verify _setup_message_handlers was called during __init__
+        mock_setup.assert_called_once()
+
+
+def test_node_all_required_handlers_present(mock_trainer):
+    """Test that all required message handlers are present after initialization."""
+    node = FederatedLearningNode(
+        node_id="complete_node",
+        cluster_id="complete_cluster",
+        trainer=mock_trainer
+    )
+
+    # Verify we have at least the minimum required handlers
+    assert len(node.client.message_handlers) >= 4, \
+        f"Expected at least 4 handlers, got {len(node.client.message_handlers)}"
+
+    # Verify no handlers are None
+    for msg_type, handler in node.client.message_handlers.items():
+        assert handler is not None, \
+            f"Handler for {msg_type} is None"
