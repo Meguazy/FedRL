@@ -22,10 +22,14 @@ Architecture:
 
 import asyncio
 import signal
+import sys
+from pathlib import Path
 from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass
 from loguru import logger
 import time
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from server.aggregation.base_aggregator import AggregationMetrics
 from server.communication.server_socket import FederatedLearningServer
@@ -520,9 +524,19 @@ async def main():
     log.info("Starting Federated Learning Server...")
     
     # Configuration
-    server_host = "localhost"
-    server_port = 8765
     cluster_config_path = "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/cluster_topology.yaml"
+    server_config_path = "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/server_config.yaml"
+    
+    # Load server config
+    import yaml
+    with open(server_config_path, 'r') as f:
+        config_data = yaml.safe_load(f)
+        server_config = config_data.get("server_config", {})
+        orchestrator_config = config_data.get("orchestrator_config", {})
+    log.debug(f"Loaded server config: {server_config}")
+    log.debug(f"Loaded orchestrator config: {orchestrator_config}")
+    server_host = server_config.get("host", "localhost")
+    server_port = server_config.get("port", 8765)
     
     # Create server
     server = FederatedLearningServer(
@@ -530,13 +544,13 @@ async def main():
         port=server_port,
         cluster_config_path=cluster_config_path
     )
-
+    
     # Start server in background
     server_task = asyncio.create_task(server.start_server())
     
     # Wait for server to start
     log.info("Waiting for server to start...")
-    await asyncio.sleep(10.0)
+    await asyncio.sleep(2.0)
     log.info("Server started")
     
     if not server.is_running:
@@ -545,11 +559,11 @@ async def main():
     
     # Create round configuration
     round_config = RoundConfig(
-        games_per_round=100,
-        aggregation_threshold=0.8,
-        timeout_seconds=300,
-        shared_layer_patterns=["input_conv.*"],
-        cluster_specific_patterns=["policy_head.*", "value_head.*"]
+        games_per_round=orchestrator_config.get("games_per_round", 100),
+        aggregation_threshold=orchestrator_config.get("aggregation_threshold", 0.8),
+        timeout_seconds=orchestrator_config.get("timeout_seconds", 300),
+        shared_layer_patterns=orchestrator_config.get("shared_layer_patterns", ["input_conv.*"]),
+        cluster_specific_patterns=orchestrator_config.get("cluster_specific_patterns", ["policy_head.*", "value_head.*"])
     )
     
     # Create orchestrator
