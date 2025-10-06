@@ -118,7 +118,7 @@ async def test_server(test_port, cluster_manager):
     server = FederatedLearningServer(
         host="localhost", 
         port=test_port,
-        #cluster_manager=cluster_manager
+        cluster_config_path="/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/cluster_topology.yaml",
     )
     
     # Start server in background task
