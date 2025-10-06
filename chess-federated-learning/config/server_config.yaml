@@ -1,0 +1,10 @@
+server_config:
+  host: "localhost"
+  port: 8765
+
+orchestrator_config:
+  games_per_round: 100
+  aggregation_threshold: 0.8
+  timeout_seconds: 300
+  shared_layer_patterns: ["input_conv.*"]
+  cluster_specific_patterns: ["policy_head.*", "value_head.*"]
