@@ -12,15 +12,15 @@ import argparse
 import sys
 from pathlib import Path
 
-# Add project root to path
-project_root = Path(__file__).parent.parent
-sys.path.insert(0, str(project_root / "chess-federated-learning"))
+# Add chess-federated-learning directory to path
+chess_fl_dir = Path(__file__).parent.parent
+sys.path.insert(0, str(chess_fl_dir))
 
 from loguru import logger
-from ..client.node import FederatedLearningNode
-from ..client.config import NodeConfig, create_default_config
-from ..client.trainer.trainer_interface import TrainingConfig
-from ..client.trainer.factory import create_trainer
+from client.node import FederatedLearningNode
+from client.config import NodeConfig, create_default_config
+from client.trainer.trainer_interface import TrainingConfig
+from client.trainer.factory import create_trainer
 
 
 def setup_logging(config: NodeConfig):

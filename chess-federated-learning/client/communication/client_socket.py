@@ -28,7 +28,7 @@ from enum import Enum
 import websockets
 from loguru import logger
 
-from ...server.communication.protocol import Message, MessageType, MessageFactory
+from server.communication.protocol import Message, MessageType, MessageFactory
 
 
 class ClientState(Enum):

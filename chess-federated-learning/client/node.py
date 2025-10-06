@@ -33,7 +33,7 @@ from .trainer.trainer_interface import (
     TrainingResult,
     TrainingError
 )
-from ..server.communication.protocol import Message, MessageType
+from server.communication.protocol import Message, MessageType
 
 
 class NodeLifecycleState(Enum):
