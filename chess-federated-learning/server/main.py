@@ -573,6 +573,13 @@ async def main():
         storage_tracker=None  # TODO: Add ExperimentTracker
     )
     
+    # Create menu
+    menu = ServerMenu(server=server, orchestrator=orchestrator)
+    menu_task = asyncio.create_task(menu._menu_loop())
+    if not menu_task:
+        log.error("Menu task failed to start. Exiting.")
+        return
+
     # Setup signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
     
@@ -584,8 +591,8 @@ async def main():
         loop.add_signal_handler(sig, signal_handler)
     
     try:
-        # Run training
-        await orchestrator.run_training(num_rounds=10)
+        # Run training after user input
+        await asyncio.gather(server_task, menu_task)
     except KeyboardInterrupt:
         log.info("Keyboard interrupt received")
     finally:
@@ -602,6 +609,111 @@ async def main():
     
     log.info("Server shutdown complete")
 
+class ServerMenu:
+    def __init__(self, server: FederatedLearningServer, orchestrator: TrainingOrchestrator):
+        self.server = server
+        self.orchestrator = orchestrator
+        self.is_running = True
+
+    async def _menu_loop(self):
+        await asyncio.sleep(2)  # Give server time to start
+
+        while self.is_running:
+            print("\n" + "="*50)
+            print("🎛️  FEDERATED LEARNING SERVER MENU")
+            print("="*50)
+            print("1. 📋 Show connected nodes")
+            print("2. 🔔 Broadcast start training")
+            print("3. 📊 Show server stats")
+            print("="*50)
+
+            try:
+                choice = await self._get_input("Enter your choice (1-8): ")
+
+                if choice == "1":
+                    await self._show_connected_nodes()
+                elif choice == "2":
+                    await self._broadcast_start_training()
+                elif choice == "3":
+                    await self._show_server_stats()
+                else:
+                    print("❌ Invalid choice. Please try again.")
+
+                await asyncio.sleep(1)
+
+            except KeyboardInterrupt:
+                print("\n🛑 Stopping server...")
+                self.is_running = False
+                break
+            except Exception as e:
+                print(f"❌ Error: {e}")
+                await asyncio.sleep(2)
+
+    async def _get_input(self, prompt: str) -> str:
+        """Non-blocking input for async context"""
+        print(prompt, end='', flush=True)
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, sys.stdin.readline)
+        return result.strip()
+
+    async def _show_connected_nodes(self):
+        nodes = self.server.get_connected_nodes()
+
+        if not nodes:
+            print("📭 No nodes currently connected.")
+            return
+
+        print(f"\n📋 Connected Nodes ({len(nodes)}):")
+        print("-" * 60)
+        for node_id, node in nodes.items():
+            uptime = time.time() - node.registration_time
+            print(f"🔹 {node_id}")
+            print(f"   Cluster: {node.cluster_id}")
+            print(f"   State: {node.state.value}")
+            print(f"   Uptime: {uptime:.1f}s")
+            print(f"   Round: {node.current_round or 'N/A'}")
+            print()
+
+    async def _broadcast_start_training(self):
+        round_num = await self._get_input("Enter round number (default 1): ")
+        round_num = int(round_num) if round_num else 1
+
+        self.orchestrator.run_training(num_rounds=round_num)
+        print(f"📡 Broadcasted START_TRAINING: round {round_num}")
+
+    async def _show_server_stats(self):
+        stats = self.server.get_server_statistics()
+
+        print(f"\n📊 Server Statistics:")
+        print(f"Connected nodes: {stats['connections']['total_connected_nodes']}")
+        print(f"Active clusters: {stats['connections']['total_active_clusters']}")
+        print(f"Messages handled: {stats['server']['total_messages_handled']}")
+        print(f"Current round: {stats['server']['current_round']}")
+        print(f"Server uptime: {stats['server']['uptime_seconds']:.1f}s")
+
+        print(f"\n🏗️  Cluster Manager Statistics:")
+        cm_stats = stats['cluster_manager']
+        print(f"Total clusters: {cm_stats['cluster_count']}")
+        print(f"Total expected nodes: {cm_stats['total_expected_nodes']}")
+        print(f"Total registered nodes: {cm_stats['total_registered_nodes']}")
+        print(f"Active nodes: {cm_stats['total_active_nodes']}")
+        print(f"Ready clusters: {cm_stats['ready_clusters']}")
+        print(f"Uptime: {cm_stats['uptime_seconds']:.1f}s")
+
+        print(f"\n🏷️  Cluster Readiness:")
+        cluster_readiness = stats['cluster_readiness']
+        for cluster_id, readiness in cluster_readiness.items():
+            status = "✅" if readiness['is_ready'] else "❌"
+            ratio = readiness.get('readiness_ratio', 0.0)
+            active = readiness.get('active_nodes', 0)
+            expected = readiness.get('expected_nodes', 0)
+            playstyle = readiness.get('playstyle', 'unknown')
+            print(f"  {status} {cluster_id} ({playstyle}): {active}/{expected} nodes ({ratio:.1%})")
+
+        print(f"\n🔗 Connected Clusters:")
+        for cluster_id in self.server.connections_by_cluster:
+            node_count = len(self.server.connections_by_cluster[cluster_id])
+            print(f"  {cluster_id}: {node_count} connected nodes")
 
 if __name__ == "__main__":
     asyncio.run(main())
