@@ -1,6 +1,6 @@
 from loguru import logger
-from client.trainer.trainer_dummy import DummyTrainer
-from client.trainer.trainer_interface import TrainerInterface, TrainingConfig
+from .trainer_dummy import DummyTrainer
+from .trainer_interface import TrainerInterface, TrainingConfig
 
 
 def create_trainer(trainer_type: str, node_id: str, cluster_id: str,

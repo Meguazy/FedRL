@@ -32,7 +32,7 @@ from typing import Any, Dict, List, Optional, Tuple
 import torch
 from loguru import logger
 
-from server.storage.base import ModelCheckpointMetadata, ModelRepository
+from .base import ModelCheckpointMetadata, ModelRepository
 
 
 class LocalModelRepository(ModelRepository):

@@ -26,14 +26,14 @@ from enum import Enum
 from loguru import logger
 import time
 
-from client.communication.client_socket import FederatedLearningClient, ClientState
-from client.trainer.trainer_interface import (
-    TrainerInterface, 
-    TrainingConfig, 
+from .communication.client_socket import FederatedLearningClient, ClientState
+from .trainer.trainer_interface import (
+    TrainerInterface,
+    TrainingConfig,
     TrainingResult,
     TrainingError
 )
-from server.communication.protocol import Message, MessageType
+from ..server.communication.protocol import Message, MessageType
 
 
 class NodeLifecycleState(Enum):

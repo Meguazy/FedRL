@@ -29,7 +29,7 @@ Example:
     await tracker.end_run(run_id)
 """
 
-from server.storage.base import (
+from .base import (
     EntityType,
     MetricEvent,
     ModelCheckpointMetadata,
@@ -37,10 +37,10 @@ from server.storage.base import (
     ModelRepository,
     ExperimentTracker,
 )
-from server.storage.file_metrics_store import FileMetricsStore
-from server.storage.local_model_repository import LocalModelRepository
-from server.storage.experiment_tracker import FileExperimentTracker
-from server.storage.factory import (
+from .file_metrics_store import FileMetricsStore
+from .local_model_repository import LocalModelRepository
+from .experiment_tracker import FileExperimentTracker
+from .factory import (
     create_experiment_tracker,
     create_metrics_store,
     create_model_repository,

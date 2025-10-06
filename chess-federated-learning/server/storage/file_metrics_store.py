@@ -30,7 +30,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 
 from loguru import logger
 
-from server.storage.base import EntityType, MetricEvent, MetricsStore
+from .base import EntityType, MetricEvent, MetricsStore
 
 
 class FileMetricsStore(MetricsStore):

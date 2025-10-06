@@ -2,7 +2,7 @@ import time
 from typing import Any, Dict
 
 from loguru import logger
-from client.trainer.trainer_interface import TrainerInterface, TrainingResult
+from .trainer_interface import TrainerInterface, TrainingResult
 
 
 class DummyTrainer(TrainerInterface):

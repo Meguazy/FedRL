@@ -12,7 +12,7 @@ from typing import Any, Dict, List
 import torch
 from loguru import logger
 
-from server.storage.plugins.metric_registry import BaseMetricComputer
+from .metric_registry import BaseMetricComputer
 
 
 class DiversityMetricComputer(BaseMetricComputer):

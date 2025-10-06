@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from loguru import logger
 
-from server.storage.base import (
+from .base import (
     EntityType,
     ExperimentTracker,
     MetricEvent,

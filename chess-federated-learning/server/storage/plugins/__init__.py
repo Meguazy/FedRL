@@ -16,16 +16,16 @@ Example:
     metrics = registry.compute_all(context)
 """
 
-from server.storage.plugins.metric_registry import (
+from .metric_registry import (
     BaseMetricComputer,
     MetricComputer,
     MetricRegistry,
 )
-from server.storage.plugins.diversity_metrics import (
+from .diversity_metrics import (
     DiversityMetricComputer,
     SharedLayerSyncMetric,
 )
-from server.storage.plugins.system_metrics import (
+from .system_metrics import (
     AggregationTimingMetric,
     SystemMetricComputer,
 )

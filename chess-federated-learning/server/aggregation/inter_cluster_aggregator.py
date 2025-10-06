@@ -43,8 +43,8 @@ from .base_aggregator import (
     validate_participant_metrics,
     normalize_weights
 )
-from server.storage.base import EntityType, ExperimentTracker
-from server.storage.plugins.metric_registry import MetricRegistry
+from ..storage.base import EntityType, ExperimentTracker
+from ..storage.plugins.metric_registry import MetricRegistry
 
 
 class InterClusterAggregator(BaseAggregator):

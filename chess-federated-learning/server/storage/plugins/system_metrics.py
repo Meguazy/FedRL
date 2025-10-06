@@ -14,7 +14,7 @@ from typing import Any, Dict, List
 
 from loguru import logger
 
-from server.storage.plugins.metric_registry import BaseMetricComputer
+from .metric_registry import BaseMetricComputer
 
 
 class SystemMetricComputer(BaseMetricComputer):

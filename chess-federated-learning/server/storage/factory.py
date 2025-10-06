@@ -7,9 +7,9 @@ Provides convenient functions for creating pre-configured storage instances.
 from pathlib import Path
 from typing import Optional
 
-from server.storage.experiment_tracker import FileExperimentTracker
-from server.storage.file_metrics_store import FileMetricsStore
-from server.storage.local_model_repository import LocalModelRepository
+from .experiment_tracker import FileExperimentTracker
+from .file_metrics_store import FileMetricsStore
+from .local_model_repository import LocalModelRepository
 
 
 def create_experiment_tracker(
