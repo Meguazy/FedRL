@@ -1,0 +1,593 @@
+"""
+Federated Learning Server - Main Orchestration
+
+This module implements the main server orchestration logic that coordinates
+the complete federated learning workflow. It manages the training loop,
+triggers aggregation, and integrates all server components.
+
+Key Responsibilities:
+    - Coordinate training rounds across all nodes
+    - Trigger intra-cluster and inter-cluster aggregation
+    - Manage model distribution to nodes
+    - Integrate storage layer for metrics and checkpoints
+    - Handle server lifecycle and graceful shutdown
+
+Architecture:
+    FederatedLearningServer (communication) +
+    ClusterManager (topology) +
+    Aggregators (model combination) +
+    ExperimentTracker (storage) +
+    Orchestrator (this module)
+"""
+
+import asyncio
+import signal
+from typing import Dict, Any, Optional, Set
+from dataclasses import dataclass
+from loguru import logger
+import time
+
+from server.aggregation.base_aggregator import AggregationMetrics
+from server.communication.server_socket import FederatedLearningServer
+from server.communication.protocol import Message, MessageFactory, MessageType
+from server.aggregation.intra_cluster_aggregator import IntraClusterAggregator
+from server.aggregation.inter_cluster_aggregator import InterClusterAggregator
+from server.cluster_manager import ClusterManager
+from server.storage.base import ExperimentTracker
+
+
+@dataclass
+class RoundConfig:
+    """Configuration for each training round."""
+    games_per_round: int = 100
+    aggregation_threshold: float = 0.8  # Fraction of nodes required to proceed
+    timeout_seconds: int = 300  # Max wait time for nodes
+    intra_cluster_weighting: str = "samples"  # "samples" or "uniform"
+    inter_cluster_weighting: str = "uniform"  # "samples" or "uniform
+    shared_layer_patterns: list = None  # e.g., ["policy_head", "value_head"]
+    cluster_specific_patterns: list = None  # e.g., ["residual_blocks"]
+    
+    def from_yaml(self, path: str):
+        """Load configuration from YAML file."""
+        import yaml
+        with open(path, 'r') as f:
+            data = yaml.safe_load(f)
+        for key, value in data.items():
+            if hasattr(self, key):
+                setattr(self, key, value)
+                
+                
+class TrainingOrchestrator:
+    """
+    Orchestrates the federated learning training process.
+    
+    This class coordinates the complete training workflow:
+    1. Broadcast START_TRAINING to all nodes
+    2. Wait for MODEL_UPDATE from nodes (with threshold)
+    3. Perform intra-cluster aggregation
+    4. Perform inter-cluster selective aggregation
+    5. Broadcast CLUSTER_MODEL back to nodes
+    6. Repeat for multiple rounds
+    
+    The orchestrator integrates all server components and manages
+    the timing and coordination of the federated learning process.
+    """
+    
+    def __init__(
+        self,
+        server: FederatedLearningServer,
+        round_config: RoundConfig,
+        storage_tracker = None
+    ):
+        """
+        Initialize the orchestrator with server and configuration.
+        
+        Args:
+            server: FederatedLearningServer instance
+            round_config: Configuration for training rounds
+            storage_tracker: Optional ExperimentTracker for metrics
+        """
+        log = logger.bind(context="TrainingOrchestrator.__init__")
+        log.info("Initializing Training Orchestrator...")
+        
+        # Core components
+        self.server = server
+        self.round_config = round_config
+        self.storage_tracker: ExperimentTracker = storage_tracker
+        
+        # Aggregators
+        self.intra_aggregator = IntraClusterAggregator(
+            framework="pytorch",
+            weighting_strategy=self.round_config.intra_cluster_weighting,
+            experiment_tracker=self.storage_tracker or None
+        )
+        self.inter_aggregator = InterClusterAggregator(
+            framework="pytorch",
+            weighting_strategy=self.round_config.inter_cluster_weighting,
+            shared_layer_patterns=self.round_config.shared_layer_patterns or [],
+            cluster_specific_patterns=self.round_config.cluster_specific_patterns or [],
+            experiment_tracker=self.storage_tracker or None
+        )
+        
+        # State tracking
+        self.current_round = 0
+        self.is_running = False
+        self.cluster_models: Dict[str, Dict[str, Any]] = {}  # cluster_id -> model_state
+        self.pending_updates: Dict[str, Set[str]] = {}  # node_id -> model_state
+        
+        log.info("Training orchestrator initialized")
+        log.info(f"Intra-cluster weighting: {round_config.intra_cluster_weighting}")
+        log.info(f"Inter-cluster weighting: {round_config.inter_cluster_weighting}")
+        log.info(f"Aggregation threshold: {round_config.aggregation_threshold * 100}%")
+
+    async def run_training(self, num_rounds: int, run_id: Optional[str] = None):
+        """
+        Run the federated training process for a specified number of rounds.
+        
+        Args:
+            num_rounds: Total number of training rounds to execute
+            run_id: Optional identifier for the training run
+        """
+        log = logger.bind(context="TrainingOrchestrator.run_training")
+        log.info(f"Starting federated training for {num_rounds} rounds")
+        
+        self.is_running = True
+        
+        # Initialize storage tracker if available
+        if self.storage_tracker and run_id:
+            log.info(f"Initializing storage tracker for run ID: {run_id}")
+
+        try:
+            for round_num in range(1, num_rounds + 1):
+                self.current_round = round_num
+                log.info(f"=" * 60)
+                log.info(f"Round {round_num}/{num_rounds} - Starting")
+                log.info(f"=" * 60)
+
+                # Execute one complete training round
+                success = await self._execute_round(round_num, run_id)
+                
+                if not success:
+                    log.error(f"Round {round_num} failed or timed out")
+                    break  # Stop training on failure
+                
+                log.info(f"Round {round_num} completed successfully")
+                
+                # Brief pause between rounds
+                log.info("Pausing briefly before next round...")
+                await asyncio.sleep(10.0)
+                log.info("Resuming training...")
+                
+            log.info("=" * 60)
+            log.info(f"TRAINING COMPLETE: {num_rounds} rounds finished")
+            log.info("=" * 60)
+        
+        except Exception as e:
+            log.exception(f"Training failed: {e}")
+            raise
+        finally:
+            self.is_running = False
+
+    async def _execute_round(self, round_num: int, run_id: Optional[str]) -> bool:
+        """
+        Execute a single training round.
+        
+        Args:
+            round_num: Current round number
+            run_id: Experiment run ID
+        
+        Returns:
+            bool: True if round completed successfully
+        """
+        log = logger.bind(context=f"TrainingOrchestrator.round_{round_num}")
+        log.info(f"Executing training round {round_num}")
+        
+        # Step 1: Get ready clusters
+        log.info("Step 1: Checking cluster readiness...")
+        ready_clusters = self.server.cluster_manager.get_ready_clusters()
+        if not ready_clusters:
+            log.error("No clusters are ready. Aborting round.")
+            return False
+        # TODO: We need to understand what to do if only some clusters are ready
+        log.info(f"Ready clusters: {list(ready_clusters.keys())}")
+        
+        # Step 2: Broadcast START_TRAINING
+        log.info("Step 2: Broadcasting START_TRAINING to all nodes...")
+        await self._broadcast_start_training(round_num)
+        
+        # Step 3: Wait for MODEL_UPDATE messages
+        log.info("Step 3: Waiting for MODEL_UPDATE messages from nodes...")
+        updates = await self._collect_model_updates(round_num)
+        if not updates:
+            log.error("No model updates received. Aborting round.")
+            return False
+        log.info(f"Received {len(updates)} model updates")
+        
+        # Step 4: Intra-cluster aggregation
+        log.info("Step 4: Performing intra-cluster aggregation...")
+        cluster_models = self._aggregate_intra_cluster(updates)
+        if not cluster_models:
+            log.error("Intra-cluster aggregation failed. Aborting round.")
+            return False
+        log.info(f"Intra-cluster aggregation produced {len(cluster_models)} cluster models")
+        
+        # Step 5: Inter-cluster selective aggregation
+        log.info("Step 5: Performing inter-cluster selective aggregation...")
+        final_models = self._aggregate_inter_cluster(cluster_models, round_num)
+        if not final_models:
+            log.error("Inter-cluster aggregation failed. Aborting round.")
+            return False
+        log.info(f"Inter-cluster aggregation produced {len(final_models)} final models")
+        
+        # Step 6: Save checkpoints
+        if self.storage_tracker and run_id:
+            log.info("Step 6: Saving model checkpoints...")
+            await self._save_checkpoints(final_models, round_num, run_id)
+            
+        # Step 7: Broadcast CLUSTER_MODEL to nodes
+        log.info("Step 7: Broadcasting CLUSTER_MODEL to all nodes...")
+        await self._broadcast_cluster_models(final_models, round_num)
+        
+        log.info(f"Round {round_num} execution complete")
+        return True
+        
+    async def _broadcast_start_training(self, round_num: int):
+        """
+        Broadcast START_TRAINING message to all connected nodes.
+        
+        Args:
+            round_num: Current training round number
+        """
+        log = logger.bind(context=f"TrainingOrchestrator.broadcast_start_training")
+
+        # Reset pending updates
+        self.pending_updates.clear()
+        
+        # Get all active clusters
+        clusters = self.server.cluster_manager.get_all_clusters()
+        
+        for cluster in clusters:
+            cluster_id = cluster.cluster_id
+            nodes = self.server.get_cluster_nodes(cluster_id, only_active=True)
+            
+            if not nodes:
+                log.warning(f"No active nodes in cluster {cluster_id}. Skipping.")
+                continue
+            
+            # Track pending updates for this cluster
+            self.pending_updates[cluster_id] = set(nodes)
+            
+            # Create START_TRAINING message
+            message = MessageFactory.create_start_training(
+                node_id = "server",
+                cluster_id = cluster_id,
+                round_num = round_num,
+                games_per_round = self.round_config.games_per_round,
+            )
+            
+            # Send to all nodes in the cluster
+            await self.server.broadcast_to_cluster(cluster_id, message)
+            log.info(f"Sent START_TRAINING to cluster {cluster_id} with {len(nodes)} nodes")
+            
+    async def _collect_model_updates(self, round_num: int) -> Dict[str, Any]:
+        """
+        Collect model updates from nodes with timeout.
+        
+        Args:
+            round_num: Current training round
+        
+        Returns:
+            Dict mapping node_id to model update data
+        """
+        log = logger.bind(context="TrainingOrchestrator._collect_model_updates")
+        
+        updates: Dict[str, Any] = {}
+        update_event = asyncio.Event()
+        
+        # Message handler for MODEL_UPDATE
+        async def handle_model_update(node_id: str, message: Message):
+            if message.round_num != round_num:
+                log.warning(f"Ignoring out-of-sync MODEL_UPDATE from {node_id}")
+                return
+            
+            log.debug(f"Received MODEL_UPDATE from {node_id}")
+            updates[node_id] = {
+                "model_state": message.payload.get("model_state"),
+                "samples": message.payload.get("samples", 0),
+                "loss": message.payload.get("loss", None),
+                "cluster_id": message.cluster_id
+            }
+            
+            # Mark as received
+            if message.cluster_id in self.pending_updates:
+                self.pending_updates[message.cluster_id].discard(node_id)
+                
+            # Check if we reached the aggregation threshold
+            if self._check_threshold_met():
+                update_event.set()
+
+        self.server.set_message_handler(
+            MessageType.MODEL_UPDATE, handle_model_update
+        )
+        
+        # Wait for threshold or timeout
+        try:
+            await asyncio.wait_for(
+                update_event.wait(),
+                timeout=self.round_config.timeout_seconds
+            )
+            log.info(f"Threshold met: {len(updates)} updates received")
+        except asyncio.TimeoutError:
+            log.warning(f"Timeout reached: only {len(updates)} updates received")
+        
+        return updates
+    
+    def _check_threshold_met(self) -> bool:
+        """
+        Check if aggregation threshold is met for all clusters.
+        
+        Returns:
+            bool: True if threshold met
+        """
+        for cluster_id, pending_nodes in self.pending_updates.items():
+            cluster = self.server.cluster_manager.get_cluster(cluster_id)
+            if not cluster:
+                continue
+            
+            expected_count = cluster.get_active_node_count()
+            received_count = expected_count - len(pending_nodes)
+            
+            if received_count < expected_count * self.round_config.aggregation_threshold:
+                return False
+        
+        return True
+    
+    async def _aggregate_intra_cluster(
+        self, 
+        updates: Dict[str, Dict], 
+        round_num: int
+    ) -> Dict[str, Any]:
+        """
+        Perform intra-cluster aggregation.
+        
+        Args:
+            updates: Model updates from nodes
+            round_num: Current round number
+        
+        Returns:
+            Dict mapping cluster_id to aggregated model
+        """
+        log = logger.bind(context="TrainingOrchestrator._aggregate_intra_cluster")
+
+        # Group updated by cluster
+        cluster_updates: Dict[str, Dict[str, Any]] = {}
+        cluster_metrics: Dict[str, Dict[str, Any]] = {}
+
+        for node_id, update in updates.items():
+            cluster_id = update["cluster_id"]
+            
+            if cluster_id not in cluster_updates:
+                cluster_updates[cluster_id] = {}
+                cluster_metrics[cluster_id] = {}
+                
+            cluster_updates[cluster_id][node_id] = update["model_state"]
+            cluster_metrics[cluster_id][node_id] = {
+                "samples": update["samples"],
+                "loss": update["loss"]
+            }
+            
+        # Aggregate per cluster
+        cluster_models: Dict[str, Any] = {}
+        
+        for cluster_id, models in cluster_updates.items():
+            log.info(f"Aggregating {len(models)} models for cluster {cluster_id}")
+            
+            # Getting aggregation weights
+            weights = self.intra_aggregator.get_aggregation_weights(
+                participant_metrics=cluster_metrics[cluster_id]
+            )
+            
+            # Perform aggregation
+            aggregated_model, metrics = self.intra_aggregator.aggregate(
+                models=models,
+                weights=weights,
+                round_num=round_num,
+                cluster_id=cluster_id
+            )
+            metrics: AggregationMetrics = metrics
+            cluster_models[cluster_id] = aggregated_model
+            
+            log.info(f"{cluster_id} aggregation: {metrics.participant_count} nodes, "
+                    f"{metrics.total_samples} samples, {metrics.aggregation_time:.2f}s")
+        
+        return cluster_models
+
+    async def _aggregate_inter_cluster(
+        self,
+        cluster_models: Dict[str, Any],
+        round_num: int
+    ) -> Dict[str, Any]:
+        """
+        Perform inter-cluster selective aggregation.
+        
+        Args:
+            cluster_models: Aggregated models per cluster
+            round_num: Current round number
+        
+        Returns:
+            Dict mapping cluster_id to final model (with shared layers synchronized)
+        """
+        log = logger.bind(context="TrainingOrchestrator._aggregate_inter_cluster")
+        
+        if len(cluster_models) < 2:
+            log.info("Only one cluster, skipping inter-cluster aggregation")
+            return cluster_models
+        
+        # Create metrics for inter-cluster aggregation
+        cluster_metrics = {}
+        for cluster_id in cluster_models.keys():
+            cluster = self.server.cluster_manager.get_cluster(cluster_id)
+            if cluster:
+                cluster_metrics[cluster_id] = {
+                    "samples": cluster.get_active_node_count() * self.round_config.games_per_round * 50,
+                    "loss": 0.3  # Placeholder
+                }
+        
+        # Get weights
+        weights = self.inter_aggregator.get_aggregation_weights(cluster_metrics)
+        
+        # Aggregate
+        final_models, metrics = await self.inter_aggregator.aggregate(
+            cluster_models=cluster_models, weights=weights, round_num=round_num
+        )
+        
+        log.info(f"Inter-cluster aggregation: {metrics.participant_count} clusters, "
+                f"{metrics.additional_metrics['shared_layer_count']} shared layers, "
+                f"{metrics.aggregation_time:.2f}s")
+        
+        # Store for next round
+        self.cluster_models = final_models
+        
+        return final_models
+    
+    async def _save_checkpoints(
+        self,
+        models: Dict[str, Any],
+        round_num: int,
+        run_id: str
+    ):
+        """
+        Save model checkpoints to storage.
+        
+        Args:
+            models: Cluster models to save
+            round_num: Current round number
+            run_id: Experiment run ID
+        """
+        log = logger.bind(context="TrainingOrchestrator._save_checkpoints")
+        
+        if not self.storage_tracker:
+            log.warning("No storage tracker configured, skipping checkpoint save")
+            return
+        
+        for cluster_id, model_state in models.items():
+            try:
+                await self.storage_tracker.save_checkpoint(
+                    run_id=run_id,
+                    cluster_id=cluster_id,
+                    round_num=round_num,
+                    model_state=model_state,
+                    metrics={"round": round_num}  # Add actual metrics here
+                )
+                log.debug(f"Saved checkpoint for {cluster_id} round {round_num}")
+            except Exception as e:
+                log.error(f"Failed to save checkpoint for {cluster_id}: {e}")
+    
+    async def _broadcast_cluster_models(
+        self,
+        models: Dict[str, Any],
+        round_num: int
+    ):
+        """
+        Broadcast updated cluster models to nodes.
+        
+        Args:
+            models: Final cluster models
+            round_num: Current round number
+        """
+        log = logger.bind(context="TrainingOrchestrator._broadcast_cluster_models")
+        
+        for cluster_id, model_state in models.items():
+            # Create CLUSTER_MODEL message
+            message = MessageFactory.create_cluster_model(
+                node_id="server",
+                cluster_id=cluster_id,
+                model_state=model_state,
+                round_num=round_num
+            )
+            
+            # Broadcast to cluster
+            await self.server.broadcast_to_cluster(cluster_id, message)
+            
+            nodes = self.server.get_cluster_nodes(cluster_id, active_only=True)
+            log.info(f"Broadcasted model to {len(nodes)} nodes in {cluster_id}")
+
+async def main():
+    """
+    Main entry point to start the federated learning server.
+    """
+    log = logger.bind(context="server.main")
+    log.info("Starting Federated Learning Server...")
+    
+    # Configuration
+    server_host = "localhost"
+    server_port = 8765
+    cluster_config_path = "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/cluster_topology.yaml"
+    
+    # Create server
+    server = FederatedLearningServer(
+        host=server_host,
+        port=server_port,
+        cluster_config_path=cluster_config_path
+    )
+
+    # Start server in background
+    server_task = asyncio.create_task(server.start_server())
+    
+    # Wait for server to start
+    log.info("Waiting for server to start...")
+    await asyncio.sleep(10.0)
+    log.info("Server started")
+    
+    if not server.is_running:
+        log.error("Server failed to start. Exiting.")
+        return
+    
+    # Create round configuration
+    round_config = RoundConfig(
+        games_per_round=100,
+        aggregation_threshold=0.8,
+        timeout_seconds=300,
+        shared_layer_patterns=["input_conv.*"],
+        cluster_specific_patterns=["policy_head.*", "value_head.*"]
+    )
+    
+    # Create orchestrator
+    orchestrator = TrainingOrchestrator(
+        server=server,
+        round_config=round_config,
+        storage_tracker=None  # TODO: Add ExperimentTracker
+    )
+    
+    # Setup signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    
+    def signal_handler():
+        log.info("Shutdown signal received")
+        orchestrator.is_running = False
+    
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+    
+    try:
+        # Run training
+        await orchestrator.run_training(num_rounds=10)
+    except KeyboardInterrupt:
+        log.info("Keyboard interrupt received")
+    finally:
+        # Cleanup
+        log.info("Shutting down server")
+        await server.stop_server()
+        
+        if not server_task.done():
+            server_task.cancel()
+            try:
+                await server_task
+            except asyncio.CancelledError:
+                pass
+    
+    log.info("Server shutdown complete")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
