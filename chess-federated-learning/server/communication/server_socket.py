@@ -182,9 +182,10 @@ class FederatedLearningServer:
                 handler=self._handle_client_connection,
                 host=self.host,
                 port=self.port,
-                ping_interval=30,  # Send pings every 30 seconds
-                ping_timeout=10,   # Wait 10 seconds for pong
-                max_size=50 * 1024 * 1024  # 50MB max message size
+                ping_interval=60,  # Match client: 60 seconds
+                ping_timeout=45,   # Match client: 45 seconds
+                max_size=500 * 1024 * 1024,  # 500 MB for large model updates
+                close_timeout=20,  # Increased close timeout
             )
             
             log.info("FL server started successfully")
