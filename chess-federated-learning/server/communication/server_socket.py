@@ -721,6 +721,13 @@ class FederatedLearningServer:
         
         connection_time = time.time() - node.registration_time
         log.info(f"Cleaned up node {node_id} (connected for {connection_time:.1f}s)")
+        
+        # Log connection health info
+        if node.ping_failures > 0:
+            log.warning(f"Node {node_id} had {node.ping_failures} ping failures during session")
+        if node.connection_drops > 0:
+            log.warning(f"Node {node_id} had {node.connection_drops} connection drops during session")
+            
         log.info(f"Remaining nodes: {len(self.connected_nodes)}")
     
     def get_connected_nodes(self) -> Dict[str, ConnectedNode]:
