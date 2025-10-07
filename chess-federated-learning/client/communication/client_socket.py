@@ -268,8 +268,24 @@ class FederatedLearningClient:
             # Continue handling messages
             await message_task
             
-        except websockets.exceptions.ConnectionClosed:
-            log.info("Connection closed by server")
+        except websockets.exceptions.ConnectionClosed as e:
+            log.warning(f"Connection closed by server: {e}")
+            
+            # Check if this is a keepalive ping timeout
+            if "keepalive ping timeout" in str(e):
+                log.warning("Connection closed due to keepalive ping timeout - network latency or server load")
+                self.stats.keepalive_timeouts += 1
+                # Use shorter delay for ping timeout reconnections
+                self.reconnect_delay = max(self.reconnect_delay / 2, 5.0)
+                log.info(f"Adjusting reconnect delay to {self.reconnect_delay}s for ping timeout recovery")
+            # Check if this is a message too big error
+            elif "message too big" in str(e):
+                log.error("Connection closed due to message size limit exceeded")
+                log.error("Model update message is too large - consider implementing compression")
+                self.stats.message_size_errors += 1
+                # Use normal reconnect delay for size issues
+                self.reconnect_delay = min(self.reconnect_delay * 1.2, self.max_reconnect_delay)
+            
             self.state = ClientState.DISCONNECTED
             # Don't continue trying if auto_reconnect is disabled
             if not self.auto_reconnect:
@@ -376,6 +392,18 @@ class FederatedLearningClient:
         
         except websockets.exceptions.ConnectionClosed as e:
             log.error(f"Message loop ended. WebSocket connection closed: {e}")
+            
+            # Check if this is a keepalive ping timeout
+            if "keepalive ping timeout" in str(e):
+                log.warning("Message loop ended due to keepalive ping timeout")
+                self.stats.keepalive_timeouts += 1
+                # This will trigger reconnection logic in the main loop
+            # Check if this is a message too big error
+            elif "message too big" in str(e):
+                log.error("Message loop ended due to message size limit exceeded")
+                log.error("Consider implementing message compression or chunking for large model updates")
+                self.stats.message_size_errors += 1
+            
         except Exception as e:
             log.error(f"Unexpected error in message loop: {e}")
             raise
