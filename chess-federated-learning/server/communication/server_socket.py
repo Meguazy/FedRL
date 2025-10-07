@@ -57,6 +57,8 @@ class ConnectedNode:
         last_heartbeat: Timestamp of last heartbeat received
         registration_time: When the node registered
         current_round: Training round node is participating in
+        connection_drops: Number of times connection dropped
+        ping_failures: Number of ping failures detected
     """
     node_id: str
     cluster_id: str
@@ -65,6 +67,8 @@ class ConnectedNode:
     last_heartbeat: float
     registration_time: float
     current_round: Optional[int] = None
+    connection_drops: int = 0
+    ping_failures: int = 0
 
 
 class FederatedLearningServer:
