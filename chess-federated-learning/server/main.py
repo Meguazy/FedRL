@@ -25,7 +25,7 @@ import signal
 import sys
 from pathlib import Path
 from typing import Dict, Any, Optional, Set
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from loguru import logger
 import time
 
@@ -49,9 +49,10 @@ class RoundConfig:
     aggregation_threshold: float = 0.8  # Fraction of nodes required to proceed
     timeout_seconds: int = 300  # Max wait time for nodes
     intra_cluster_weighting: str = "samples"  # "samples" or "uniform"
-    inter_cluster_weighting: str = "uniform"  # "samples" or "uniform
-    shared_layer_patterns: list = None  # e.g., ["policy_head", "value_head"]
-    cluster_specific_patterns: list = None  # e.g., ["residual_blocks"]
+    inter_cluster_weighting: str = "uniform"  # "samples" or "uniform"
+    shared_layer_patterns: list = field(default_factory=lambda: ["input_conv.*"])
+    cluster_specific_patterns: list = field(default_factory=lambda: ["policy_head.*", "value_head.*"])
+    checkpoint_interval: int = 5  # Save every N rounds
     
     def from_yaml(self, path: str):
         """Load configuration from YAML file."""
