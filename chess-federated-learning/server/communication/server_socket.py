@@ -828,3 +828,34 @@ class FederatedLearningServer:
     def get_cluster_count(self) -> int:
         """Get number of clusters with connected nodes."""
         return len(self.connections_by_cluster)
+    
+    def get_connection_health_summary(self) -> Dict[str, Any]:
+        """Get summary of connection health across all nodes."""
+        if not self.connected_nodes:
+            return {
+                "total_nodes": 0,
+                "healthy_connections": 0,
+                "nodes_with_ping_issues": 0,
+                "average_connection_time": 0,
+                "oldest_connection_age": 0
+            }
+        
+        current_time = time.time()
+        connection_times = []
+        ping_issues = 0
+        
+        for node in self.connected_nodes.values():
+            connection_age = current_time - node.registration_time
+            connection_times.append(connection_age)
+            
+            if node.ping_failures > 0:
+                ping_issues += 1
+        
+        return {
+            "total_nodes": len(self.connected_nodes),
+            "healthy_connections": len(self.connected_nodes) - ping_issues,
+            "nodes_with_ping_issues": ping_issues,
+            "average_connection_time": sum(connection_times) / len(connection_times),
+            "oldest_connection_age": max(connection_times),
+            "server_ping_timeout_disconnects": self.ping_timeout_disconnects
+        }
