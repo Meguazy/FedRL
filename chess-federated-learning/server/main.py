@@ -683,23 +683,29 @@ class ServerMenu:
         await asyncio.sleep(2)  # Give server time to start
 
         while self.is_running:
-            print("\n" + "="*50)
+            print("\n" + "="*60)
             print("🎛️  FEDERATED LEARNING SERVER MENU")
-            print("="*50)
+            print("="*60)
             print("1. 📋 Show connected nodes")
-            print("2. 🔔 Broadcast start training")
+            print("2. 🏃 Start training")
             print("3. 📊 Show server stats")
-            print("="*50)
+            print("4. 🛑 Stop server")
+            print("="*60)
 
             try:
-                choice = await self._get_input("Enter your choice (1-8): ")
+                choice = await self._get_input("Enter your choice (1-4): ")
 
                 if choice == "1":
                     await self._show_connected_nodes()
                 elif choice == "2":
-                    await self._broadcast_start_training()
+                    await self._start_training()
                 elif choice == "3":
                     await self._show_server_stats()
+                elif choice == "4":
+                    print("🛑 Stopping server...")
+                    self.is_running = False
+                    self.orchestrator.is_running = False
+                    break
                 else:
                     print("❌ Invalid choice. Please try again.")
 
@@ -738,12 +744,22 @@ class ServerMenu:
             print(f"   Round: {node.current_round or 'N/A'}")
             print()
 
-    async def _broadcast_start_training(self):
-        round_num = await self._get_input("Enter round number (default 1): ")
-        round_num = int(round_num) if round_num else 1
-
-        self.orchestrator.run_training(num_rounds=round_num)
-        print(f"📡 Broadcasted START_TRAINING: round {round_num}")
+    async def _start_training(self):
+        """Start training with user input."""
+        num_rounds = await self._get_input("Enter number of rounds (default 10): ")
+        num_rounds = int(num_rounds) if num_rounds else 10
+        
+        experiment_name = await self._get_input("Enter experiment name (default 'federated_chess_training'): ")
+        experiment_name = experiment_name if experiment_name else "federated_chess_training"
+        
+        print(f"🏃 Starting training: {num_rounds} rounds")
+        print(f"📝 Experiment name: {experiment_name}")
+        
+        # Run training (this will block until complete)
+        await self.orchestrator.run_training(
+            num_rounds=num_rounds,
+            experiment_name=experiment_name
+        )
 
     async def _show_server_stats(self):
         stats = self.server.get_server_statistics()
