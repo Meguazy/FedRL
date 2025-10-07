@@ -879,20 +879,25 @@ async def main():
 
     # Setup signal handlers for graceful shutdown
     loop = asyncio.get_running_loop()
-    
+
     def signal_handler():
         log.info("Shutdown signal received")
         orchestrator.is_running = False
         menu.is_running = False
-    
+        # Cancel tasks to break out of gather
+        if not server_task.done():
+            server_task.cancel()
+        if not menu_task.done():
+            menu_task.cancel()
+
     for sig in (signal.SIGTERM, signal.SIGINT):
         loop.add_signal_handler(sig, signal_handler)
-    
+
     try:
         # Run server and menu concurrently
         await asyncio.gather(server_task, menu_task)
-    except KeyboardInterrupt:
-        log.info("Keyboard interrupt received")
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        log.info("Interrupt received")
     finally:
         # Cleanup
         log.info("Shutting down server...")
