@@ -795,5 +795,132 @@ class ServerMenu:
             node_count = len(self.server.connections_by_cluster[cluster_id])
             print(f"  {cluster_id}: {node_count} connected nodes")
 
+
+async def main():
+    """
+    Main entry point to start the federated learning server.
+    """
+    log = logger.bind(context="server.main")
+    log.info("Starting Federated Learning Server...")
+    
+    # Configuration paths
+    cluster_config_path = "chess-federated-learning/config/cluster_topology.yaml"
+    server_config_path = "chess-federated-learning/config/server_config.yaml"
+    
+    # Load server config
+    import yaml
+    try:
+        with open(server_config_path, 'r') as f:
+            config_data = yaml.safe_load(f)
+            server_config = config_data.get("server_config", {})
+            orchestrator_config = config_data.get("orchestrator_config", {})
+        log.info("Loaded configuration from YAML")
+    except FileNotFoundError:
+        log.warning(f"Config file {server_config_path} not found, using defaults")
+        server_config = {}
+        orchestrator_config = {}
+    
+    server_host = server_config.get("host", "localhost")
+    server_port = server_config.get("port", 8765)
+    
+    # Create server
+    log.info(f"Creating server at {server_host}:{server_port}")
+    server = FederatedLearningServer(
+        host=server_host,
+        port=server_port,
+        cluster_config_path=cluster_config_path
+    )
+    
+    # Start server in background
+    server_task = asyncio.create_task(server.start_server())
+    
+    # Wait for server to start
+    log.info("Waiting for server to start...")
+    await asyncio.sleep(2.0)
+    
+    if not server.is_running:
+        log.error("Server failed to start. Exiting.")
+        return
+    
+    log.info("Server started successfully")
+    
+    # Create round configuration
+    round_config = RoundConfig(
+        games_per_round=orchestrator_config.get("games_per_round", 100),
+        aggregation_threshold=orchestrator_config.get("aggregation_threshold", 0.8),
+        timeout_seconds=orchestrator_config.get("timeout_seconds", 300),
+        shared_layer_patterns=orchestrator_config.get("shared_layer_patterns", ["input_conv.*"]),
+        cluster_specific_patterns=orchestrator_config.get("cluster_specific_patterns", ["policy_head.*", "value_head.*"]),
+        checkpoint_interval=orchestrator_config.get("checkpoint_interval", 5)
+    )
+    
+    # Create storage backend using factory
+    log.info("Initializing storage backend...")
+    tracker = create_experiment_tracker(
+        base_path="./storage",
+        compression=True,
+        keep_last_n=None,  # Keep all checkpoints
+        keep_best=True
+    )
+    log.info("Storage backend initialized")
+    
+    # Create orchestrator
+    log.info("Creating training orchestrator...")
+    orchestrator = TrainingOrchestrator(
+        server=server,
+        round_config=round_config,
+        storage_tracker=tracker
+    )
+    log.info("Orchestrator initialized")
+    
+    # Create menu
+    menu = ServerMenu(server=server, orchestrator=orchestrator)
+    menu_task = asyncio.create_task(menu._menu_loop())
+
+    # Setup signal handlers for graceful shutdown
+    loop = asyncio.get_running_loop()
+    
+    def signal_handler():
+        log.info("Shutdown signal received")
+        orchestrator.is_running = False
+        menu.is_running = False
+    
+    for sig in (signal.SIGTERM, signal.SIGINT):
+        loop.add_signal_handler(sig, signal_handler)
+    
+    try:
+        # Run server and menu concurrently
+        await asyncio.gather(server_task, menu_task)
+    except KeyboardInterrupt:
+        log.info("Keyboard interrupt received")
+    finally:
+        # Cleanup
+        log.info("Shutting down server...")
+        
+        # Stop orchestrator if running
+        if orchestrator.is_running:
+            orchestrator.is_running = False
+        
+        # Stop server
+        await server.stop_server()
+        
+        # Cancel tasks
+        if not server_task.done():
+            server_task.cancel()
+            try:
+                await server_task
+            except asyncio.CancelledError:
+                pass
+        
+        if not menu_task.done():
+            menu_task.cancel()
+            try:
+                await menu_task
+            except asyncio.CancelledError:
+                pass
+    
+    log.info("Server shutdown complete")
+
+
 if __name__ == "__main__":
     asyncio.run(main())
