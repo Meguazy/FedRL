@@ -31,7 +31,7 @@ class EntityType(str, Enum):
     GLOBAL = "global"       # Global/system-wide metrics
     SYSTEM = "system"       # System performance metrics (CPU, memory, etc.)
     CUSTOM = "custom"       # User-defined custom entities
-
+    SERVER = "server"       # Central server metrics
 
 @dataclass
 class MetricEvent:

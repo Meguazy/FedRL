@@ -16,7 +16,7 @@ Architecture:
     FederatedLearningServer (communication) +
     ClusterManager (topology) +
     Aggregators (model combination) +
-    ExperimentTracker (storage) +
+    FileExperimentTracker (storage) +
     Orchestrator (this module)
 """
 
@@ -37,7 +37,9 @@ from server.communication.protocol import Message, MessageFactory, MessageType
 from server.aggregation.intra_cluster_aggregator import IntraClusterAggregator
 from server.aggregation.inter_cluster_aggregator import InterClusterAggregator
 from server.cluster_manager import ClusterManager
-from server.storage.base import ExperimentTracker
+from server.storage.base import EntityType
+from server.storage.experiment_tracker import FileExperimentTracker
+from server.storage.factory import create_experiment_tracker
 
 
 @dataclass
@@ -81,7 +83,7 @@ class TrainingOrchestrator:
         self,
         server: FederatedLearningServer,
         round_config: RoundConfig,
-        storage_tracker = None
+        storage_tracker: Optional[FileExperimentTracker] = None
     ):
         """
         Initialize the orchestrator with server and configuration.
@@ -89,7 +91,7 @@ class TrainingOrchestrator:
         Args:
             server: FederatedLearningServer instance
             round_config: Configuration for training rounds
-            storage_tracker: Optional ExperimentTracker for metrics
+            storage_tracker: Optional FileExperimentTracker for metrics
         """
         log = logger.bind(context="TrainingOrchestrator.__init__")
         log.info("Initializing Training Orchestrator...")
@@ -97,49 +99,86 @@ class TrainingOrchestrator:
         # Core components
         self.server = server
         self.round_config = round_config
-        self.storage_tracker: ExperimentTracker = storage_tracker
+        
+        # Initialize or create storage tracker
+        if storage_tracker is None:
+            log.info("No storage tracker provided, creating default")
+            self.storage_tracker = create_experiment_tracker(
+                base_path="./storage",
+                compression=True,
+                keep_last_n=None,  # Keep all checkpoints
+                keep_best=True
+            )
+        else:
+            self.storage_tracker = storage_tracker
         
         # Aggregators
         self.intra_aggregator = IntraClusterAggregator(
             framework="pytorch",
             weighting_strategy=self.round_config.intra_cluster_weighting,
-            experiment_tracker=self.storage_tracker or None
+            experiment_tracker=self.storage_tracker
         )
         self.inter_aggregator = InterClusterAggregator(
             framework="pytorch",
             weighting_strategy=self.round_config.inter_cluster_weighting,
-            shared_layer_patterns=self.round_config.shared_layer_patterns or [],
-            cluster_specific_patterns=self.round_config.cluster_specific_patterns or [],
-            experiment_tracker=self.storage_tracker or None
+            shared_layer_patterns=self.round_config.shared_layer_patterns,
+            cluster_specific_patterns=self.round_config.cluster_specific_patterns,
+            experiment_tracker=self.storage_tracker
         )
         
         # State tracking
         self.current_round = 0
+        self.current_run_id: Optional[str] = None
         self.is_running = False
         self.cluster_models: Dict[str, Dict[str, Any]] = {}  # cluster_id -> model_state
-        self.pending_updates: Dict[str, Set[str]] = {}  # node_id -> model_state
+        self.pending_updates: Dict[str, Set[str]] = {}  # cluster_id -> set of pending node_ids
         
         log.info("Training orchestrator initialized")
         log.info(f"Intra-cluster weighting: {round_config.intra_cluster_weighting}")
         log.info(f"Inter-cluster weighting: {round_config.inter_cluster_weighting}")
         log.info(f"Aggregation threshold: {round_config.aggregation_threshold * 100}%")
+        log.info(f"Checkpoint interval: every {round_config.checkpoint_interval} rounds")
 
-    async def run_training(self, num_rounds: int, run_id: Optional[str] = None):
+    async def run_training(self, num_rounds: int, experiment_name: str = "federated_chess_training"):
         """
         Run the federated training process for a specified number of rounds.
         
         Args:
             num_rounds: Total number of training rounds to execute
-            run_id: Optional identifier for the training run
+            experiment_name: Name for this training experiment
         """
         log = logger.bind(context="TrainingOrchestrator.run_training")
         log.info(f"Starting federated training for {num_rounds} rounds")
         
         self.is_running = True
         
-        # Initialize storage tracker if available
-        if self.storage_tracker and run_id:
-            log.info(f"Initializing storage tracker for run ID: {run_id}")
+        # Create experiment configuration
+        experiment_config = {
+            'num_rounds': num_rounds,
+            'games_per_round': self.round_config.games_per_round,
+            'aggregation_threshold': self.round_config.aggregation_threshold,
+            'intra_cluster_weighting': self.round_config.intra_cluster_weighting,
+            'inter_cluster_weighting': self.round_config.inter_cluster_weighting,
+            'shared_layer_patterns': self.round_config.shared_layer_patterns,
+            'cluster_specific_patterns': self.round_config.cluster_specific_patterns,
+            'checkpoint_interval': self.round_config.checkpoint_interval,
+            'server_config': {
+                'host': self.server.host,
+                'port': self.server.port
+            }
+        }
+        
+        # Start experiment tracking
+        try:
+            self.current_run_id = await self.storage_tracker.start_run(
+                config=experiment_config,
+                description=f"Federated learning training: {experiment_name}"
+            )
+            log.info(f"Started experiment tracking with run_id: {self.current_run_id}")
+        except Exception as e:
+            log.error(f"Failed to start experiment tracking: {e}")
+            log.warning("Continuing without experiment tracking")
+            self.current_run_id = None
 
         try:
             for round_num in range(1, num_rounds + 1):
@@ -149,36 +188,75 @@ class TrainingOrchestrator:
                 log.info(f"=" * 60)
 
                 # Execute one complete training round
-                success = await self._execute_round(round_num, run_id)
+                success = await self._execute_round(round_num)
                 
                 if not success:
                     log.error(f"Round {round_num} failed or timed out")
+                    # Log failure as metrics
+                    if self.current_run_id:
+                        await self.storage_tracker.log_metrics(
+                            run_id=self.current_run_id,
+                            round_num=round_num,
+                            entity_type=EntityType.SERVER,
+                            entity_id="orchestrator",
+                            metrics={'status': 'failed', 'reason': 'execution_failed'}
+                        )
                     break  # Stop training on failure
+                
+                # Log round completion as metrics
+                if self.current_run_id:
+                    await self.storage_tracker.log_metrics(
+                        run_id=self.current_run_id,
+                        round_num=round_num,
+                        entity_type=EntityType.SERVER,
+                        entity_id="orchestrator",
+                        metrics={'status': 'complete'}
+                    )
                 
                 log.info(f"Round {round_num} completed successfully")
                 
                 # Brief pause between rounds
-                log.info("Pausing briefly before next round...")
-                await asyncio.sleep(10.0)
-                log.info("Resuming training...")
+                if round_num < num_rounds:
+                    log.info("Pausing briefly before next round...")
+                    await asyncio.sleep(5.0)
                 
             log.info("=" * 60)
             log.info(f"TRAINING COMPLETE: {num_rounds} rounds finished")
             log.info("=" * 60)
+            
+            # End experiment tracking
+            if self.current_run_id:
+                await self.storage_tracker.end_run(
+                    run_id=self.current_run_id,
+                    final_results={'total_rounds': num_rounds, 'status': 'completed'}
+                )
+                log.info(f"Experiment {self.current_run_id} completed successfully")
         
         except Exception as e:
             log.exception(f"Training failed: {e}")
+            # Log failure
+            if self.current_run_id:
+                await self.storage_tracker.log_metrics(
+                    run_id=self.current_run_id,
+                    round_num=self.current_round,
+                    entity_type=EntityType.SERVER,
+                    entity_id="orchestrator",
+                    metrics={'status': 'failed', 'error': str(e)}
+                )
+                await self.storage_tracker.end_run(
+                    run_id=self.current_run_id,
+                    final_results={'status': 'failed', 'error': str(e)}
+                )
             raise
         finally:
             self.is_running = False
 
-    async def _execute_round(self, round_num: int, run_id: Optional[str]) -> bool:
+    async def _execute_round(self, round_num: int) -> bool:
         """
         Execute a single training round.
         
         Args:
             round_num: Current round number
-            run_id: Experiment run ID
         
         Returns:
             bool: True if round completed successfully
@@ -186,54 +264,78 @@ class TrainingOrchestrator:
         log = logger.bind(context=f"TrainingOrchestrator.round_{round_num}")
         log.info(f"Executing training round {round_num}")
         
-        # Step 1: Get ready clusters
-        log.info("Step 1: Checking cluster readiness...")
-        ready_clusters = self.server.cluster_manager.get_ready_clusters()
-        if not ready_clusters:
-            log.error("No clusters are ready. Aborting round.")
-            return False
-        # TODO: We need to understand what to do if only some clusters are ready
-        log.info(f"Ready clusters: {list(ready_clusters.keys())}")
+        round_start_time = time.time()
         
-        # Step 2: Broadcast START_TRAINING
-        log.info("Step 2: Broadcasting START_TRAINING to all nodes...")
-        await self._broadcast_start_training(round_num)
-        
-        # Step 3: Wait for MODEL_UPDATE messages
-        log.info("Step 3: Waiting for MODEL_UPDATE messages from nodes...")
-        updates = await self._collect_model_updates(round_num)
-        if not updates:
-            log.error("No model updates received. Aborting round.")
-            return False
-        log.info(f"Received {len(updates)} model updates")
-        
-        # Step 4: Intra-cluster aggregation
-        log.info("Step 4: Performing intra-cluster aggregation...")
-        cluster_models = self._aggregate_intra_cluster(updates)
-        if not cluster_models:
-            log.error("Intra-cluster aggregation failed. Aborting round.")
-            return False
-        log.info(f"Intra-cluster aggregation produced {len(cluster_models)} cluster models")
-        
-        # Step 5: Inter-cluster selective aggregation
-        log.info("Step 5: Performing inter-cluster selective aggregation...")
-        final_models = self._aggregate_inter_cluster(cluster_models, round_num)
-        if not final_models:
-            log.error("Inter-cluster aggregation failed. Aborting round.")
-            return False
-        log.info(f"Inter-cluster aggregation produced {len(final_models)} final models")
-        
-        # Step 6: Save checkpoints
-        if self.storage_tracker and run_id:
-            log.info("Step 6: Saving model checkpoints...")
-            await self._save_checkpoints(final_models, round_num, run_id)
+        try:
+            # Step 1: Get ready clusters
+            log.info("Step 1: Checking cluster readiness...")
+            ready_clusters = self.server.cluster_manager.get_ready_clusters(
+                threshold=self.round_config.aggregation_threshold
+            )
+            if not ready_clusters:
+                log.error("No clusters are ready. Aborting round.")
+                return False
             
-        # Step 7: Broadcast CLUSTER_MODEL to nodes
-        log.info("Step 7: Broadcasting CLUSTER_MODEL to all nodes...")
-        await self._broadcast_cluster_models(final_models, round_num)
-        
-        log.info(f"Round {round_num} execution complete")
-        return True
+            log.info(f"Ready clusters: {ready_clusters}")
+            
+            # Step 2: Broadcast START_TRAINING
+            log.info("Step 2: Broadcasting START_TRAINING to all nodes...")
+            await self._broadcast_start_training(round_num)
+            
+            # Step 3: Wait for MODEL_UPDATE messages
+            log.info("Step 3: Waiting for MODEL_UPDATE messages from nodes...")
+            updates = await self._collect_model_updates(round_num)
+            if not updates:
+                log.error("No model updates received. Aborting round.")
+                return False
+            log.info(f"Received {len(updates)} model updates")
+            
+            # Step 4: Intra-cluster aggregation
+            log.info("Step 4: Performing intra-cluster aggregation...")
+            cluster_models = await self._aggregate_intra_cluster(updates, round_num)
+            if not cluster_models:
+                log.error("Intra-cluster aggregation failed. Aborting round.")
+                return False
+            log.info(f"Intra-cluster aggregation produced {len(cluster_models)} cluster models")
+            
+            # Step 5: Inter-cluster selective aggregation
+            log.info("Step 5: Performing inter-cluster selective aggregation...")
+            final_models = await self._aggregate_inter_cluster(cluster_models, round_num)
+            if not final_models:
+                log.error("Inter-cluster aggregation failed. Aborting round.")
+                return False
+            log.info(f"Inter-cluster aggregation produced {len(final_models)} final models")
+            
+            # Step 6: Save checkpoints (if interval reached)
+            if round_num % self.round_config.checkpoint_interval == 0:
+                log.info("Step 6: Saving model checkpoints...")
+                await self._save_checkpoints(final_models, round_num)
+            
+            # Step 7: Broadcast CLUSTER_MODEL to nodes
+            log.info("Step 7: Broadcasting CLUSTER_MODEL to all nodes...")
+            await self._broadcast_cluster_models(final_models, round_num)
+            
+            # Log round metrics
+            round_duration = time.time() - round_start_time
+            if self.current_run_id:
+                await self.storage_tracker.log_metrics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    entity_type=EntityType.SERVER,
+                    entity_id="orchestrator",
+                    metrics={
+                        'round_duration': round_duration,
+                        'updates_received': len(updates),
+                        'clusters_aggregated': len(cluster_models)
+                    }
+                )
+            
+            log.info(f"Round {round_num} execution complete ({round_duration:.2f}s)")
+            return True
+            
+        except Exception as e:
+            log.error(f"Round {round_num} execution failed: {e}")
+            return False
         
     async def _broadcast_start_training(self, round_num: int):
         """
@@ -457,8 +559,7 @@ class TrainingOrchestrator:
     async def _save_checkpoints(
         self,
         models: Dict[str, Any],
-        round_num: int,
-        run_id: str
+        round_num: int
     ):
         """
         Save model checkpoints to storage.
@@ -466,24 +567,27 @@ class TrainingOrchestrator:
         Args:
             models: Cluster models to save
             round_num: Current round number
-            run_id: Experiment run ID
         """
         log = logger.bind(context="TrainingOrchestrator._save_checkpoints")
         
-        if not self.storage_tracker:
-            log.warning("No storage tracker configured, skipping checkpoint save")
+        if not self.current_run_id:
+            log.warning("No run_id available, skipping checkpoint save")
             return
         
         for cluster_id, model_state in models.items():
             try:
                 await self.storage_tracker.save_checkpoint(
-                    run_id=run_id,
+                    run_id=self.current_run_id,
                     cluster_id=cluster_id,
                     round_num=round_num,
                     model_state=model_state,
-                    metrics={"round": round_num}  # Add actual metrics here
+                    metrics={'round': round_num},  # Required metrics parameter
+                    metadata={
+                        'timestamp': time.time(),
+                        'cluster_id': cluster_id
+                    }
                 )
-                log.debug(f"Saved checkpoint for {cluster_id} round {round_num}")
+                log.info(f"Saved checkpoint for {cluster_id} round {round_num}")
             except Exception as e:
                 log.error(f"Failed to save checkpoint for {cluster_id}: {e}")
     
