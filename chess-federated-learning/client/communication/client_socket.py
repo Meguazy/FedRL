@@ -53,6 +53,11 @@ class ConnectionStats:
     last_connection_time: float = 0.0
     total_uptime: float = 0.0
     reconnections: int = 0
+    ping_failures: int = 0
+    keepalive_timeouts: int = 0
+    last_ping_time: float = 0.0
+    message_size_errors: int = 0
+    large_message_warnings: int = 0
     
     
 class FederatedLearningClient:
@@ -504,9 +509,11 @@ class FederatedLearningClient:
                     )
                     try:
                         await self._send_message(heartbeat_msg)
+                        self.stats.last_ping_time = time.time()
                         log.trace("Sent heartbeat")
                     except Exception as e:
                         log.error(f"Failed to send heartbeat: {e}")
+                        self.stats.ping_failures += 1
                         break
                 else:
                     log.warning("WebSocket closed, stopping heartbeat")
@@ -535,9 +542,19 @@ class FederatedLearningClient:
             raise ConnectionError("WebSocket is not connected")
         
         try:
-            await self.websocket.send(message.to_json())
+            message_json = message.to_json()
+            message_size = len(message_json.encode('utf-8'))
+            
+            # Log message size for monitoring
+            if message_size > 100 * 1024 * 1024:  # 100MB warning
+                log.warning(f"Large message detected: {message_size / (1024*1024):.1f}MB for {message.type}")
+                self.stats.large_message_warnings += 1
+            elif message_size > 10 * 1024 * 1024:  # 10MB info
+                log.info(f"Message size: {message_size / (1024*1024):.1f}MB for {message.type}")
+            
+            await self.websocket.send(message_json)
             self.stats.total_messages_sent += 1
-            log.trace(f"Message sent: {message.to_json()}")
+            log.trace(f"Message sent successfully (size: {message_size / 1024:.1f}KB)")
         except Exception as e:
             log.error(f"Error sending message: {e}")
             raise
@@ -683,6 +700,14 @@ class FederatedLearningClient:
         log.info(f"Messages sent: {self.stats.total_messages_sent}")
         log.info(f"Messages received: {self.stats.total_messages_received}")
         log.info(f"Reconnections: {self.stats.reconnections}")
+        log.info(f"Ping failures: {self.stats.ping_failures}")
+        log.info(f"Keepalive timeouts: {self.stats.keepalive_timeouts}")
+        log.info(f"Message size errors: {self.stats.message_size_errors}")
+        log.info(f"Large message warnings: {self.stats.large_message_warnings}")
+        
+        if self.stats.last_ping_time > 0:
+            time_since_last_ping = time.time() - self.stats.last_ping_time
+            log.info(f"Time since last successful ping: {time_since_last_ping:.1f} seconds")
         
         if self.stats.total_uptime > 0:
             msg_rate = (self.stats.total_messages_sent + self.stats.total_messages_received) / self.stats.total_uptime
@@ -697,4 +722,9 @@ class FederatedLearningClient:
             "messages_sent": self.stats.total_messages_sent,
             "messages_received": self.stats.total_messages_received,
             "reconnections": self.stats.reconnections,
+            "ping_failures": self.stats.ping_failures,
+            "keepalive_timeouts": self.stats.keepalive_timeouts,
+            "last_ping_time": self.stats.last_ping_time,
+            "message_size_errors": self.stats.message_size_errors,
+            "large_message_warnings": self.stats.large_message_warnings,
         }
