@@ -74,7 +74,8 @@ class TrainingOrchestrator:
     3. Perform intra-cluster aggregation
     4. Perform inter-cluster selective aggregation
     5. Broadcast CLUSTER_MODEL back to nodes
-    6. Repeat for multiple rounds
+    6. Log metrics and save checkpoints
+    7. Repeat for multiple rounds
     
     The orchestrator integrates all server components and manages
     the timing and coordination of the federated learning process.
@@ -345,7 +346,7 @@ class TrainingOrchestrator:
         Args:
             round_num: Current training round number
         """
-        log = logger.bind(context=f"TrainingOrchestrator.broadcast_start_training")
+        log = logger.bind(context="TrainingOrchestrator._broadcast_start_training")
 
         # Reset pending updates
         self.pending_updates.clear()
@@ -355,7 +356,7 @@ class TrainingOrchestrator:
         
         for cluster in clusters:
             cluster_id = cluster.cluster_id
-            nodes = self.server.get_cluster_nodes(cluster_id, only_active=True)
+            nodes = self.server.get_cluster_nodes(cluster_id, active_only=True)
             
             if not nodes:
                 log.warning(f"No active nodes in cluster {cluster_id}. Skipping.")
@@ -366,10 +367,10 @@ class TrainingOrchestrator:
             
             # Create START_TRAINING message
             message = MessageFactory.create_start_training(
-                node_id = "server",
-                cluster_id = cluster_id,
-                round_num = round_num,
-                games_per_round = self.round_config.games_per_round,
+                node_id="server",
+                cluster_id=cluster_id,
+                games_per_round=self.round_config.games_per_round,
+                round_num=round_num
             )
             
             # Send to all nodes in the cluster
@@ -394,7 +395,8 @@ class TrainingOrchestrator:
         # Message handler for MODEL_UPDATE
         async def handle_model_update(node_id: str, message: Message):
             if message.round_num != round_num:
-                log.warning(f"Ignoring out-of-sync MODEL_UPDATE from {node_id}")
+                log.warning(f"Ignoring out-of-sync MODEL_UPDATE from {node_id} "
+                           f"(expected round {round_num}, got {message.round_num})")
                 return
             
             log.debug(f"Received MODEL_UPDATE from {node_id}")
@@ -426,6 +428,20 @@ class TrainingOrchestrator:
             log.info(f"Threshold met: {len(updates)} updates received")
         except asyncio.TimeoutError:
             log.warning(f"Timeout reached: only {len(updates)} updates received")
+            
+            # Log timeout as metrics (not event)
+            if self.current_run_id:
+                await self.storage_tracker.log_metrics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    entity_type=EntityType.SERVER,
+                    entity_id="orchestrator",
+                    metrics={
+                        'collection_timeout': True,
+                        'updates_received': len(updates),
+                        'timeout_seconds': self.round_config.timeout_seconds
+                    }
+                )
         
         return updates
     
@@ -466,7 +482,7 @@ class TrainingOrchestrator:
         """
         log = logger.bind(context="TrainingOrchestrator._aggregate_intra_cluster")
 
-        # Group updated by cluster
+        # Group updates by cluster
         cluster_updates: Dict[str, Dict[str, Any]] = {}
         cluster_metrics: Dict[str, Dict[str, Any]] = {}
 
@@ -480,7 +496,7 @@ class TrainingOrchestrator:
             cluster_updates[cluster_id][node_id] = update["model_state"]
             cluster_metrics[cluster_id][node_id] = {
                 "samples": update["samples"],
-                "loss": update["loss"]
+                "loss": update.get("loss", 0.0)
             }
             
         # Aggregate per cluster
@@ -489,20 +505,35 @@ class TrainingOrchestrator:
         for cluster_id, models in cluster_updates.items():
             log.info(f"Aggregating {len(models)} models for cluster {cluster_id}")
             
-            # Getting aggregation weights
+            # Get aggregation weights
             weights = self.intra_aggregator.get_aggregation_weights(
                 participant_metrics=cluster_metrics[cluster_id]
             )
             
             # Perform aggregation
-            aggregated_model, metrics = self.intra_aggregator.aggregate(
+            aggregated_model, metrics = await self.intra_aggregator.aggregate(
                 models=models,
                 weights=weights,
-                round_num=round_num,
-                cluster_id=cluster_id
+                round_num=round_num
             )
-            metrics: AggregationMetrics = metrics
+            
             cluster_models[cluster_id] = aggregated_model
+            
+            # Log aggregation metrics using correct API
+            if self.current_run_id:
+                await self.storage_tracker.log_metrics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    entity_type=EntityType.CLUSTER,
+                    entity_id=cluster_id,
+                    metrics={
+                        'aggregation_type': 'intra_cluster',
+                        'aggregation_time': metrics.aggregation_time,
+                        'participant_count': metrics.participant_count,
+                        'total_samples': metrics.total_samples,
+                        'average_loss': metrics.average_loss
+                    }
+                )
             
             log.info(f"{cluster_id} aggregation: {metrics.participant_count} nodes, "
                     f"{metrics.total_samples} samples, {metrics.aggregation_time:.2f}s")
@@ -545,11 +576,29 @@ class TrainingOrchestrator:
         
         # Aggregate
         final_models, metrics = await self.inter_aggregator.aggregate(
-            cluster_models=cluster_models, weights=weights, round_num=round_num
+            models=cluster_models,
+            weights=weights,
+            round_num=round_num
         )
         
+        # Log aggregation metrics using correct API
+        if self.current_run_id:
+            await self.storage_tracker.log_metrics(
+                run_id=self.current_run_id,
+                round_num=round_num,
+                entity_type=EntityType.SERVER,
+                entity_id="inter_cluster_aggregator",
+                metrics={
+                    'aggregation_type': 'inter_cluster',
+                    'aggregation_time': metrics.aggregation_time,
+                    'cluster_count': metrics.participant_count,
+                    'shared_layer_count': metrics.additional_metrics.get('shared_layer_count', 0),
+                    'cluster_specific_count': metrics.additional_metrics.get('cluster_specific_count', 0)
+                }
+            )
+        
         log.info(f"Inter-cluster aggregation: {metrics.participant_count} clusters, "
-                f"{metrics.additional_metrics['shared_layer_count']} shared layers, "
+                f"{metrics.additional_metrics.get('shared_layer_count', 0)} shared layers, "
                 f"{metrics.aggregation_time:.2f}s")
         
         # Store for next round
