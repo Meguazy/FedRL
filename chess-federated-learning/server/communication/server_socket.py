@@ -258,8 +258,21 @@ class FederatedLearningServer:
             
         except websockets.ConnectionClosed:
             log.info(f"Connection closed by client {client_addr}")
+            
+            # Track ping timeout disconnections
+            if node_id and node_id in self.connected_nodes:
+                node = self.connected_nodes[node_id]
+                # Check if this might be a ping timeout (connection closed abruptly)
+                time_since_heartbeat = time.time() - node.last_heartbeat
+                if time_since_heartbeat > 50:  # More than our ping interval
+                    log.warning(f"Node {node_id} disconnected after {time_since_heartbeat:.1f}s since last heartbeat - possible ping timeout")
+                    self.ping_timeout_disconnects += 1
+                    node.ping_failures += 1
+                    
         except Exception as e:
             log.error(f"Error handling client {client_addr}: {e}")
+            if node_id and node_id in self.connected_nodes:
+                self.connected_nodes[node_id].connection_drops += 1
         finally:
             # Cleanup connection
             if node_id:
@@ -439,8 +452,19 @@ class FederatedLearningServer:
         
         except websockets.ConnectionClosed:
             log.info(f"Connection closed by node {node_id}")
+            
+            # Track potential ping timeout issues
+            if node_id in self.connected_nodes:
+                node = self.connected_nodes[node_id]
+                time_since_heartbeat = time.time() - node.last_heartbeat
+                if time_since_heartbeat > 50:  # More than ping interval
+                    log.warning(f"Node {node_id} message loop ended after {time_since_heartbeat:.1f}s since last heartbeat")
+                    node.ping_failures += 1
+                    
         except Exception as e:
             log.error(f"Error in message loop for node {node_id}: {e}")
+            if node_id in self.connected_nodes:
+                self.connected_nodes[node_id].connection_drops += 1
     
     async def _route_message(self, node_id: str, message: Message):
         """
