@@ -235,42 +235,42 @@ class FederatedLearningNode:
         
         log.info(f"Node {self.node_id} stopped")
             
-    def _handle_start_training(self, message: Message):
+    async def _handle_start_training(self, message: Message):
         """
         Handle START_TRAINING message from server.
-        
+
         This message indicates that the node should begin local training
         for the specified round.
-        
+
         Args:
             message: Message object containing round info
         """
         log = logger.bind(context=f"FLNode.{self.node_id}._handle_start_training")
         log.info("Received START_TRAINING message")
-        
+
         if self.lifecycle_state == NodeLifecycleState.TRAINING:
             log.warning("Already in training state, ignoring START_TRAINING")
             return
-        
+
         games_per_round = message.payload.get("games_per_round", 100)
         round_num = message.round_num
-        
+
         log.info(f"Starting training for round {round_num} with {games_per_round} games")
-        
+
         self.current_round = round_num
         self.lifecycle_state = NodeLifecycleState.TRAINING
-        
+
         # Update trainer config if needed
         if self.trainer.config.games_per_round != games_per_round:
             new_config = TrainingConfig(games_per_round=games_per_round)
             self.trainer.update_config(new_config)
             log.info(f"Updated trainer config: {new_config}")
-            
+
         # Start training in background task
         if self.current_model_state is None:
             log.warning("No model state available, using uninitialized model")
             self.current_model_state = {}
-            
+
         self.training_task = asyncio.create_task(
             self._run_training(self.current_model_state)
         )
@@ -317,7 +317,7 @@ class FederatedLearningNode:
             return
         
         # Update statistics
-        self.round_completed += 1
+        self.rounds_completed += 1
         self.total_training_time += result.training_time
         self.total_samples += result.samples
         self.current_model_state = result.model_state
