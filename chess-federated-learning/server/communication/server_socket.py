@@ -132,6 +132,8 @@ class FederatedLearningServer:
         # Performance monitoring
         self.total_messages_handled = 0
         self.start_time = 0
+        self.connection_timeouts = 0
+        self.ping_timeout_disconnects = 0
         
         log.info(f"FederatedLearningServer initialized for {host}:{port}")
     
@@ -770,7 +772,9 @@ class FederatedLearningServer:
                 "is_running": self.is_running,
                 "uptime_seconds": uptime,
                 "current_round": self.current_round,
-                "total_messages_handled": self.total_messages_handled
+                "total_messages_handled": self.total_messages_handled,
+                "connection_timeouts": self.connection_timeouts,
+                "ping_timeout_disconnects": self.ping_timeout_disconnects
             },
             "connections": {
                 "total_connected_nodes": len(self.connected_nodes),
