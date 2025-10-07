@@ -368,8 +368,8 @@ class FederatedLearningClient:
                 except Exception as e:
                     log.error(f"Error handling message: {e}")
         
-        except websockets.exceptions.ConnectionClosed:
-            log.info("Message loop ended. WebSocket connection closed.")
+        except websockets.exceptions.ConnectionClosed as e:
+            log.error(f"Message loop ended. WebSocket connection closed: {e}")
         except Exception as e:
             log.error(f"Unexpected error in message loop: {e}")
             raise
