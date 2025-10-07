@@ -670,100 +670,10 @@ class TrainingOrchestrator:
             nodes = self.server.get_cluster_nodes(cluster_id, active_only=True)
             log.info(f"Broadcasted model to {len(nodes)} nodes in {cluster_id}")
 
-async def main():
-    """
-    Main entry point to start the federated learning server.
-    """
-    log = logger.bind(context="server.main")
-    log.info("Starting Federated Learning Server...")
-    
-    # Configuration
-    cluster_config_path = "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/cluster_topology.yaml"
-    server_config_path = "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/server_config.yaml"
-    
-    # Load server config
-    import yaml
-    with open(server_config_path, 'r') as f:
-        config_data = yaml.safe_load(f)
-        server_config = config_data.get("server_config", {})
-        orchestrator_config = config_data.get("orchestrator_config", {})
-    log.debug(f"Loaded server config: {server_config}")
-    log.debug(f"Loaded orchestrator config: {orchestrator_config}")
-    server_host = server_config.get("host", "localhost")
-    server_port = server_config.get("port", 8765)
-    
-    # Create server
-    server = FederatedLearningServer(
-        host=server_host,
-        port=server_port,
-        cluster_config_path=cluster_config_path
-    )
-    
-    # Start server in background
-    server_task = asyncio.create_task(server.start_server())
-    
-    # Wait for server to start
-    log.info("Waiting for server to start...")
-    await asyncio.sleep(2.0)
-    log.info("Server started")
-    
-    if not server.is_running:
-        log.error("Server failed to start. Exiting.")
-        return
-    
-    # Create round configuration
-    round_config = RoundConfig(
-        games_per_round=orchestrator_config.get("games_per_round", 100),
-        aggregation_threshold=orchestrator_config.get("aggregation_threshold", 0.8),
-        timeout_seconds=orchestrator_config.get("timeout_seconds", 300),
-        shared_layer_patterns=orchestrator_config.get("shared_layer_patterns", ["input_conv.*"]),
-        cluster_specific_patterns=orchestrator_config.get("cluster_specific_patterns", ["policy_head.*", "value_head.*"])
-    )
-    
-    # Create orchestrator
-    orchestrator = TrainingOrchestrator(
-        server=server,
-        round_config=round_config,
-        storage_tracker=None  # TODO: Add ExperimentTracker
-    )
-    
-    # Create menu
-    menu = ServerMenu(server=server, orchestrator=orchestrator)
-    menu_task = asyncio.create_task(menu._menu_loop())
-    if not menu_task:
-        log.error("Menu task failed to start. Exiting.")
-        return
-
-    # Setup signal handlers for graceful shutdown
-    loop = asyncio.get_running_loop()
-    
-    def signal_handler():
-        log.info("Shutdown signal received")
-        orchestrator.is_running = False
-    
-    for sig in (signal.SIGTERM, signal.SIGINT):
-        loop.add_signal_handler(sig, signal_handler)
-    
-    try:
-        # Run training after user input
-        await asyncio.gather(server_task, menu_task)
-    except KeyboardInterrupt:
-        log.info("Keyboard interrupt received")
-    finally:
-        # Cleanup
-        log.info("Shutting down server")
-        await server.stop_server()
-        
-        if not server_task.done():
-            server_task.cancel()
-            try:
-                await server_task
-            except asyncio.CancelledError:
-                pass
-    
-    log.info("Server shutdown complete")
 
 class ServerMenu:
+    """Interactive menu for server control."""
+    
     def __init__(self, server: FederatedLearningServer, orchestrator: TrainingOrchestrator):
         self.server = server
         self.orchestrator = orchestrator
