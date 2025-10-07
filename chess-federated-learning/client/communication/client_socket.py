@@ -115,7 +115,7 @@ class FederatedLearningClient:
         self.reconnect_backoff = 1.5  # exponential backoff factor
         
         # Heartbeat settings
-        self.heartbeat_interval = 30  # seconds
+        self.heartbeat_interval = 45  # seconds - increased to reduce server load
         self.heartbeat_task: Optional[asyncio.Task] = None
         
         # Message handling
@@ -240,9 +240,10 @@ class FederatedLearningClient:
         try:
             self.websocket = await websockets.connect(
                 uri=self.server_url,
-                ping_interval=30,
-                ping_timeout=10,
-                max_size=50 * 1024 * 1024,  # 50 MB
+                ping_interval=60,  # Increased to 60 seconds for server load
+                ping_timeout=45,   # Increased to 45 seconds for better tolerance
+                max_size=500 * 1024 * 1024,  # 500 MB for large model updates
+                close_timeout=20,  # Increased close timeout
             )
             
             self.state = ClientState.CONNECTED
