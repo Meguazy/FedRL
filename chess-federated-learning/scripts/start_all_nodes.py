@@ -30,6 +30,8 @@ import asyncio
 import argparse
 import sys
 import signal
+import threading
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
@@ -67,7 +69,8 @@ class NodeLauncher:
         self.stagger_delay = stagger_delay
         self.nodes: List[FederatedLearningNode] = []
         self.node_configs: List[NodeConfig] = []
-        self.tasks: List[asyncio.Task] = []
+        self.threads: List[threading.Thread] = []
+        self.shutdown_event = threading.Event()
 
     def load_configs_from_directory(self, config_dir: str) -> List[NodeConfig]:
         """
@@ -203,7 +206,7 @@ class NodeLauncher:
         logger.info(f"Filtered to {len(filtered)} nodes")
         return filtered
 
-    async def create_node(self, config: NodeConfig) -> FederatedLearningNode:
+    def create_node(self, config: NodeConfig) -> FederatedLearningNode:
         """
         Create a node instance from configuration.
 
@@ -236,9 +239,9 @@ class NodeLauncher:
 
         return node
 
-    async def run_node(self, node: FederatedLearningNode, index: int):
+    def run_node_in_thread(self, node: FederatedLearningNode, index: int):
         """
-        Run a single node.
+        Run a single node in its own thread with its own event loop.
 
         Args:
             node: Node instance to run
@@ -246,24 +249,34 @@ class NodeLauncher:
         """
         # Stagger node startup to avoid overwhelming the server
         if index > 0 and self.stagger_delay > 0:
-            await asyncio.sleep(self.stagger_delay * index)
+            time.sleep(self.stagger_delay * index)
 
-        logger.info(f"Starting node {node.node_id}")
+        logger.info(f"Starting node {node.node_id} in thread {threading.current_thread().name}")
+
+        # Create a new event loop for this thread
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
 
         try:
-            await node.start()
-        except asyncio.CancelledError:
-            logger.info(f"Node {node.node_id} cancelled")
-            raise
+            loop.run_until_complete(node.start())
+        except KeyboardInterrupt:
+            logger.info(f"Node {node.node_id} interrupted")
         except Exception as e:
             logger.error(f"Node {node.node_id} failed: {e}")
-            raise
         finally:
+            # Cleanup
+            try:
+                if node.client.is_connected():
+                    loop.run_until_complete(node.stop())
+            except Exception as e:
+                logger.error(f"Error stopping node {node.node_id}: {e}")
+
+            loop.close()
             logger.debug(f"Node {node.node_id} stopped")
 
-    async def launch_all(self, configs: List[NodeConfig]):
+    def launch_all(self, configs: List[NodeConfig]):
         """
-        Launch all nodes in parallel.
+        Launch all nodes in parallel threads.
 
         Args:
             configs: List of node configurations
@@ -274,53 +287,48 @@ class NodeLauncher:
             logger.warning("No node configurations to launch")
             return
 
-        logger.info(f"Launching {len(configs)} nodes in parallel...")
+        logger.info(f"Launching {len(configs)} nodes in parallel threads...")
 
         # Create all nodes
         for config in configs:
             try:
-                node = await self.create_node(config)
+                node = self.create_node(config)
                 self.nodes.append(node)
             except Exception as e:
                 logger.error(f"Failed to create node {config.node_id}: {e}")
 
-        # Launch all nodes as parallel tasks
-        self.tasks = [
-            asyncio.create_task(self.run_node(node, i))
-            for i, node in enumerate(self.nodes)
-        ]
+        # Launch all nodes in separate threads
+        for i, node in enumerate(self.nodes):
+            thread = threading.Thread(
+                target=self.run_node_in_thread,
+                args=(node, i),
+                name=f"Node-{node.node_id}",
+                daemon=True
+            )
+            thread.start()
+            self.threads.append(thread)
 
-        logger.success(f"Successfully launched {len(self.tasks)} nodes")
+        logger.success(f"Successfully launched {len(self.threads)} node threads")
 
-        # Wait for all tasks
+        # Wait for all threads to complete
         try:
-            await asyncio.gather(*self.tasks, return_exceptions=False)
-        except asyncio.CancelledError:
-            logger.info("All nodes cancelled")
-        except Exception as e:
-            logger.error(f"Error in node tasks: {e}")
+            for thread in self.threads:
+                thread.join()
+        except KeyboardInterrupt:
+            logger.info("Interrupted, shutting down...")
+            self.shutdown_all()
 
-    async def shutdown_all(self):
+    def shutdown_all(self):
         """Shutdown all running nodes."""
         logger.info(f"Shutting down {len(self.nodes)} nodes...")
 
-        # Cancel all tasks
-        for task in self.tasks:
-            if not task.done():
-                task.cancel()
+        # Signal shutdown
+        self.shutdown_event.set()
 
-        # Wait for tasks to complete cancellation
-        if self.tasks:
-            await asyncio.gather(*self.tasks, return_exceptions=True)
-
-        # Stop all nodes
-        shutdown_tasks = []
-        for node in self.nodes:
-            if node.client.is_connected():
-                shutdown_tasks.append(node.stop())
-
-        if shutdown_tasks:
-            await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+        # Wait for all threads to complete with timeout
+        for thread in self.threads:
+            if thread.is_alive():
+                thread.join(timeout=5.0)
 
         logger.success("All nodes shut down")
 
