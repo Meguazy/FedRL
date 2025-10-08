@@ -90,7 +90,7 @@ class FederatedLearningClient:
         
         Args:
             node_id: Unique identifier for this node (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             server_host: FL server hostname (default: localhost)
             server_port: FL server port (default: 8765)
         """

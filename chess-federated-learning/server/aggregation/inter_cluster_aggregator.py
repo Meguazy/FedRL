@@ -72,11 +72,11 @@ class InterClusterAggregator(BaseAggregator):
         ...     shared_layer_patterns=['input_conv', 'representation.0']
         ... )
         >>> cluster_models = {
-        ...     'cluster_aggressive': model_state_1,
+        ...     'cluster_tactical': model_state_1,
         ...     'cluster_positional': model_state_2
         ... }
         >>> cluster_metrics = {
-        ...     'cluster_aggressive': {'samples': 16000},
+        ...     'cluster_tactical': {'samples': 16000},
         ...     'cluster_positional': {'samples': 16000}
         ... }
         >>> weights = aggregator.get_aggregation_weights(cluster_metrics)

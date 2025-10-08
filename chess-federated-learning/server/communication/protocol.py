@@ -66,7 +66,7 @@ class Message:
     Attributes:
         type: Type of message (must be a valid MessageType enum value)
         node_id: Unique identifier of the sending/receiving node (e.g., "agg_001")
-        cluster_id: Cluster the node belongs to (e.g., "cluster_aggressive")
+        cluster_id: Cluster the node belongs to (e.g., "cluster_tactical")
         payload: Dictionary containing message-specific data
         timestamp: Unix timestamp when message was created
         round_num: Optional training round number for tracking
@@ -75,7 +75,7 @@ class Message:
         >>> msg = Message(
         ...     type="register",
         ...     node_id="agg_001",
-        ...     cluster_id="cluster_aggressive",
+        ...     cluster_id="cluster_tactical",
         ...     payload={},
         ...     timestamp=time.time()
         ... )
@@ -234,7 +234,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
 
         Returns:
             Message: Registration message ready to send
@@ -265,7 +265,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             success: Whether registration was successful
             message: Optional message providing additional info
 
@@ -303,7 +303,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             model_state: Serialized model weights/state dictionary
             samples: Number of training samples used
             loss: Training loss metric
@@ -343,7 +343,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             games_per_round: Number of games to play in this training round
             round_num: Training round number
 
@@ -379,7 +379,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             model_state: Serialized aggregated model weights/state dictionary
             round_num: Training round number
         
@@ -416,7 +416,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             loss: Training loss metric
             samples: Number of training samples used
             round_num: Training round number
@@ -454,7 +454,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             error_code: Numeric error code
             message: Descriptive error message
         """
@@ -485,7 +485,7 @@ class MessageFactory:
         
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
-            cluster_id: Cluster this node belongs to (e.g., "cluster_aggressive")
+            cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
 
         Returns:
             Message: Heartbeat message ready to send

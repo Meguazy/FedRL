@@ -97,10 +97,10 @@ python scripts/start_all_nodes.py \
 ### Launching One Cluster
 
 ```bash
-# Launch only aggressive cluster
+# Launch only tactical cluster
 python scripts/start_all_nodes.py \
     --topology config/cluster_topology.yaml \
-    --clusters cluster_aggressive
+    --clusters cluster_tactical
 ```
 
 ## Architecture
@@ -142,8 +142,8 @@ Benefits:
 
 ```yaml
 clusters:
-  - id: "cluster_aggressive"
-    playstyle: "aggressive"
+  - id: "cluster_tactical"
+    playstyle: "tactical"
     node_count: 32
     node_prefix: "agg"
 
@@ -157,7 +157,7 @@ clusters:
 
 ```yaml
 node_id: "agg_001"
-cluster_id: "cluster_aggressive"
+cluster_id: "cluster_tactical"
 server_host: "localhost"
 server_port: 8765
 trainer_type: "dummy"
@@ -167,7 +167,7 @@ training:
   games_per_round: 100
   batch_size: 32
   learning_rate: 0.001
-  playstyle: "aggressive"
+  playstyle: "tactical"
 
 storage:
   enabled: true
@@ -267,7 +267,7 @@ Launch subsets of nodes on different machines:
 ```bash
 python scripts/start_all_nodes.py \
     --topology config/cluster_topology.yaml \
-    --clusters cluster_aggressive \
+    --clusters cluster_tactical \
     --server-host <server-ip>
 ```
 

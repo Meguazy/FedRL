@@ -4,7 +4,7 @@ Script to start a federated learning node.
 
 Usage:
     python scripts/start_node.py --config config/nodes/agg_001.yaml
-    python scripts/start_node.py --node-id agg_001 --cluster-id cluster_aggressive
+    python scripts/start_node.py --node-id agg_001 --cluster-id cluster_tactical
 """
 
 import asyncio
@@ -124,7 +124,7 @@ def main():
     parser.add_argument(
         "--cluster-id",
         type=str,
-        help="Cluster identifier (e.g., cluster_aggressive)"
+        help="Cluster identifier (e.g., cluster_tactical)"
     )
     parser.add_argument(
         "--server-host",

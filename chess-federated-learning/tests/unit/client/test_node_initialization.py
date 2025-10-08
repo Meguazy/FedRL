@@ -37,7 +37,7 @@ def training_config():
         games_per_round=100,
         batch_size=32,
         learning_rate=0.001,
-        playstyle="aggressive"
+        playstyle="tactical"
     )
 
 
@@ -229,7 +229,7 @@ def test_multiple_nodes_independent(training_config):
 
 def test_node_initialization_with_different_clusters(training_config):
     """Test nodes can be initialized in different clusters."""
-    clusters = ["aggressive", "positional", "defensive"]
+    clusters = ["tactical", "positional", "defensive"]
 
     for i, cluster in enumerate(clusters):
         trainer = MockTrainer(f"node_{i}", cluster, training_config)

@@ -279,11 +279,11 @@ class TestMultiNodeScenarios:
         assert test_server.get_node_count() == expected_count, f"Server should have {expected_count} nodes"
         
         # Check cluster distribution
-        aggressive_nodes = test_server.get_cluster_nodes("cluster_aggressive")
+        tactical_nodes = test_server.get_cluster_nodes("cluster_tactical")
         positional_nodes = test_server.get_cluster_nodes("cluster_positional")
         test_nodes = test_server.get_cluster_nodes("test_cluster")
         
-        assert len(aggressive_nodes) == 2, "Should have 2 aggressive cluster nodes"
+        assert len(tactical_nodes) == 2, "Should have 2 tactical cluster nodes"
         assert len(positional_nodes) == 2, "Should have 2 positional cluster nodes"
         assert len(test_nodes) == 1, "Should have 1 test cluster node"
         
@@ -299,38 +299,38 @@ class TestMultiNodeScenarios:
         await asyncio.sleep(1.0)
         
         # Set up message collectors
-        aggressive_collectors = {}
+        tactical_collectors = {}
         positional_collectors = {}
         
         for node_id, client in multiple_clients.items():
             collector = MessageCollector()
             client.set_message_handler(MessageType.START_TRAINING, collector.collect_message)
             
-            if client.cluster_id == "cluster_aggressive":
-                aggressive_collectors[node_id] = collector
+            if client.cluster_id == "cluster_tactical":
+                tactical_collectors[node_id] = collector
             elif client.cluster_id == "cluster_positional":
                 positional_collectors[node_id] = collector
         
-        # Broadcast to aggressive cluster only
-        aggressive_msg = MessageFactory.create_start_training(
-            "broadcast", "cluster_aggressive", 150, 2
+        # Broadcast to tactical cluster only
+        tactical_msg = MessageFactory.create_start_training(
+            "broadcast", "cluster_tactical", 150, 2
         )
         
-        await test_server.broadcast_to_cluster("cluster_aggressive", aggressive_msg)
+        await test_server.broadcast_to_cluster("cluster_tactical", tactical_msg)
         
         # Wait for delivery
         await asyncio.sleep(0.5)
         
-        # Only aggressive cluster clients should receive the message
-        for node_id, collector in aggressive_collectors.items():
+        # Only tactical cluster clients should receive the message
+        for node_id, collector in tactical_collectors.items():
             messages = collector.get_messages(MessageType.START_TRAINING)
-            assert len(messages) >= 1, f"Aggressive client {node_id} should receive cluster message"
+            assert len(messages) >= 1, f"tactical client {node_id} should receive cluster message"
             assert messages[0].payload["games_per_round"] == 150, "Message should have correct payload"
         
         # Positional cluster clients should NOT receive the message
         for node_id, collector in positional_collectors.items():
             messages = collector.get_messages(MessageType.START_TRAINING)
-            assert len(messages) == 0, f"Positional client {node_id} should NOT receive aggressive cluster message"
+            assert len(messages) == 0, f"Positional client {node_id} should NOT receive tactical cluster message"
         
         log.info("✓ Cluster-specific broadcast test passed")
 

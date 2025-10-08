@@ -54,20 +54,20 @@ async def test_inter_cluster_aggregation():
     
     # Create cluster models with AlphaZero structure
     cluster_models = {
-        'cluster_aggressive': generate_alphazero_model().state_dict(),
+        'cluster_tactical': generate_alphazero_model().state_dict(),
         'cluster_positional': generate_alphazero_model().state_dict()
     }
     
     # Store original cluster-specific layers for comparison
     # Use the actual key names from MockAlphaZeroModel
-    original_policy_agg = cluster_models['cluster_aggressive']['policy_head.fc.weight']
+    original_policy_agg = cluster_models['cluster_tactical']['policy_head.fc.weight']
     original_policy_pos = cluster_models['cluster_positional']['policy_head.fc.weight']
-    original_value_agg = cluster_models['cluster_aggressive']['value_head.fc2.weight']
+    original_value_agg = cluster_models['cluster_tactical']['value_head.fc2.weight']
     original_value_pos = cluster_models['cluster_positional']['value_head.fc2.weight']
     
     # Create metrics
     cluster_metrics = {
-        'cluster_aggressive': {'samples': 16000, 'loss': 0.3},
+        'cluster_tactical': {'samples': 16000, 'loss': 0.3},
         'cluster_positional': {'samples': 16000, 'loss': 0.35}
     }
     
@@ -87,22 +87,22 @@ async def test_inter_cluster_aggregation():
     
     # Validate results
     assert len(updated_models) == 2
-    assert 'cluster_aggressive' in updated_models
+    assert 'cluster_tactical' in updated_models
     assert 'cluster_positional' in updated_models
     
     # Critical test: Cluster-specific layers should be UNCHANGED
-    assert updated_models['cluster_aggressive']['policy_head.fc.weight'] == original_policy_agg
+    assert updated_models['cluster_tactical']['policy_head.fc.weight'] == original_policy_agg
     assert updated_models['cluster_positional']['policy_head.fc.weight'] == original_policy_pos
-    assert updated_models['cluster_aggressive']['value_head.fc2.weight'] == original_value_agg
+    assert updated_models['cluster_tactical']['value_head.fc2.weight'] == original_value_agg
     assert updated_models['cluster_positional']['value_head.fc2.weight'] == original_value_pos
     
     # Critical test: Shared layers should be IDENTICAL across clusters
-    shared_layer_agg = updated_models['cluster_aggressive']['input_conv.weight']
+    shared_layer_agg = updated_models['cluster_tactical']['input_conv.weight']
     shared_layer_pos = updated_models['cluster_positional']['input_conv.weight']
     assert shared_layer_agg == shared_layer_pos
     
     # Also check a residual layer
-    shared_res_agg = updated_models['cluster_aggressive']['residual.0.conv1.weight']
+    shared_res_agg = updated_models['cluster_tactical']['residual.0.conv1.weight']
     shared_res_pos = updated_models['cluster_positional']['residual.0.conv1.weight']
     assert shared_res_agg == shared_res_pos
     
@@ -126,7 +126,7 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
     # All nodes have identical architecture but different weights
     log.info("Step 1: Generating node models...")
     
-    aggressive_nodes = {
+    tactical_nodes = {
         f'agg_{i:03d}': generate_alphazero_model(num_residual_blocks=10, seed=i).state_dict()
         for i in range(1, 5)
     }
@@ -136,7 +136,7 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
         for i in range(1, 5)
     }
     
-    log.info(f"Generated {len(aggressive_nodes)} aggressive nodes")
+    log.info(f"Generated {len(tactical_nodes)} tactical nodes")
     log.info(f"Generated {len(positional_nodes)} positional nodes")
     
     # Step 2: Intra-cluster aggregation (aggregate within each cluster)
@@ -148,7 +148,7 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
     )
     
     # Create node metrics
-    agg_metrics = {nid: {'samples': 1000, 'loss': 0.4} for nid in aggressive_nodes.keys()}
+    agg_metrics = {nid: {'samples': 1000, 'loss': 0.4} for nid in tactical_nodes.keys()}
     pos_metrics = {nid: {'samples': 1000, 'loss': 0.35} for nid in positional_nodes.keys()}
     
     # Get weights and aggregate each cluster
@@ -156,13 +156,13 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
     pos_weights = intra_agg.get_aggregation_weights(pos_metrics)
     
     cluster_agg, metrics_agg = await intra_agg.aggregate(
-        aggressive_nodes, agg_weights, round_num=1
+        tactical_nodes, agg_weights, round_num=1
     )
     cluster_pos, metrics_pos = await intra_agg.aggregate(
         positional_nodes, pos_weights, round_num=1
     )
     
-    log.info(f"Aggressive cluster aggregation: {metrics_agg.participant_count} nodes, "
+    log.info(f"tactical cluster aggregation: {metrics_agg.participant_count} nodes, "
              f"{metrics_agg.total_samples} samples")
     log.info(f"Positional cluster aggregation: {metrics_pos.participant_count} nodes, "
              f"{metrics_pos.total_samples} samples")
@@ -199,12 +199,12 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
     )
     
     cluster_models = {
-        'cluster_aggressive': cluster_agg,
+        'cluster_tactical': cluster_agg,
         'cluster_positional': cluster_pos
     }
     
     cluster_metrics = {
-        'cluster_aggressive': {'samples': 4000, 'loss': 0.4},
+        'cluster_tactical': {'samples': 4000, 'loss': 0.4},
         'cluster_positional': {'samples': 4000, 'loss': 0.35}
     }
     
@@ -220,7 +220,7 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
     
     # Validate complete pipeline results
     assert len(final_models) == 2
-    assert 'cluster_aggressive' in final_models
+    assert 'cluster_tactical' in final_models
     assert 'cluster_positional' in final_models
     
     # Each cluster should have complete model with all layers
@@ -241,37 +241,37 @@ async def test_full_aggregation_pipeline_with_residual_0_shared():
     
     # Critical validation: Cluster-specific layers should be UNCHANGED
     log.info("Validating cluster-specific layers are preserved...")
-    assert final_models['cluster_aggressive']['policy_head.fc.weight'] == original_agg_policy
+    assert final_models['cluster_tactical']['policy_head.fc.weight'] == original_agg_policy
     assert final_models['cluster_positional']['policy_head.fc.weight'] == original_pos_policy
-    assert final_models['cluster_aggressive']['value_head.fc2.weight'] == original_agg_value
+    assert final_models['cluster_tactical']['value_head.fc2.weight'] == original_agg_value
     assert final_models['cluster_positional']['value_head.fc2.weight'] == original_pos_value
     
     # Critical validation: Shared layers should be IDENTICAL across clusters
     log.info("Validating shared layers are synchronized...")
     
     # Check input_conv is identical
-    assert (final_models['cluster_aggressive']['input_conv.weight'] == 
+    assert (final_models['cluster_tactical']['input_conv.weight'] == 
             final_models['cluster_positional']['input_conv.weight'])
-    assert (final_models['cluster_aggressive']['input_conv.bias'] == 
+    assert (final_models['cluster_tactical']['input_conv.bias'] == 
             final_models['cluster_positional']['input_conv.bias'])
     
     # Check residual.0 layers are identical
-    assert (final_models['cluster_aggressive']['residual.0.conv1.weight'] == 
+    assert (final_models['cluster_tactical']['residual.0.conv1.weight'] == 
             final_models['cluster_positional']['residual.0.conv1.weight'])
-    assert (final_models['cluster_aggressive']['residual.0.bn1.weight'] == 
+    assert (final_models['cluster_tactical']['residual.0.bn1.weight'] == 
             final_models['cluster_positional']['residual.0.bn1.weight'])
     
     # Critical validation: Non-shared residual layers should be DIFFERENT
     log.info("Validating non-shared layers remain different...")
-    assert (final_models['cluster_aggressive']['residual.1.conv1.weight'] != 
+    assert (final_models['cluster_tactical']['residual.1.conv1.weight'] != 
             final_models['cluster_positional']['residual.1.conv1.weight'])
-    assert (final_models['cluster_aggressive']['residual.2.conv1.weight'] != 
+    assert (final_models['cluster_tactical']['residual.2.conv1.weight'] != 
             final_models['cluster_positional']['residual.2.conv1.weight'])
     
     # Check that policy and value are different across clusters
-    assert (final_models['cluster_aggressive']['policy_head.fc.weight'] != 
+    assert (final_models['cluster_tactical']['policy_head.fc.weight'] != 
             final_models['cluster_positional']['policy_head.fc.weight'])
-    assert (final_models['cluster_aggressive']['value_head.fc2.weight'] != 
+    assert (final_models['cluster_tactical']['value_head.fc2.weight'] != 
             final_models['cluster_positional']['value_head.fc2.weight'])
     
     log.info("✓ Full aggregation pipeline test passed")
@@ -294,7 +294,7 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     # All nodes have identical architecture but different weights
     log.info("Step 1: Generating node models...")
     
-    aggressive_nodes = {
+    tactical_nodes = {
         f'agg_{i:03d}': generate_alphazero_model(num_residual_blocks=10, seed=i).state_dict()
         for i in range(1, 5)
     }
@@ -304,7 +304,7 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
         for i in range(1, 5)
     }
     
-    log.info(f"Generated {len(aggressive_nodes)} aggressive nodes")
+    log.info(f"Generated {len(tactical_nodes)} tactical nodes")
     log.info(f"Generated {len(positional_nodes)} positional nodes")
     
     # Step 2: Intra-cluster aggregation (aggregate within each cluster)
@@ -316,7 +316,7 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     )
     
     # Create node metrics
-    agg_metrics = {nid: {'samples': 1000, 'loss': 0.4} for nid in aggressive_nodes.keys()}
+    agg_metrics = {nid: {'samples': 1000, 'loss': 0.4} for nid in tactical_nodes.keys()}
     pos_metrics = {nid: {'samples': 1000, 'loss': 0.35} for nid in positional_nodes.keys()}
     
     # Get weights and aggregate each cluster
@@ -324,13 +324,13 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     pos_weights = intra_agg.get_aggregation_weights(pos_metrics)
     
     cluster_agg, metrics_agg = await intra_agg.aggregate(
-        aggressive_nodes, agg_weights, round_num=1
+        tactical_nodes, agg_weights, round_num=1
     )
     cluster_pos, metrics_pos = await intra_agg.aggregate(
         positional_nodes, pos_weights, round_num=1
     )
     
-    log.info(f"Aggressive cluster aggregation: {metrics_agg.participant_count} nodes, "
+    log.info(f"tactical cluster aggregation: {metrics_agg.participant_count} nodes, "
              f"{metrics_agg.total_samples} samples")
     log.info(f"Positional cluster aggregation: {metrics_pos.participant_count} nodes, "
              f"{metrics_pos.total_samples} samples")
@@ -366,12 +366,12 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     )
     
     cluster_models = {
-        'cluster_aggressive': cluster_agg,
+        'cluster_tactical': cluster_agg,
         'cluster_positional': cluster_pos
     }
     
     cluster_metrics = {
-        'cluster_aggressive': {'samples': 4000, 'loss': 0.4},
+        'cluster_tactical': {'samples': 4000, 'loss': 0.4},
         'cluster_positional': {'samples': 4000, 'loss': 0.35}
     }
     
@@ -387,7 +387,7 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     
     # Validate complete pipeline results
     assert len(final_models) == 2
-    assert 'cluster_aggressive' in final_models
+    assert 'cluster_tactical' in final_models
     assert 'cluster_positional' in final_models
     
     # Each cluster should have complete model with all layers
@@ -409,37 +409,37 @@ async def test_full_aggregation_pipeline_with_no_residual_shared():
     
     # Critical validation: Cluster-specific layers should be UNCHANGED
     log.info("Validating cluster-specific layers are preserved...")
-    assert final_models['cluster_aggressive']['policy_head.fc.weight'] == original_agg_policy
+    assert final_models['cluster_tactical']['policy_head.fc.weight'] == original_agg_policy
     assert final_models['cluster_positional']['policy_head.fc.weight'] == original_pos_policy
-    assert final_models['cluster_aggressive']['value_head.fc2.weight'] == original_agg_value
+    assert final_models['cluster_tactical']['value_head.fc2.weight'] == original_agg_value
     assert final_models['cluster_positional']['value_head.fc2.weight'] == original_pos_value
     
     # Critical validation: Shared layers should be IDENTICAL across clusters
     log.info("Validating shared layers are synchronized...")
     
     # Check input_conv is identical
-    assert (final_models['cluster_aggressive']['input_conv.weight'] == 
+    assert (final_models['cluster_tactical']['input_conv.weight'] == 
             final_models['cluster_positional']['input_conv.weight'])
-    assert (final_models['cluster_aggressive']['input_conv.bias'] == 
+    assert (final_models['cluster_tactical']['input_conv.bias'] == 
             final_models['cluster_positional']['input_conv.bias'])
     
     # Check residual.0 layers are not identical
-    assert (final_models['cluster_aggressive']['residual.0.conv1.weight'] != 
+    assert (final_models['cluster_tactical']['residual.0.conv1.weight'] != 
             final_models['cluster_positional']['residual.0.conv1.weight'])
-    assert (final_models['cluster_aggressive']['residual.0.bn1.weight'] != 
+    assert (final_models['cluster_tactical']['residual.0.bn1.weight'] != 
             final_models['cluster_positional']['residual.0.bn1.weight'])
     
     # Critical validation: Non-shared residual layers should be DIFFERENT
     log.info("Validating non-shared layers remain different...")
-    assert (final_models['cluster_aggressive']['residual.1.conv1.weight'] != 
+    assert (final_models['cluster_tactical']['residual.1.conv1.weight'] != 
             final_models['cluster_positional']['residual.1.conv1.weight'])
-    assert (final_models['cluster_aggressive']['residual.2.conv1.weight'] != 
+    assert (final_models['cluster_tactical']['residual.2.conv1.weight'] != 
             final_models['cluster_positional']['residual.2.conv1.weight'])
     
     # Check that policy and value are different across clusters
-    assert (final_models['cluster_aggressive']['policy_head.fc.weight'] != 
+    assert (final_models['cluster_tactical']['policy_head.fc.weight'] != 
             final_models['cluster_positional']['policy_head.fc.weight'])
-    assert (final_models['cluster_aggressive']['value_head.fc2.weight'] != 
+    assert (final_models['cluster_tactical']['value_head.fc2.weight'] != 
             final_models['cluster_positional']['value_head.fc2.weight'])
     
     log.info("✓ Full aggregation pipeline test passed")

@@ -27,7 +27,7 @@ import json
 class EntityType(str, Enum):
     """Types of entities that can have metrics."""
     NODE = "node"           # Individual training node (e.g., agg_001)
-    CLUSTER = "cluster"     # Cluster aggregate (e.g., cluster_aggressive)
+    CLUSTER = "cluster"     # Cluster aggregate (e.g., cluster_tactical)
     GLOBAL = "global"       # Global/system-wide metrics
     SYSTEM = "system"       # System performance metrics (CPU, memory, etc.)
     CUSTOM = "custom"       # User-defined custom entities

@@ -75,7 +75,7 @@ async def cluster_manager():
             self.nodes = {}
             self.clusters = {
                 "test_cluster": {"nodes": set()},
-                "cluster_aggressive": {"nodes": set()},
+                "cluster_tactical": {"nodes": set()},
                 "cluster_positional": {"nodes": set()}
             }
         
@@ -224,7 +224,7 @@ async def multiple_clients(test_server, test_port):
     """
     Provide multiple connected FL clients for testing.
     
-    Creates clients for both aggressive and positional clusters to simulate
+    Creates clients for both tactical and positional clusters to simulate
     the actual federated learning setup.
     
     Args:
@@ -242,8 +242,8 @@ async def multiple_clients(test_server, test_port):
     
     # Create clients for different clusters
     client_configs = [
-        ("agg_001", "cluster_aggressive"),
-        ("agg_002", "cluster_aggressive"),
+        ("agg_001", "cluster_tactical"),
+        ("agg_002", "cluster_tactical"),
         ("pos_001", "cluster_positional"),
         ("pos_002", "cluster_positional"),
         ("test_001", "test_cluster")

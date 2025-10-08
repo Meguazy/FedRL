@@ -35,12 +35,12 @@ class Cluster:
     """
     Represents a cluster in the federated learning system.
     
-    Each cluster groups nodes with the same playstyle (e.g., aggressive, positional)
+    Each cluster groups nodes with the same playstyle (e.g., tactical, positional)
     and maintains metadata about the nodes, their status, and cluster configuration.
     
     Attributes:
-        cluster_id: Unique cluster identifier (e.g., "cluster_aggressive")
-        playstyle: Playstyle this cluster represents (e.g., "aggressive", "positional")
+        cluster_id: Unique cluster identifier (e.g., "cluster_tactical")
+        playstyle: Playstyle this cluster represents (e.g., "tactical", "positional")
         node_count: Target number of nodes for this cluster
         node_prefix: Prefix for auto-generated node IDs (e.g., "agg")
         description: Human-readable description of the cluster
@@ -705,23 +705,23 @@ if __name__ == "__main__":
     manager = ClusterManager("/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/config/cluster_topology.yaml")
 
     # Register nodes
-    manager.register_node("agg_001", "cluster_aggressive")
+    manager.register_node("agg_001", "cluster_tactical")
     manager.register_node("pos_001", "cluster_positional")
-    manager.register_node("agg_002", "cluster_aggressive")
+    manager.register_node("agg_002", "cluster_tactical")
     manager.register_node("pos_002", "cluster_positional")
-    manager.register_node("agg_003", "cluster_aggressive")
+    manager.register_node("agg_003", "cluster_tactical")
     manager.register_node("pos_003", "cluster_positional")
-    manager.register_node("agg_004", "cluster_aggressive")
+    manager.register_node("agg_004", "cluster_tactical")
     manager.register_node("pos_004", "cluster_positional")
 
-    expected_aggressive = manager.get_expected_nodes("cluster_aggressive")
+    expected_tactical = manager.get_expected_nodes("cluster_tactical")
     expected_positional = manager.get_expected_nodes("cluster_positional")
     
-    log.info(f"Expected aggressive nodes: {expected_aggressive}")
+    log.info(f"Expected tactical nodes: {expected_tactical}")
     log.info(f"Expected positional nodes: {expected_positional}")
     # Check cluster readiness
-    if manager.is_cluster_ready("cluster_aggressive"):
-        nodes = manager.get_cluster_nodes("cluster_aggressive")
+    if manager.is_cluster_ready("cluster_tactical"):
+        nodes = manager.get_cluster_nodes("cluster_tactical")
         # Start aggregation...
 
     # Get statistics

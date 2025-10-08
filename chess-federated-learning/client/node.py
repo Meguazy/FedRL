@@ -64,11 +64,11 @@ class FederatedLearningNode:
     managing local training in the background.
     
     Example:
-        >>> config = TrainingConfig(games_per_round=100, playstyle="aggressive")
-        >>> trainer = DummyTrainer("agg_001", "cluster_aggressive", config)
+        >>> config = TrainingConfig(games_per_round=100, playstyle="tactical")
+        >>> trainer = DummyTrainer("agg_001", "cluster_tactical", config)
         >>> node = FederatedLearningNode(
         ...     node_id="agg_001",
-        ...     cluster_id="cluster_aggressive",
+        ...     cluster_id="cluster_tactical",
         ...     trainer=trainer,
         ...     server_host="localhost",
         ...     server_port=8765
@@ -445,12 +445,12 @@ class FederatedLearningNode:
     
 #     # Configuration
 #     node_id = "agg_001"
-#     cluster_id = "cluster_aggressive"
+#     cluster_id = "cluster_tactical"
     
 #     # Create trainer
 #     config = TrainingConfig(
 #         games_per_round=50,
-#         playstyle="aggressive"
+#         playstyle="tactical"
 #     )
 #     trainer = DummyTrainer(node_id, cluster_id, config)
     

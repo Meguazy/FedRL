@@ -18,7 +18,7 @@ Data is organized by run_id:
 ```
 storage/
 ├── metrics/{run_id}/events.jsonl.gz
-├── models/{run_id}/cluster_aggressive/round_0001.pt
+├── models/{run_id}/cluster_tactical/round_0001.pt
 └── chess_data/{run_id}/games/...
 ```
 

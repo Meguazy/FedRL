@@ -104,7 +104,7 @@ class TestMetricEvent:
             "round_num": 15,
             "timestamp": "2025-01-15T14:30:00",
             "entity_type": "cluster",
-            "entity_id": "cluster_aggressive",
+            "entity_id": "cluster_tactical",
             "metrics": {"diversity": 0.8},
             "metadata": {"aggregation_time": 2.5}
         }
@@ -115,7 +115,7 @@ class TestMetricEvent:
         assert event.round_num == 15
         assert event.timestamp == datetime(2025, 1, 15, 14, 30, 0)
         assert event.entity_type == EntityType.CLUSTER
-        assert event.entity_id == "cluster_aggressive"
+        assert event.entity_id == "cluster_tactical"
         assert event.metrics == {"diversity": 0.8}
         assert event.metadata == {"aggregation_time": 2.5}
 
@@ -298,7 +298,7 @@ class TestModelCheckpointMetadata:
         timestamp = datetime.now()
         metadata = ModelCheckpointMetadata(
             run_id="test_run",
-            cluster_id="cluster_aggressive",
+            cluster_id="cluster_tactical",
             round_num=10,
             timestamp=timestamp,
             checksum="abc123def456",
@@ -308,7 +308,7 @@ class TestModelCheckpointMetadata:
         )
 
         assert metadata.run_id == "test_run"
-        assert metadata.cluster_id == "cluster_aggressive"
+        assert metadata.cluster_id == "cluster_tactical"
         assert metadata.round_num == 10
         assert metadata.timestamp == timestamp
         assert metadata.checksum == "abc123def456"
@@ -345,7 +345,7 @@ class TestModelCheckpointMetadata:
         """Test from_dict() recreates ModelCheckpointMetadata from dict."""
         data = {
             "run_id": "exp_002",
-            "cluster_id": "cluster_aggressive",
+            "cluster_id": "cluster_tactical",
             "round_num": 50,
             "timestamp": "2025-01-15T16:00:00",
             "checksum": "checksum123",
@@ -357,7 +357,7 @@ class TestModelCheckpointMetadata:
         metadata = ModelCheckpointMetadata.from_dict(data)
 
         assert metadata.run_id == "exp_002"
-        assert metadata.cluster_id == "cluster_aggressive"
+        assert metadata.cluster_id == "cluster_tactical"
         assert metadata.round_num == 50
         assert metadata.timestamp == datetime(2025, 1, 15, 16, 0, 0)
         assert metadata.checksum == "checksum123"

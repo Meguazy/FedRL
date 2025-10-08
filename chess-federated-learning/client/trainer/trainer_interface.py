@@ -36,7 +36,7 @@ class TrainingConfig:
         exploration_factor: Exploration parameter (e.g., temperature for MCTS)
         max_game_length: Maximum moves per game before draw
         save_games: Whether to save game data (PGNs, trajectories)
-        playstyle: Cluster playstyle ("aggressive", "positional", etc.)
+        playstyle: Cluster playstyle ("tactical", "positional", etc.)
         additional_params: Dict for trainer-specific parameters
     """
     games_per_round: int = 100
