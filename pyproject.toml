@@ -13,6 +13,8 @@ dependencies = [
     "websockets>=12.0",
     "pyyaml>=6.0.0",
     "pandas>=2.3.3",
+    "python-chess>=1.999",
+    "zstandard>=0.25.0",
 ]
 
 [project.optional-dependencies]
