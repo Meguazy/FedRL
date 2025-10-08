@@ -357,8 +357,8 @@ class NodeLauncher:
         }
 
 
-async def main_async(args):
-    """Async main function."""
+def main_sync(args):
+    """Main function."""
     # Create launcher
     launcher = NodeLauncher(
         server_host=args.server_host,
@@ -403,17 +403,16 @@ async def main_async(args):
             sys.exit(1)
 
         # Setup signal handlers for graceful shutdown
-        def signal_handler():
+        def signal_handler(_signum, _frame):
             logger.info("Signal received, initiating shutdown...")
-            for task in launcher.tasks:
-                task.cancel()
+            launcher.shutdown_all()
+            sys.exit(0)
 
-        loop = asyncio.get_running_loop()
-        for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, signal_handler)
+        signal.signal(signal.SIGTERM, signal_handler)
+        signal.signal(signal.SIGINT, signal_handler)
 
         # Launch nodes
-        await launcher.launch_all(configs)
+        launcher.launch_all(configs)
 
     except KeyboardInterrupt:
         logger.info("Interrupted by user")
@@ -421,7 +420,7 @@ async def main_async(args):
         logger.exception(f"Failed to launch nodes: {e}")
         sys.exit(1)
     finally:
-        await launcher.shutdown_all()
+        launcher.shutdown_all()
 
 
 def main():
@@ -498,9 +497,9 @@ def main():
         format="<green>{time:HH:mm:ss}</green> | <level>{level: <8}</level> | <level>{message}</level>"
     )
 
-    # Run async main
+    # Run main
     try:
-        asyncio.run(main_async(args))
+        main_sync(args)
     except KeyboardInterrupt:
         logger.info("Shutdown complete")
 
