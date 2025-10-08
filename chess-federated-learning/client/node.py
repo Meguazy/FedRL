@@ -203,7 +203,7 @@ class FederatedLearningNode:
             log.error(f"Unexpected error in main loop: {e}")
             self.lifecycle_state = NodeLifecycleState.ERROR
         finally:
-            self.stop()
+            await self.stop()
             
     async def stop(self):
         """
