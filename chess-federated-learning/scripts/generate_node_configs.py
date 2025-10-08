@@ -67,7 +67,12 @@ def generate_node_config(
     Returns:
         Node configuration dictionary
     """
-    playstyle = cluster_info.get("playstyle", "balanced")
+    # Extracting playstyle and returning and error if not found
+    if "playstyle" not in cluster_info:
+        raise ValueError(f"Cluster info for {cluster_id} missing 'playstyle' key")
+    if cluster_info["playstyle"] not in ["aggressive", "defensive", "balanced"]:
+        raise ValueError(f"Invalid playstyle '{cluster_info['playstyle']}' for cluster {cluster_id}")
+    playstyle = cluster_info["playstyle"]
 
     config = {
         "node_id": node_id,
