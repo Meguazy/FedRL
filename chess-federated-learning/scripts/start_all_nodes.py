@@ -257,8 +257,26 @@ class NodeLauncher:
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
+        async def run_with_shutdown_check():
+            """Run node while checking for shutdown signal."""
+            start_task = asyncio.create_task(node.start())
+
+            # Poll for shutdown event
+            while not self.shutdown_event.is_set():
+                if start_task.done():
+                    break
+                await asyncio.sleep(0.1)
+
+            # If shutdown requested, cancel the task
+            if not start_task.done():
+                start_task.cancel()
+                try:
+                    await start_task
+                except asyncio.CancelledError:
+                    pass
+
         try:
-            loop.run_until_complete(node.start())
+            loop.run_until_complete(run_with_shutdown_check())
         except KeyboardInterrupt:
             logger.info(f"Node {node.node_id} interrupted")
         except Exception as e:
@@ -303,7 +321,7 @@ class NodeLauncher:
                 target=self.run_node_in_thread,
                 args=(node, i),
                 name=f"Node-{node.node_id}",
-                daemon=True
+                daemon=False  # Changed to False so threads are properly waited for
             )
             thread.start()
             self.threads.append(thread)
@@ -312,8 +330,8 @@ class NodeLauncher:
 
         # Wait for all threads to complete
         try:
-            for thread in self.threads:
-                thread.join()
+            while any(thread.is_alive() for thread in self.threads):
+                time.sleep(0.5)
         except KeyboardInterrupt:
             logger.info("Interrupted, shutting down...")
             self.shutdown_all()
@@ -322,13 +340,16 @@ class NodeLauncher:
         """Shutdown all running nodes."""
         logger.info(f"Shutting down {len(self.nodes)} nodes...")
 
-        # Signal shutdown
+        # Signal shutdown to all threads
         self.shutdown_event.set()
 
         # Wait for all threads to complete with timeout
         for thread in self.threads:
             if thread.is_alive():
-                thread.join(timeout=5.0)
+                logger.debug(f"Waiting for thread {thread.name} to stop...")
+                thread.join(timeout=10.0)
+                if thread.is_alive():
+                    logger.warning(f"Thread {thread.name} did not stop gracefully")
 
         logger.success("All nodes shut down")
 
