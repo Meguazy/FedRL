@@ -230,3 +230,22 @@ mlruns/
 
 # Jupyter notebook checkpoints
 .ipynb_checkpoints/
+
+# Chess database files
+# PGN files (plain text)
+*.pgn
+
+# Compressed PGN files (Lichess format)
+*.pgn.zst
+*.pgn.gz
+*.pgn.bz2
+*.pgn.xz
+
+# Database directories
+chess-federated-learning/data/databases/
+chess-federated-learning/data/lichess/
+chess-federated-learning/data/*.pgn*
+
+# Processed training data (can be regenerated)
+chess-federated-learning/data/processed/
+chess-federated-learning/data/cache/
