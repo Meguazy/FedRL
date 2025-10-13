@@ -32,12 +32,16 @@ class MoveEncoder:
     """
 
     # Direction vectors for queen-style moves (N, NE, E, SE, S, SW, W, NW)
+    # NOTE: Direction naming follows AlphaZero's array indexing convention:
+    #   Row 0 = rank 1 (white's back rank), Row 7 = rank 8 (black's back rank)
+    #   "South" = increasing row (toward rank 8), "North" = decreasing row (toward rank 1)
+    #   This is counterintuitive but standard in the literature.
     QUEEN_DIRECTIONS = [
-        (-1, 0),   # North
+        (-1, 0),   # North: row decreases (toward rank 1)
         (-1, 1),   # NorthEast
         (0, 1),    # East
         (1, 1),    # SouthEast
-        (1, 0),    # South
+        (1, 0),    # South: row increases (toward rank 8)
         (1, -1),   # SouthWest
         (0, -1),   # West
         (-1, -1),  # NorthWest
@@ -285,86 +289,86 @@ class MoveEncoder:
         return to_row, to_col, promotion_piece
 
 
-if __name__ == "__main__":
-    import sys
+# if __name__ == "__main__":
+#     import sys
 
-    log = logger.bind(module="MoveEncoder.__main__")
+#     log = logger.bind(module="MoveEncoder.__main__")
 
-    log.info("="*70)
-    log.info("MOVE ENCODER TEST")
-    log.info("="*70)
+#     log.info("="*70)
+#     log.info("MOVE ENCODER TEST")
+#     log.info("="*70)
 
-    encoder = MoveEncoder()
-    board = chess.Board()
+#     encoder = MoveEncoder()
+#     board = chess.Board()
 
-    # Test 1: Encode and decode all legal moves from starting position
-    log.info("")
-    log.info("[TEST 1] Encoding all legal moves from starting position")
-    log.info("-" * 70)
+#     # Test 1: Encode and decode all legal moves from starting position
+#     log.info("")
+#     log.info("[TEST 1] Encoding all legal moves from starting position")
+#     log.info("-" * 70)
 
-    legal_moves = list(board.legal_moves)
-    log.info(f"Found {len(legal_moves)} legal moves")
+#     legal_moves = list(board.legal_moves)
+#     log.info(f"Found {len(legal_moves)} legal moves")
 
-    for i, move in enumerate(legal_moves[:5], 1):  # Show first 5
-        index = encoder.encode(move, board)
-        decoded = encoder.decode(index, board)
+#     for i, move in enumerate(legal_moves[:5], 1):  # Show first 5
+#         index = encoder.encode(move, board)
+#         decoded = encoder.decode(index, board)
 
-        match = "✓" if decoded == move else "✗"
-        log.info(f"  {i}. {move.uci():6s} → index {index:4d} → {decoded.uci():6s} {match}")
+#         match = "✓" if decoded == move else "✗"
+#         log.info(f"  {i}. {move.uci():6s} → index {index:4d} → {decoded.uci():6s} {match}")
 
-    # Test 2: Test specific move types
-    log.info("")
-    log.info("[TEST 2] Testing specific move types")
-    log.info("-" * 70)
+#     # Test 2: Test specific move types
+#     log.info("")
+#     log.info("[TEST 2] Testing specific move types")
+#     log.info("-" * 70)
 
-    test_cases = [
-        ("e2e4", "Pawn advance 2 squares"),
-        ("g1f3", "Knight move"),
-    ]
+#     test_cases = [
+#         ("e2e4", "Pawn advance 2 squares"),
+#         ("g1f3", "Knight move"),
+#     ]
 
-    for uci, description in test_cases:
-        move = chess.Move.from_uci(uci)
-        if move in board.legal_moves:
-            index = encoder.encode(move, board)
-            decoded = encoder.decode(index, board)
-            match = "✓" if decoded == move else "✗"
-            log.info(f"  {description:25s}: {uci} → {index:4d} → {decoded.uci()} {match}")
+#     for uci, description in test_cases:
+#         move = chess.Move.from_uci(uci)
+#         if move in board.legal_moves:
+#             index = encoder.encode(move, board)
+#             decoded = encoder.decode(index, board)
+#             match = "✓" if decoded == move else "✗"
+#             log.info(f"  {description:25s}: {uci} → {index:4d} → {decoded.uci()} {match}")
 
-    # Test 3: Test promotion
-    log.info("")
-    log.info("[TEST 3] Testing pawn promotions")
-    log.info("-" * 70)
+#     # Test 3: Test promotion
+#     log.info("")
+#     log.info("[TEST 3] Testing pawn promotions")
+#     log.info("-" * 70)
 
-    # Set up a position with pawn ready to promote
-    board_promo = chess.Board("8/P7/8/8/8/8/8/K6k w - - 0 1")
-    log.info(f"Position: {board_promo.fen()}")
+#     # Set up a position with pawn ready to promote
+#     board_promo = chess.Board("8/P7/8/8/8/8/8/K6k w - - 0 1")
+#     log.info(f"Position: {board_promo.fen()}")
 
-    promo_moves = list(board_promo.legal_moves)
-    log.info(f"Legal moves: {[m.uci() for m in promo_moves]}")
+#     promo_moves = list(board_promo.legal_moves)
+#     log.info(f"Legal moves: {[m.uci() for m in promo_moves]}")
 
-    for move in promo_moves:
-        index = encoder.encode(move, board_promo)
-        decoded = encoder.decode(index, board_promo)
-        match = "✓" if decoded == move else "✗"
-        promo_piece = chess.piece_name(move.promotion) if move.promotion else "none"
-        log.info(f"  {move.uci():6s} (→{promo_piece:6s}) → index {index:4d} → {decoded.uci():6s} {match}")
+#     for move in promo_moves:
+#         index = encoder.encode(move, board_promo)
+#         decoded = encoder.decode(index, board_promo)
+#         match = "✓" if decoded == move else "✗"
+#         promo_piece = chess.piece_name(move.promotion) if move.promotion else "none"
+#         log.info(f"  {move.uci():6s} (→{promo_piece:6s}) → index {index:4d} → {decoded.uci():6s} {match}")
 
-    # Test 4: Encoding space coverage
-    log.info("")
-    log.info("[TEST 4] Encoding space coverage")
-    log.info("-" * 70)
+#     # Test 4: Encoding space coverage
+#     log.info("")
+#     log.info("[TEST 4] Encoding space coverage")
+#     log.info("-" * 70)
 
-    # Count moves by type
-    queen_moves = sum(1 for m in legal_moves if encoder.encode(m, board) % 73 < 56)
-    knight_moves = sum(1 for m in legal_moves if 56 <= encoder.encode(m, board) % 73 < 64)
+#     # Count moves by type
+#     queen_moves = sum(1 for m in legal_moves if encoder.encode(m, board) % 73 < 56)
+#     knight_moves = sum(1 for m in legal_moves if 56 <= encoder.encode(m, board) % 73 < 64)
 
-    log.info(f"  Queen-style moves: {queen_moves}")
-    log.info(f"  Knight moves: {knight_moves}")
-    log.info(f"  Total action space: 4672 (8x8x73)")
-    log.info(f"  Legal moves in starting position: {len(legal_moves)}")
-    log.info(f"  Sparsity: {100 * (1 - len(legal_moves)/4672):.1f}% of moves are illegal")
+#     log.info(f"  Queen-style moves: {queen_moves}")
+#     log.info(f"  Knight moves: {knight_moves}")
+#     log.info(f"  Total action space: 4672 (8x8x73)")
+#     log.info(f"  Legal moves in starting position: {len(legal_moves)}")
+#     log.info(f"  Sparsity: {100 * (1 - len(legal_moves)/4672):.1f}% of moves are illegal")
 
-    log.info("")
-    log.info("="*70)
-    log.success("TEST COMPLETE")
-    log.info("="*70)
+#     log.info("")
+#     log.info("="*70)
+#     log.success("TEST COMPLETE")
+#     log.info("="*70)

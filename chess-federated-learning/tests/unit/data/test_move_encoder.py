@@ -725,6 +725,292 @@ class TestMoveEncoder:
             plane = encoder._encode_queen_move(delta[0] * distance, delta[1] * distance)
             assert plane == expected_plane, f"Failed for delta {delta}, distance {distance}"
 
+    # Additional comprehensive encoding tests
+    def test_all_queen_directions_all_distances(self, encoder):
+        """Test all 8 queen directions with all 7 distances systematically."""
+        board = chess.Board("8/8/8/3Q4/8/8/8/K6k w - - 0 1")
+        
+        # Test each direction with each distance
+        # NOTE: Direction naming follows AlphaZero's convention (standard array indexing):
+        #   - Row increases (0→7) = "South" (moves toward rank 8, visually "up")
+        #   - Row decreases (7→0) = "North" (moves toward rank 1, visually "down")
+        # This is counterintuitive but matches the paper and ensures compatibility.
+        test_moves = [
+            # North (direction 0, row decreases)
+            ("d5d4", 0), ("d5d3", 1), ("d5d1", 3),  # distances 1, 2, 4
+            # NorthEast (direction 1, row decreases, col increases)
+            ("d5e4", 7), ("d5f3", 8), ("d5h1", 10),  # distances 1, 2, 4
+            # East (direction 2)
+            ("d5e5", 14), ("d5f5", 15), ("d5h5", 17),  # distances 1, 2, 4
+            # SouthEast (direction 3, row increases, col increases)
+            ("d5e6", 21), ("d5f7", 22), ("d5g8", 23),  # distances 1, 2, 3
+            # South (direction 4, row increases)
+            ("d5d6", 28), ("d5d7", 29), ("d5d8", 30),  # distances 1, 2, 3
+            # SouthWest (direction 5, row increases, col decreases)
+            ("d5c6", 35), ("d5b7", 36), ("d5a8", 37),  # distances 1, 2, 3
+            # West (direction 6)
+            ("d5c5", 42), ("d5b5", 43), ("d5a5", 44),  # distances 1, 2, 3
+            # NorthWest (direction 7, row decreases, col decreases)
+            ("d5c4", 49), ("d5b3", 50), ("d5a2", 51),  # distances 1, 2, 3
+        ]
+        
+        for uci, expected_plane in test_moves:
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            plane = index % 73
+            assert plane == expected_plane, f"Move {uci}: expected plane {expected_plane}, got {plane}"
+            
+            # Verify roundtrip
+            decoded = encoder.decode(index, board)
+            assert decoded == move, f"Roundtrip failed for {uci}"
+
+    def test_all_knight_moves_from_center(self, encoder):
+        """Test all 8 knight moves from a central position."""
+        board = chess.Board("8/8/8/3N4/8/8/8/K6k w - - 0 1")
+        
+        # All 8 knight moves from d5 (row 4, col 3) with correct planes
+        knight_moves = [
+            ("d5e3", 56),  # delta (-2,  1) → NNE → plane 56
+            ("d5f4", 57),  # delta (-1,  2) → ENE → plane 57
+            ("d5f6", 58),  # delta ( 1,  2) → ESE → plane 58
+            ("d5e7", 59),  # delta ( 2,  1) → SSE → plane 59
+            ("d5c7", 60),  # delta ( 2, -1) → SSW → plane 60
+            ("d5b6", 61),  # delta ( 1, -2) → WSW → plane 61
+            ("d5b4", 62),  # delta (-1, -2) → WNW → plane 62
+            ("d5c3", 63),  # delta (-2, -1) → NNW → plane 63
+        ]
+        
+        for uci, expected_plane in knight_moves:
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            plane = index % 73
+            assert plane == expected_plane, f"Knight move {uci}: expected plane {expected_plane}, got {plane}"
+            
+            # Verify roundtrip
+            decoded = encoder.decode(index, board)
+            assert decoded == move, f"Roundtrip failed for knight move {uci}"
+
+    def test_all_underpromotion_types_and_directions(self, encoder):
+        """Test all 9 underpromotion combinations (3 pieces × 3 directions)."""
+        # White underpromotions from a7
+        board = chess.Board("8/P7/8/8/8/8/8/K6k w - - 0 1")
+        
+        white_underpromos = [
+            ("a7a8n", 65),  # Knight forward
+            ("a7b8n", 66),  # Knight right-capture
+            ("a7a8b", 68),  # Bishop forward
+            ("a7b8b", 69),  # Bishop right-capture
+            ("a7a8r", 71),  # Rook forward
+            ("a7b8r", 72),  # Rook right-capture
+        ]
+        
+        for uci, expected_plane in white_underpromos:
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            plane = index % 73
+            assert plane == expected_plane, f"White underpromo {uci}: expected plane {expected_plane}, got {plane}"
+            decoded = encoder.decode(index, board)
+            assert decoded == move, f"Roundtrip failed for {uci}"
+        
+        # Black underpromotions from a2
+        board = chess.Board("K7/8/8/8/8/8/p7/7k b - - 0 1")
+        
+        black_underpromos = [
+            ("a2b1n", 64),  # Knight left-capture (from black's perspective, delta (-1, 1))
+            ("a2a1n", 65),  # Knight forward (delta (-1, 0))
+            ("a2b1b", 67),  # Bishop left-capture
+            ("a2a1b", 68),  # Bishop forward
+            ("a2b1r", 70),  # Rook left-capture
+            ("a2a1r", 71),  # Rook forward
+        ]
+        
+        for uci, expected_plane in black_underpromos:
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            plane = index % 73
+            assert plane == expected_plane, f"Black underpromo {uci}: expected plane {expected_plane}, got {plane}"
+            decoded = encoder.decode(index, board)
+            assert decoded == move, f"Roundtrip failed for {uci}"
+
+    def test_boundary_squares_encoding(self, encoder):
+        """Test moves from all corner and edge squares."""
+        # Test corner squares
+        corner_tests = [
+            ("8/8/8/8/8/8/8/R6k w - - 0 1", "a1a2", 0, 0),    # a1 corner
+            ("8/8/8/8/8/8/8/7R w - - 0 1", "h1h2", 0, 7),    # h1 corner
+            ("R7/8/8/8/8/8/8/7k w - - 0 1", "a8a7", 7, 0),    # a8 corner
+            ("7R/8/8/8/8/8/8/k7 w - - 0 1", "h8h7", 7, 7),    # h8 corner
+        ]
+        
+        for fen, uci, expected_row, expected_col in corner_tests:
+            board = chess.Board(fen)
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            
+            # Verify from_square encoding
+            from_row = index // (8 * 73)
+            from_col = (index % (8 * 73)) // 73
+            assert from_row == expected_row, f"Move {uci}: expected row {expected_row}, got {from_row}"
+            assert from_col == expected_col, f"Move {uci}: expected col {expected_col}, got {from_col}"
+            
+            # Verify roundtrip
+            decoded = encoder.decode(index, board)
+            assert decoded == move, f"Roundtrip failed for corner move {uci}"
+
+    def test_maximum_distance_moves(self, encoder):
+        """Test moves with maximum distance (7 squares) in each direction."""
+        max_distance_tests = [
+            # Rook from a1 to a8 (7 squares south)
+            ("8/8/8/8/8/8/8/R6k w - - 0 1", "a1a8", 34),  # South, distance 7
+            # Rook from a1 to h1 (7 squares east)
+            ("8/8/8/8/8/8/8/R6k w - - 0 1", "a1h1", 20),  # East, distance 7
+            # Bishop from a1 to h8 (7 squares SE)
+            ("8/8/8/8/8/8/8/B6k w - - 0 1", "a1h8", 27),  # SouthEast, distance 7
+            # Bishop from h1 to a8 (7 squares SW)
+            ("8/8/8/8/8/8/8/7B w - - 0 1", "h1a8", 41),  # SouthWest, distance 7
+        ]
+        
+        for fen, uci, expected_plane in max_distance_tests:
+            board = chess.Board(fen)
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            plane = index % 73
+            assert plane == expected_plane, f"Max distance move {uci}: expected plane {expected_plane}, got {plane}"
+            
+            decoded = encoder.decode(index, board)
+            assert decoded == move, f"Roundtrip failed for max distance move {uci}"
+
+    def test_pawn_special_moves(self, encoder):
+        """Test pawn-specific moves: single step, double step, captures."""
+        # Single pawn move
+        board = chess.Board()
+        move = chess.Move.from_uci("e2e3")
+        index = encoder.encode(move, board)
+        plane = index % 73
+        assert plane == 28, f"Pawn single step: expected plane 28, got {plane}"
+        
+        # Double pawn move
+        move = chess.Move.from_uci("e2e4")
+        index = encoder.encode(move, board)
+        plane = index % 73
+        assert plane == 29, f"Pawn double step: expected plane 29, got {plane}"
+        
+        # Pawn capture
+        board = chess.Board("rnbqkbnr/ppp1pppp/8/3p4/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 0 2")
+        move = chess.Move.from_uci("e4d5")
+        index = encoder.encode(move, board)
+        plane = index % 73
+        assert plane == 35, f"Pawn capture: expected plane 35 (SW), got {plane}"
+
+    def test_queen_promotion_all_directions(self, encoder):
+        """Test queen promotions in all three directions (left, forward, right)."""
+        # White queen promotions
+        board = chess.Board("3k4/P7/8/8/8/8/8/K7 w - - 0 1")
+        
+        promotions = [
+            ("a7a8q", 28),   # Forward queen promotion (South 1 square)
+        ]
+        
+        # With capture left
+        board = chess.Board("1k6/P7/8/8/8/8/8/K7 w - - 0 1")
+        move = chess.Move.from_uci("a7b8q")
+        index = encoder.encode(move, board)
+        plane = index % 73
+        assert plane == 21, f"Queen promotion capture: expected plane 21 (SE), got {plane}"
+        
+        for uci, expected_plane in promotions:
+            board = chess.Board("3k4/P7/8/8/8/8/8/K7 w - - 0 1")
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            plane = index % 73
+            assert plane == expected_plane, f"Queen promotion {uci}: expected plane {expected_plane}, got {plane}"
+
+    def test_encoding_consistency_across_positions(self, encoder):
+        """Test that the same relative move gets the same plane from different positions."""
+        # Test "move 1 square south" from different starting squares
+        positions_and_moves = [
+            ("8/8/8/8/8/8/R7/K6k w - - 0 1", "a2a3"),  # from a2
+            ("8/8/8/8/8/R7/8/K6k w - - 0 1", "a3a4"),  # from a3
+            ("8/8/8/8/R7/8/8/K6k w - - 0 1", "a4a5"),  # from a4
+            ("8/8/8/R7/8/8/8/K6k w - - 0 1", "a5a6"),  # from a5
+        ]
+        
+        planes = []
+        for fen, uci in positions_and_moves:
+            board = chess.Board(fen)
+            move = chess.Move.from_uci(uci)
+            index = encoder.encode(move, board)
+            planes.append(index % 73)
+        
+        # All should have the same plane (South, 1 square = plane 28)
+        assert all(p == planes[0] for p in planes), f"Planes inconsistent: {planes}"
+        assert planes[0] == 28, f"Expected plane 28 for 1 square south, got {planes[0]}"
+
+    def test_decode_all_plane_types(self, encoder):
+        """Test decoding works for all plane types (queen, knight, underpromotion)."""
+        # Queen-style plane
+        board = chess.Board("8/8/8/8/8/8/R7/K6k w - - 0 1")
+        index = 1 * 584 + 0 * 73 + 28  # a2, plane 28 (South 1)
+        decoded = encoder.decode(index, board)
+        assert decoded == chess.Move.from_uci("a2a3")
+        
+        # Knight plane
+        board = chess.Board("8/8/8/8/8/8/8/N6k w - - 0 1")
+        index = 0 * 584 + 0 * 73 + 58  # a1, plane 58 (knight ESE)
+        decoded = encoder.decode(index, board)
+        assert decoded == chess.Move.from_uci("a1c2")
+        
+        # Underpromotion plane
+        board = chess.Board("8/P7/8/8/8/8/8/K6k w - - 0 1")
+        index = 6 * 584 + 0 * 73 + 65  # a7, plane 65 (knight forward underpromo)
+        decoded = encoder.decode(index, board)
+        assert decoded == chess.Move.from_uci("a7a8n")
+
+    def test_index_uniqueness(self, encoder):
+        """Test that different moves always produce different indices."""
+        board = chess.Board("8/8/8/3Q4/8/8/8/K6k w - - 0 1")
+        
+        indices = {}
+        for move in board.legal_moves:
+            index = encoder.encode(move, board)
+            uci = move.uci()
+            
+            if index in indices:
+                pytest.fail(f"Index collision! Moves {uci} and {indices[index]} both encode to {index}")
+            indices[index] = uci
+        
+        # All indices should be unique
+        assert len(indices) == len(list(board.legal_moves))
+
+    def test_plane_ranges_boundaries(self, encoder):
+        """Test that planes stay within their designated ranges."""
+        board = chess.Board()
+        
+        queen_planes = []
+        knight_planes = []
+        
+        # Collect planes from starting position
+        for move in board.legal_moves:
+            index = encoder.encode(move, board)
+            plane = index % 73
+            
+            from_square = move.from_square
+            to_square = move.to_square
+            from_row, from_col = divmod(from_square, 8)
+            to_row, to_col = divmod(to_square, 8)
+            delta = (to_row - from_row, to_col - from_col)
+            
+            if delta in encoder.KNIGHT_MOVES:
+                knight_planes.append(plane)
+            else:
+                queen_planes.append(plane)
+        
+        # Verify ranges
+        if queen_planes:
+            assert all(0 <= p < 56 for p in queen_planes), f"Queen plane out of range: {queen_planes}"
+        if knight_planes:
+            assert all(56 <= p < 64 for p in knight_planes), f"Knight plane out of range: {knight_planes}"
+
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
