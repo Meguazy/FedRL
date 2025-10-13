@@ -13,7 +13,7 @@ from .local_model_repository import LocalModelRepository
 
 
 def create_experiment_tracker(
-    base_path: str | Path = "./storage",
+    base_path: str | Path = ".chess-federated-learning/storage",
     metrics_backend: str = "file",
     model_backend: str = "local",
     compression: bool = True,
