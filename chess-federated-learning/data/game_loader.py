@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from loguru import logger
 import io
 
-from eco_classifier import ECOClassifier, PlaystyleType
+from .eco_classifier import ECOClassifier, PlaystyleType
 
 
 @dataclass
@@ -270,8 +270,8 @@ class GameLoader:
         headers = game.headers
 
         return {
-            "white": headers.get("White", "Unknown"),
-            "black": headers.get("Black", "Unknown"),
+            "white": headers.get("White", "?"),
+            "black": headers.get("Black", "?"),
             "white_elo": headers.get("WhiteElo", "?"),
             "black_elo": headers.get("BlackElo", "?"),
             "result": headers.get("Result", "*"),
@@ -283,50 +283,3 @@ class GameLoader:
         }
 
 
-if __name__ == "__main__":
-    log = logger.bind(component="GameLoader.main")
-    # Example usage
-    import sys
-
-    if len(sys.argv) < 2:
-        log.error("Usage: python game_loader.py <path_to_pgn_file>")
-        sys.exit(1)
-
-    pgn_path = sys.argv[1]
-
-    # Test loading tactical games
-    log.info("Testing GameLoader...\n")
-
-    loader = GameLoader(pgn_path)
-
-    # Load 10 tactical games with rating > 2700
-    tactical_filter = GameFilter(
-        min_rating=2700,
-        playstyle="tactical",
-        max_games=10
-    )
-
-    log.info(f"Loading tactical games (min_rating=2700)...")
-    for i, game in enumerate(loader.load_games(tactical_filter), 1):
-        log.info(f"Loading game {i}...")
-        log.info(f"Game PGN:\n{game}")
-        info = loader.get_game_info(game)
-        log.info(f"\n{i}. {info['white']} ({info['white_elo']}) vs {info['black']} ({info['black_elo']})")
-        log.info(f"   Result: {info['result']}")
-        log.info(f"   Opening: {info['opening']} ({info['eco']})")
-        log.info(f"   Playstyle: {info['playstyle']}")
-
-    # Load 10 positional games
-    positional_filter = GameFilter(
-        min_rating=2700,
-        playstyle="positional",
-        max_games=10
-    )
-
-    log.info(f"\n\nLoading positional games (min_rating=2700)...")
-    for i, game in enumerate(loader.load_games(positional_filter), 1):
-        info = loader.get_game_info(game)
-        log.info(f"\n{i}. {info['white']} ({info['white_elo']}) vs {info['black']} ({info['black_elo']})")
-        log.info(f"   Result: {info['result']}")
-        log.info(f"   Opening: {info['opening']} ({info['eco']})")
-        log.info(f"   Playstyle: {info['playstyle']}")

@@ -261,36 +261,36 @@ def classify_game_by_eco(eco_code: str) -> PlaystyleType:
     return classifier.classify(eco_code)
 
 
-if __name__ == "__main__":
-    # Test the classifier
-    classifier = ECOClassifier()
+# if __name__ == "__main__":
+#     # Test the classifier
+#     classifier = ECOClassifier()
 
-    print("ECO Classifier Statistics")
-    print("=" * 50)
-    stats = classifier.get_statistics()
-    for key, value in stats.items():
-        print(f"{key}: {value}")
+#     print("ECO Classifier Statistics")
+#     print("=" * 50)
+#     stats = classifier.get_statistics()
+#     for key, value in stats.items():
+#         print(f"{key}: {value}")
 
-    print("\n\nTesting Tactical Openings:")
-    print("=" * 50)
-    tactical_codes = ["B70", "B90", "B35", "C33", "C30", "C51", "C50", "B03", "C25", "C21", "B01"]
-    for code in tactical_codes:
-        result = classifier.classify(code)
-        print(f"  {code}: {result}")
+#     print("\n\nTesting Tactical Openings:")
+#     print("=" * 50)
+#     tactical_codes = ["B70", "B90", "B35", "C33", "C30", "C51", "C50", "B03", "C25", "C21", "B01"]
+#     for code in tactical_codes:
+#         result = classifier.classify(code)
+#         print(f"  {code}: {result}")
 
-    print("\n\nTesting Positional Openings:")
-    print("=" * 50)
-    positional_codes = ["D63", "D34", "D10", "E20", "E12", "E00", "A30", "A25", "A09", "E11"]
-    for code in positional_codes:
-        result = classifier.classify(code)
-        print(f"  {code}: {result}")
+#     print("\n\nTesting Positional Openings:")
+#     print("=" * 50)
+#     positional_codes = ["D63", "D34", "D10", "E20", "E12", "E00", "A30", "A25", "A09", "E11"]
+#     for code in positional_codes:
+#         result = classifier.classify(code)
+#         print(f"  {code}: {result}")
 
-    print("\n\nTactical Opening Examples:")
-    print("=" * 50)
-    for opening in classifier.get_opening_examples("tactical"):
-        print(f"  - {opening}")
+#     print("\n\nTactical Opening Examples:")
+#     print("=" * 50)
+#     for opening in classifier.get_opening_examples("tactical"):
+#         print(f"  - {opening}")
 
-    print("\n\nPositional Opening Examples:")
-    print("=" * 50)
-    for opening in classifier.get_opening_examples("positional"):
-        print(f"  - {opening}")
+#     print("\n\nPositional Opening Examples:")
+#     print("=" * 50)
+#     for opening in classifier.get_opening_examples("positional"):
+#         print(f"  - {opening}")
