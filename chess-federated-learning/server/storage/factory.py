@@ -76,7 +76,7 @@ def create_experiment_tracker(
 
 
 def create_metrics_store(
-    base_path: str | Path = "./storage/metrics",
+    base_path: str | Path = ".chess-federated-learning/storage/metrics",
     backend: str = "file",
     compression: bool = True,
     organize_by_entity: bool = False
@@ -104,7 +104,7 @@ def create_metrics_store(
 
 
 def create_model_repository(
-    base_path: str | Path = "./storage/models",
+    base_path: str | Path = ".chess-federated-learning/storage/models",
     backend: str = "local",
     keep_last_n: Optional[int] = None,
     keep_best: bool = True,
