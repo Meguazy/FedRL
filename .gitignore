@@ -243,9 +243,12 @@ mlruns/
 
 # Database directories
 chess-federated-learning/data/databases/
+!chess-federated-learning/data/databases/.gitkeep
 chess-federated-learning/data/lichess/
 chess-federated-learning/data/*.pgn*
 
 # Processed training data (can be regenerated)
 chess-federated-learning/data/processed/
+!chess-federated-learning/data/processed/.gitkeep
 chess-federated-learning/data/cache/
+!chess-federated-learning/data/cache/.gitkeep
