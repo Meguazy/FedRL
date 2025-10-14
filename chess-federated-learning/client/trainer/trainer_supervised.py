@@ -132,16 +132,11 @@ class SupervisedTrainer(TrainerInterface):
         self.board_encoder = BoardEncoder()
         self.move_encoder = MoveEncoder()
 
-        # Model serializer - use base64 encoding for JSON compatibility
-        self.serializer = PyTorchSerializer(compression=True, encoding='base64')
+        # Model serializer
+        self.serializer = PyTorchSerializer(compression=False)
 
         # PGN database path
         self.pgn_database_path = pgn_database_path
-        
-        # Cache support (faster than reading compressed files)
-        self.use_cache = False
-        self.cache_loader = None
-        self.cache_dir = Path("chess-federated-learning/data/cache")
 
         # Model (will be created when training starts)
         self.model: Optional[AlphaZeroNet] = None
@@ -159,33 +154,12 @@ class SupervisedTrainer(TrainerInterface):
             max_positions_per_game=None,
             shuffle_games=True
         )
-        
-        # Check if cache exists and use it
-        if self.cache_dir.exists():
-            tactical_cache = self.cache_dir / "tactical_samples.pkl"
-            positional_cache = self.cache_dir / "positional_samples.pkl"
-            
-            if tactical_cache.exists() and positional_cache.exists():
-                from data.database_preprocessor import CachedSampleLoader
-                self.cache_loader = CachedSampleLoader(str(self.cache_dir))
-                self.use_cache = True
-                log.success(f"Using cached samples from {self.cache_dir}")
-            else:
-                log.info(f"Cache not found, will use direct database extraction")
-        else:
-            log.info(f"Cache directory not found, will use direct database extraction")
 
-        # Calculate unique base offset for this node to ensure data diversity within cluster
-        # Extract numeric part from node_id (e.g., "agg_001" -> 1, "pos_003" -> 3)
-        node_number = int(''.join(filter(str.isdigit, node_id)) or '0')
-        self.node_base_offset = node_number * config.games_per_round
-        
-        # Current round offset (incremented each round for diversity across rounds)
-        self.current_round = 0
-        
+        # Offset for sample extraction (incremented each round for diversity)
+        self.sample_offset = 0
+
         log = logger.bind(context=f"SupervisedTrainer.{node_id}")
         log.info(f"Initialized supervised trainer on device: {self.device}")
-        log.info(f"Node base offset: {self.node_base_offset} (ensures intra-cluster diversity)")
 
     def set_pgn_database(self, path: str):
         """Set the PGN database path."""
@@ -222,22 +196,10 @@ class SupervisedTrainer(TrainerInterface):
             self._initialize_model(initial_model_state)
             log.info(f"Model loaded with {sum(p.numel() for p in self.model.parameters()):,} parameters")
 
-            # 2. Extract training samples with unique offset for this node and round
-            # Offset = node_base_offset + (current_round * games_per_round * nodes_per_cluster)
-            # This ensures each node in a cluster gets different games, and different games each round
-            round_offset = self.current_round * self.config.games_per_round * 10  # Assume max 10 nodes per cluster
-            total_offset = self.node_base_offset + round_offset
-            
-            log.info(f"[{self.node_id}] Starting data extraction from database...")
-            log.info(f"[{self.node_id}] Offset calculation: base={self.node_base_offset}, "
-                    f"round={self.current_round}, total={total_offset}")
-            log.info(f"[{self.node_id}] Will extract {self.config.games_per_round} games from offset {total_offset}")
-            
-            extraction_start = time.time()
-            samples = await self._extract_samples(offset=total_offset)
-            extraction_time = time.time() - extraction_start
-            
-            log.success(f"[{self.node_id}] Data extraction complete: {len(samples)} samples in {extraction_time:.1f}s")
+            # 2. Extract training samples
+            log.info(f"Extracting samples from database (offset={self.sample_offset})")
+            samples = await self._extract_samples()
+            log.success(f"Extracted {len(samples)} training samples")
 
             if len(samples) == 0:
                 raise TrainingError("No training samples extracted")
@@ -254,21 +216,25 @@ class SupervisedTrainer(TrainerInterface):
             log.info(f"Created dataloader with {len(dataloader)} batches")
 
             # 4. Train
-            log.info(f"[{self.node_id}] Starting model training with {len(dataloader)} batches...")
-            training_start = time.time()
             metrics = await self._train_epoch(dataloader)
-            training_time = time.time() - training_start
-            log.success(f"[{self.node_id}] Training complete: loss={metrics['total_loss']:.4f}, time={training_time:.1f}s")
+            log.success(f"Training complete: loss={metrics['total_loss']:.4f}")
 
-            # 5. Get updated model state (keep as state_dict for aggregation)
-            # The state_dict will be serialized at the protocol layer when needed
-            updated_model_state = self.model.state_dict()
+            # 5. Get updated model state and serialize
+            model_state_dict = self.model.state_dict()
+            serialized_model = self.serializer.serialize(model_state_dict)
+
+            # Convert to dict format expected by protocol
+            updated_model_state = {
+                "serialized_data": serialized_model,
+                "framework": "pytorch",
+                "num_parameters": sum(p.numel() for p in self.model.parameters())
+            }
 
             # 6. Update statistics
             training_time = time.time() - start_time
             self.total_games_played += self.config.games_per_round
             self.total_training_time += training_time
-            self.current_round += 1  # Increment for next round's diversity
+            self.sample_offset += self.config.games_per_round
 
             # 7. Create result
             result = TrainingResult(
@@ -388,34 +354,9 @@ class SupervisedTrainer(TrainerInterface):
             lr=self.config.learning_rate
         )
 
-    async def _extract_samples(self, offset: int) -> List[TrainingSample]:
-        """
-        Extract training samples from PGN database or cache.
-        
-        Args:
-            offset: Starting position in the database for sample extraction
-        
-        Returns:
-            List of training samples
-        """
-        log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
-        
-        # Use cache if available (instant access!)
-        if self.use_cache and self.cache_loader:
-            log.info(f"Loading samples from cache (offset={offset})...")
-            loop = asyncio.get_event_loop()
-            
-            def load_from_cache():
-                return self.cache_loader.load_samples(
-                    playstyle=self.config.playstyle,
-                    num_samples=self.config.games_per_round * 70,  # ~70 samples per game average
-                    offset=offset * 70  # Convert game offset to sample offset
-                )
-            
-            return await loop.run_in_executor(None, load_from_cache)
-        
-        # Fall back to direct database extraction (slower)
-        log.info(f"Extracting from database (no cache available)...")
+    async def _extract_samples(self) -> List[TrainingSample]:
+        """Extract training samples from PGN database."""
+        # Run extraction in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
 
         def extract():
@@ -424,7 +365,7 @@ class SupervisedTrainer(TrainerInterface):
                 num_games=self.config.games_per_round,
                 playstyle=self.config.playstyle,
                 min_rating=2000,  # High-quality games
-                offset=offset
+                offset=self.sample_offset
             )
 
         return await loop.run_in_executor(None, extract)
