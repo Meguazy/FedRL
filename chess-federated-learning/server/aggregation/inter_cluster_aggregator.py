@@ -530,17 +530,21 @@ class InterClusterAggregator(BaseAggregator):
         # Get reference tensor to initialize
         first_cluster = next(iter(models))
         reference_tensor = models[first_cluster][layer_name]
+        original_dtype = reference_tensor.dtype
         
-        # Initialize aggregated tensor with zeros
-        aggregated_tensor = torch.zeros_like(reference_tensor)
+        # Initialize aggregated tensor with zeros (use float for weighted sum)
+        aggregated_tensor = torch.zeros_like(reference_tensor, dtype=torch.float32)
         
         # Compute weighted sum across clusters
         for cluster_id, model in models.items():
             weight = normalized_weights[cluster_id]
-            tensor = model[layer_name]
+            tensor = model[layer_name].float()  # Convert to float for arithmetic
             aggregated_tensor += weight * tensor
         
-        log.trace(f"Tensor {layer_name} aggregation complete (shape={aggregated_tensor.shape})")
+        # Cast back to original dtype (important for integer tensors)
+        aggregated_tensor = aggregated_tensor.to(original_dtype)
+        
+        log.trace(f"Tensor {layer_name} aggregation complete (shape={aggregated_tensor.shape}, dtype={original_dtype})")
         return aggregated_tensor
         
     def _aggregate_2d_shared_layer(

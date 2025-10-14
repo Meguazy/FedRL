@@ -331,17 +331,21 @@ class IntraClusterAggregator(BaseAggregator):
         # Get reference tensor to initialize
         first_node = next(iter(models))
         reference_tensor = models[first_node][key]
+        original_dtype = reference_tensor.dtype
         
-        # Initialize aggregated tensor with zeros (same shape and dtype)
-        aggregated_tensor = torch.zeros_like(reference_tensor)
+        # Initialize aggregated tensor with zeros (use float for weighted sum)
+        aggregated_tensor = torch.zeros_like(reference_tensor, dtype=torch.float32)
         
         # Compute weighted sum
         for node_id, model in models.items():
             weight = normalized_weights[node_id]
-            param_tensor = model[key]
+            param_tensor = model[key].float()  # Convert to float for arithmetic
             aggregated_tensor += weight * param_tensor
         
-        log.trace(f"Tensor {key} aggregation complete (shape={aggregated_tensor.shape})")
+        # Cast back to original dtype (important for integer tensors like num_batches_tracked)
+        aggregated_tensor = aggregated_tensor.to(original_dtype)
+        
+        log.trace(f"Tensor {key} aggregation complete (shape={aggregated_tensor.shape}, dtype={original_dtype})")
         return aggregated_tensor
 
     def _aggregate_2d_parameter(self, key: str, models: Dict[str, Any],
