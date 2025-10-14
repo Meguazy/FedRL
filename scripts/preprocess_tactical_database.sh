@@ -1,44 +1,100 @@
 #!/bin/bash
-# Preprocess database into fast cache files
+#
+# Preprocess tactical games from Lichess database into Redis cache.
+#
+# This script indexes games with tactical playstyle (aggressive openings, sharp positions)
+# into Redis for fast loading during training.
+#
+# Usage:
+#   ./scripts/preprocess_tactical_database.sh [database_file] [min_rating]
+#
+# Examples:
+#   ./scripts/preprocess_tactical_database.sh                                # Use defaults
+#   ./scripts/preprocess_tactical_database.sh lichess_db_2024-01.pgn.zst    # Specific database
+#   ./scripts/preprocess_tactical_database.sh lichess_db_2024-01.pgn.zst 2200  # Custom rating
+#
 
-echo "========================================"
-echo "Database Cache Preprocessor"
-echo "========================================"
+set -e  # Exit on error
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Default values
+DEFAULT_DATABASE="chess-federated-learning/data/databases/lichess_db_standard_rated_2024-01.pgn.zst"
+DEFAULT_MIN_RATING=2000
+PLAYSTYLE="tactical"
+
+# Parse arguments
+DATABASE="${1:-$DEFAULT_DATABASE}"
+MIN_RATING="${2:-$DEFAULT_MIN_RATING}"
+
+echo -e "${BLUE}=================================================${NC}"
+echo -e "${BLUE}    TACTICAL GAMES PREPROCESSING${NC}"
+echo -e "${BLUE}=================================================${NC}"
 echo ""
-echo "This will preprocess your PGN database into cache files."
-echo "First run: Takes ~30-60 minutes (one time)"
-echo "Subsequent training: INSTANT sample access!"
+echo -e "Database:    ${GREEN}${DATABASE}${NC}"
+echo -e "Playstyle:   ${GREEN}${PLAYSTYLE}${NC}"
+echo -e "Min Rating:  ${GREEN}${MIN_RATING}${NC}"
 echo ""
 
-# Check if database exists
-DB_PATH="chess-federated-learning/data/databases/lichess_db_standard_rated_2024-01.pgn.zst"
-if [ ! -f "$DB_PATH" ]; then
-    echo "ERROR: Database not found at $DB_PATH"
-    echo "Please download it first from https://database.lichess.org/"
+# Check if database file exists
+if [ ! -f "$DATABASE" ]; then
+    echo -e "${RED}✗ Error: Database file not found: ${DATABASE}${NC}"
+    echo ""
+    echo "Available databases:"
+    ls -lh chess-federated-learning/data/databases/*.pgn.zst 2>/dev/null || echo "  No databases found"
+    echo ""
     exit 1
 fi
 
-echo "Database found: $DB_PATH"
-echo "Cache directory: chess-federated-learning/data/cache/"
+# Check if Redis is running
+echo -e "${YELLOW}Checking Redis connection...${NC}"
+if docker compose ps redis 2>/dev/null | grep -q "Up"; then
+    echo -e "${GREEN}✓ Redis is running${NC}"
+else
+    echo -e "${RED}✗ Redis is not running${NC}"
+    echo ""
+    echo "Please start Redis first:"
+    echo -e "  ${BLUE}docker compose up -d redis${NC}"
+    echo ""
+    exit 1
+fi
+
+# Run indexing script
 echo ""
-echo "Starting preprocessing..."
+echo -e "${YELLOW}Starting indexing process...${NC}"
+echo -e "${YELLOW}This may take several minutes for large databases.${NC}"
 echo ""
 
-# Run preprocessor
-uv run python -m chess-federated-learning.data.database_preprocessor \
-    --input "$DB_PATH" \
-    --output chess-federated-learning/data/cache \
-    --min-rating 2000 \
-    --playstyle tactical
+uv run scripts/index_games_to_redis.py \
+    --action index \
+    --input "$DATABASE" \
+    --playstyle "$PLAYSTYLE" \
+    --min-rating "$MIN_RATING" \
+    --redis-port 6381
 
-echo ""
-echo "========================================"
-echo "Preprocessing complete!"
-echo "========================================"
-echo ""
-echo "Next steps:"
-echo "  1. Start the server: uv run python chess-federated-learning/server/main.py"
-echo "  2. Start the nodes: uv run python chess-federated-learning/scripts/start_all_nodes.py --config-dir chess-federated-learning/config/nodes"
-echo ""
-echo "Extraction will now be INSTANT (no more waiting!)"
-echo ""
+EXIT_CODE=$?
+
+if [ $EXIT_CODE -eq 0 ]; then
+    echo ""
+    echo -e "${GREEN}=================================================${NC}"
+    echo -e "${GREEN}    ✓ TACTICAL PREPROCESSING COMPLETE${NC}"
+    echo -e "${GREEN}=================================================${NC}"
+    echo ""
+    
+    # Show cache statistics
+    echo -e "${BLUE}Cache Statistics:${NC}"
+    uv run scripts/index_games_to_redis.py --action stats --redis-port 6381
+    
+else
+    echo ""
+    echo -e "${RED}=================================================${NC}"
+    echo -e "${RED}    ✗ PREPROCESSING FAILED${NC}"
+    echo -e "${RED}=================================================${NC}"
+    echo ""
+    exit $EXIT_CODE
+fi
