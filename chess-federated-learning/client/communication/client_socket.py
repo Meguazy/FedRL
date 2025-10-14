@@ -639,20 +639,26 @@ class FederatedLearningClient:
         self.state = ClientState.UPLOADING
         
         try:
-            # Serialize model state for network transmission
-            # Import here to avoid circular dependency
-            # Use base64 encoding for JSON compatibility over WebSocket
-            from common.model_serialization import PyTorchSerializer
-            serializer = PyTorchSerializer(compression=True, encoding='base64')
-            serialized_data = serializer.serialize(model_state)
-            
-            # Package serialized model with metadata
-            packaged_model_state = {
-                "serialized_data": serialized_data,
-                "framework": "pytorch",
-                "compression": True,
-                "encoding": "base64"
-            }
+            # Check if model_state is already packaged (has 'serialized_data' key)
+            # If so, use it directly. Otherwise, serialize it.
+            if isinstance(model_state, dict) and "serialized_data" in model_state:
+                log.debug("Model state is already serialized, using as-is")
+                packaged_model_state = model_state
+            else:
+                # Serialize model state for network transmission
+                # Import here to avoid circular dependency
+                # Use base64 encoding for JSON compatibility over WebSocket
+                from common.model_serialization import PyTorchSerializer
+                serializer = PyTorchSerializer(compression=True, encoding='base64')
+                serialized_data = serializer.serialize(model_state)
+                
+                # Package serialized model with metadata
+                packaged_model_state = {
+                    "serialized_data": serialized_data,
+                    "framework": "pytorch",
+                    "compression": True,
+                    "encoding": "base64"
+                }
             
             # Create model update message
             update_msg = MessageFactory.create_model_update(

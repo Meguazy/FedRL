@@ -500,6 +500,10 @@ class TrainingOrchestrator:
             
             # Deserialize model state if it's packaged
             model_state = update["model_state"]
+            log.info(f"🔍 RAW model from {node_id}: type={type(model_state)}")
+            if isinstance(model_state, dict):
+                log.info(f"   Keys in model_state: {list(model_state.keys())}")
+                log.info(f"   Has 'serialized_data' key: {'serialized_data' in model_state}")
             log.debug(f"Processing model from {node_id}: type={type(model_state)}, has_serialized_data={'serialized_data' in model_state if isinstance(model_state, dict) else False}")
             
             if isinstance(model_state, dict) and "serialized_data" in model_state:
