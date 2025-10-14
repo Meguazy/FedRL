@@ -35,6 +35,7 @@ class TrainingSample:
         move_number: Which move in the game this is
         eco_code: ECO opening code of the game
         playstyle: Tactical or positional classification
+        history: List of previous board positions (up to 7 positions before current)
     """
     board: chess.Board
     move_played: chess.Move
@@ -42,6 +43,7 @@ class TrainingSample:
     move_number: int
     eco_code: str
     playstyle: PlaystyleType
+    history: Optional[List[chess.Board]] = None
     
     
 @dataclass
@@ -123,17 +125,11 @@ class SampleExtractor:
             min_rating=min_rating,
             max_rating=max_rating,
             playstyle=playstyle,
-            max_games=num_games + offset
+            max_games=num_games
         )
         
-        # Load games
-        games = list(self.game_loader.load_games(game_filter))
-        
-        # Apply offset to get different games each round
-        if offset > 0:
-            games = games[offset:offset + num_games]
-        else:
-            games = games[:num_games]
+        # Load games with offset applied during loading (efficient for compressed files)
+        games = list(self.game_loader.load_games(game_filter, offset=offset))
             
         # Shuffle games for diversity
         if self.config.shuffle_games:
@@ -141,14 +137,15 @@ class SampleExtractor:
             
         # Extract samples from each game
         all_samples = []
+        total_games = len(games)
         for i, game in enumerate(games):
-            log.info(f"Extracting samples from game {i+1}/{len(games)}")
             try:
                 samples = self._extract_samples_from_game(game)
                 all_samples.extend(samples)
                 
-                if i % 10 == 0:
-                    log.info(f"Extracted {len(all_samples)} samples so far")
+                # Log progress every 10 games
+                if (i + 1) % 10 == 0 or (i + 1) == total_games:
+                    log.info(f"Progress: {i+1}/{total_games} games processed, {len(all_samples)} samples extracted")
                     
             except Exception as e:
                 log.warning(f"Error extracting samples from game {i+1}: {e}")
@@ -178,33 +175,41 @@ class SampleExtractor:
         # Parse game outcome
         outcome_white, outcome_black = self._parse_game_result(result)
         
-        # Traverse game moves
+        # Traverse game moves and build history
         board = game.board()
         move_number = 0
-        
+        board_history = []  # Track board positions for history
+
         for node in game.mainline():
             move_number += 1
             move = node.move
-            
-            # Skip opening moves
+
+            # Skip opening moves (but still add to history)
             if move_number <= self.config.skip_opening_moves:
+                board_history.append(board.copy())
                 board.push(move)
                 continue
-            
+
             # Skip endgame positions
             if self._count_pieces(board) <= self.config.skip_endgame_moves:
+                board_history.append(board.copy())
                 board.push(move)
                 continue
-            
+
             # Apply sampling rate
             if self.config.sample_rate < 1.0:
                if random.random() > self.config.sample_rate:
+                   board_history.append(board.copy())
                    board.push(move)
                    continue
-               
+
             # Determine game outcome from current player's perspective
             current_player = board.turn
             game_outcome = outcome_white if current_player == chess.WHITE else outcome_black
+
+            # Get history (up to last 7 positions before current)
+            # AlphaZero uses 8 time steps total: current + 7 previous
+            history = board_history[-7:] if len(board_history) > 0 else []
 
             # Create sample with board state BEFORE move is played
             # (this is the position where the player needs to choose the move)
@@ -214,9 +219,13 @@ class SampleExtractor:
                 game_outcome=game_outcome,
                 move_number=move_number,
                 eco_code=eco_code,
-                playstyle=playstyle
+                playstyle=playstyle,
+                history=history.copy() if history else None
             )
             samples.append(sample)
+
+            # Add current board to history before pushing move
+            board_history.append(board.copy())
 
             # Now push the move to advance the board
             board.push(move)

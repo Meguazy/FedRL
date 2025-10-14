@@ -67,12 +67,13 @@ class GameLoader:
 
         log.info(f"GameLoader initialized with: {self.pgn_path}")
 
-    def load_games(self, game_filter: Optional[GameFilter] = None) -> Iterator[chess.pgn.Game]:
+    def load_games(self, game_filter: Optional[GameFilter] = None, offset: int = 0) -> Iterator[chess.pgn.Game]:
         """
         Load games from PGN file with optional filtering.
 
         Args:
             game_filter: Filter criteria for games (None = load all)
+            offset: Skip first N matching games (for pagination/diversity)
 
         Yields:
             chess.pgn.Game objects that match the filter
@@ -80,17 +81,18 @@ class GameLoader:
         Example:
             >>> loader = GameLoader("games.pgn")
             >>> filter = GameFilter(min_rating=2000, playstyle="tactical")
-            >>> games = list(loader.load_games(filter))
-            >>> print(f"Loaded {len(games)} tactical games")
+            >>> games = list(loader.load_games(filter, offset=1000))
+            >>> print(f"Loaded {len(games)} tactical games starting from offset 1000")
         """
         log = logger.bind(component="GameLoader.load_games")
         if game_filter is None:
             game_filter = GameFilter()
 
-        log.info(f"Loading games with filter: {game_filter}")
+        log.info(f"Loading games with filter: {game_filter}, offset: {offset}")
 
         games_loaded = 0
         games_filtered = 0
+        games_skipped = 0
 
         # Open PGN file (handle compressed formats)
         pgn_file = self._open_pgn_file()
@@ -109,6 +111,14 @@ class GameLoader:
                 if not self._passes_filter(game, game_filter):
                     continue
 
+                # Skip games if we haven't reached offset yet
+                if games_skipped < offset:
+                    games_skipped += 1
+                    # Log skip progress every 100 games
+                    if games_skipped % 100 == 0:
+                        logger.debug(f"Skipping to offset: {games_skipped}/{offset}")
+                    continue
+
                 games_loaded += 1
                 yield game
 
@@ -119,12 +129,12 @@ class GameLoader:
 
                 # Log progress every 1000 games checked
                 if games_filtered % 1000 == 0:
-                    logger.debug(f"Checked {games_filtered} games, loaded {games_loaded}")
+                    logger.debug(f"Checked {games_filtered} games, skipped {games_skipped}, loaded {games_loaded}")
 
         finally:
             pgn_file.close()
 
-        logger.success(f"Loaded {games_loaded} games (filtered {games_filtered} total)")
+        logger.success(f"Loaded {games_loaded} games (checked {games_filtered} total, skipped {games_skipped} for offset)")
 
     def _open_pgn_file(self):
         """
