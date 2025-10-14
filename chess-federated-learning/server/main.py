@@ -482,9 +482,13 @@ class TrainingOrchestrator:
         """
         log = logger.bind(context="TrainingOrchestrator._aggregate_intra_cluster")
 
-        # Group updates by cluster
+        # Group updates by cluster and deserialize model states
         cluster_updates: Dict[str, Dict[str, Any]] = {}
         cluster_metrics: Dict[str, Dict[str, Any]] = {}
+
+        # Import serializer for deserialization
+        from common.model_serialization import PyTorchSerializer
+        serializer = PyTorchSerializer(compression=True, encoding='base64')
 
         for node_id, update in updates.items():
             cluster_id = update["cluster_id"]
@@ -492,8 +496,15 @@ class TrainingOrchestrator:
             if cluster_id not in cluster_updates:
                 cluster_updates[cluster_id] = {}
                 cluster_metrics[cluster_id] = {}
-                
-            cluster_updates[cluster_id][node_id] = update["model_state"]
+            
+            # Deserialize model state if it's packaged
+            model_state = update["model_state"]
+            if isinstance(model_state, dict) and "serialized_data" in model_state:
+                # Deserialize the model back to state_dict for aggregation
+                model_state = serializer.deserialize(model_state["serialized_data"])
+                log.debug(f"Deserialized model from {node_id}")
+            
+            cluster_updates[cluster_id][node_id] = model_state
             cluster_metrics[cluster_id][node_id] = {
                 "samples": update["samples"],
                 "loss": update.get("loss", 0.0)
@@ -655,12 +666,25 @@ class TrainingOrchestrator:
         """
         log = logger.bind(context="TrainingOrchestrator._broadcast_cluster_models")
         
+        # Import serializer for serialization
+        from common.model_serialization import PyTorchSerializer
+        serializer = PyTorchSerializer(compression=True, encoding='base64')
+        
         for cluster_id, model_state in models.items():
+            # Serialize model state for network transmission
+            serialized_data = serializer.serialize(model_state)
+            packaged_model_state = {
+                "serialized_data": serialized_data,
+                "framework": "pytorch",
+                "compression": True,
+                "encoding": "base64"
+            }
+            
             # Create CLUSTER_MODEL message
             message = MessageFactory.create_cluster_model(
                 node_id="server",
                 cluster_id=cluster_id,
-                model_state=model_state,
+                model_state=packaged_model_state,
                 round_num=round_num
             )
             

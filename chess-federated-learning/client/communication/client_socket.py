@@ -628,7 +628,7 @@ class FederatedLearningClient:
         Send model update to server after local training.
         
         Args:
-            model_state: Trained model weights
+            model_state: Trained model weights (raw state_dict with tensors)
             samples: Number of training samples used
             loss: Training loss achieved
             round_num: Current training round
@@ -639,9 +639,23 @@ class FederatedLearningClient:
         self.state = ClientState.UPLOADING
         
         try:
+            # Serialize model state for network transmission
+            # Import here to avoid circular dependency
+            from common.model_serialization import PyTorchSerializer
+            serializer = PyTorchSerializer(compression=True, encoding='base64')
+            serialized_data = serializer.serialize(model_state)
+            
+            # Package serialized model with metadata
+            packaged_model_state = {
+                "serialized_data": serialized_data,
+                "framework": "pytorch",
+                "compression": True,
+                "encoding": "base64"
+            }
+            
             # Create model update message
             update_msg = MessageFactory.create_model_update(
-                self.node_id, self.cluster_id, model_state, samples, loss, round_num
+                self.node_id, self.cluster_id, packaged_model_state, samples, loss, round_num
             )
             
             # Send to server

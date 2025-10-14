@@ -362,6 +362,13 @@ class FederatedLearningNode:
         
         log.info(f"Updating model state for round {round_num}")
         
+        # Deserialize model state if it's packaged
+        if isinstance(model_state, dict) and "serialized_data" in model_state:
+            from common.model_serialization import PyTorchSerializer
+            serializer = PyTorchSerializer(compression=True, encoding='base64')
+            model_state = serializer.deserialize(model_state["serialized_data"])
+            log.debug("Deserialized cluster model from server")
+        
         # Update current model state
         self.current_model_state = model_state
         self.lifecycle_state = NodeLifecycleState.IDLE
