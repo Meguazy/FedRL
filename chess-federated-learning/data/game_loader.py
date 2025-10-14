@@ -14,6 +14,14 @@ import io
 
 from .eco_classifier import ECOClassifier, PlaystyleType
 
+# Try to import Redis cache (optional dependency)
+try:
+    from .redis_game_cache import RedisGameCache
+    REDIS_AVAILABLE = True
+except ImportError:
+    REDIS_AVAILABLE = False
+    logger.warning("Redis cache not available - will load games from PGN files only")
+
 
 @dataclass
 class GameFilter:
@@ -50,26 +58,44 @@ class GameLoader:
         ...     print(game.headers["White"], "vs", game.headers["Black"])
     """
 
-    def __init__(self, pgn_path: str):
+    def __init__(self, pgn_path: str, use_redis: bool = True, redis_host: str = "localhost", redis_port: int = 6381):
         """
         Initialize the game loader.
 
         Args:
             pgn_path: Path to PGN file or compressed PGN file (.pgn, .pgn.zst, .pgn.gz)
+            use_redis: Whether to attempt using Redis cache (default: True)
+            redis_host: Redis server host (default: localhost)
+            redis_port: Redis server port (default: 6381)
         """
         log = logger.bind(component="GameLoader.__init__")
         self.pgn_path = Path(pgn_path)
         self.eco_classifier = ECOClassifier()
+        self.redis_cache = None
 
         if not self.pgn_path.exists():
             log.error(f"PGN file not found: {pgn_path}")
             raise FileNotFoundError(f"PGN file not found: {pgn_path}")
+
+        # Try to connect to Redis cache if enabled
+        if use_redis and REDIS_AVAILABLE:
+            try:
+                self.redis_cache = RedisGameCache(host=redis_host, port=redis_port)
+                log.info(f"✓ Connected to Redis cache at {redis_host}:{redis_port}")
+            except Exception as e:
+                log.warning(f"Could not connect to Redis cache: {e}")
+                log.warning("Will load games from PGN file instead")
+                self.redis_cache = None
 
         log.info(f"GameLoader initialized with: {self.pgn_path}")
 
     def load_games(self, game_filter: Optional[GameFilter] = None, offset: int = 0) -> Iterator[chess.pgn.Game]:
         """
         Load games from PGN file with optional filtering.
+        
+        If Redis cache is available and contains games for the requested playstyle,
+        games will be loaded from Redis (much faster). Otherwise, falls back to
+        reading and decompressing the PGN file.
 
         Args:
             game_filter: Filter criteria for games (None = load all)
@@ -90,13 +116,65 @@ class GameLoader:
 
         log.info(f"Loading games with filter: {game_filter}, offset: {offset}")
 
+        # Try to use Redis cache if available and playstyle is specified
+        if self.redis_cache and game_filter.playstyle:
+            try:
+                total_cached = self.redis_cache.get_total_games(game_filter.playstyle)
+                if total_cached > 0:
+                    log.info(f"✓ Loading from Redis cache ({total_cached:,} {game_filter.playstyle} games available)")
+                    yield from self._load_from_redis(game_filter, offset)
+                    return
+                else:
+                    log.info(f"Redis cache empty for playstyle '{game_filter.playstyle}', loading from PGN file")
+            except Exception as e:
+                log.warning(f"Error accessing Redis cache: {e}")
+                log.warning("Falling back to PGN file loading")
+
+        # Fallback: load from PGN file
+        log.info("Loading games from PGN file")
+        yield from self._load_from_file(game_filter, offset)
+
+    def _load_from_redis(self, game_filter: GameFilter, offset: int) -> Iterator[chess.pgn.Game]:
+        """
+        Load games from Redis cache.
+
+        Args:
+            game_filter: Filter criteria (only max_games is used, other filters already applied during indexing)
+            offset: Starting index in Redis
+
+        Yields:
+            chess.pgn.Game objects from Redis
+        """
+        count = game_filter.max_games if game_filter.max_games else None
+        
+        games_loaded = 0
+        for game in self.redis_cache.get_games(game_filter.playstyle, offset, count):
+            games_loaded += 1
+            yield game
+            
+            if games_loaded % 1000 == 0:
+                logger.debug(f"Loaded {games_loaded:,} games from Redis")
+
+        logger.success(f"Loaded {games_loaded:,} games from Redis cache")
+
+    def _load_from_file(self, game_filter: GameFilter, offset: int) -> Iterator[chess.pgn.Game]:
+        """
+        Load games from PGN file (fallback method).
+
+        Args:
+            game_filter: Filter criteria for games
+            offset: Skip first N matching games
+
+        Yields:
+            chess.pgn.Game objects that match the filter
+        """
         games_loaded = 0
         games_filtered = 0
         games_skipped = 0
 
         # Open PGN file (handle compressed formats)
         pgn_file = self._open_pgn_file()
-        log.info(f"Opened PGN file: {pgn_file}")
+        logger.info(f"Opened PGN file: {pgn_file}")
 
         try:
             while True:
