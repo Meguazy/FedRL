@@ -1,5 +1,6 @@
 from loguru import logger
 from .trainer_dummy import DummyTrainer
+from .trainer_supervised import SupervisedTrainer
 from .trainer_interface import TrainerInterface, TrainingConfig
 
 
@@ -26,8 +27,7 @@ def create_trainer(trainer_type: str, node_id: str, cluster_id: str,
     if trainer_type == "dummy":
         return DummyTrainer(node_id, cluster_id, config)
     elif trainer_type == "supervised":
-        # TODO: Implement SupervisedTrainer
-        raise NotImplementedError("SupervisedTrainer not yet implemented")
+        return SupervisedTrainer(node_id, cluster_id, config)
     elif trainer_type == "alphazero":
         # TODO: Implement AlphaZeroTrainer
         raise NotImplementedError("AlphaZeroTrainer not yet implemented")

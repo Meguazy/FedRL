@@ -220,9 +220,11 @@ class AlphaZeroNet(nn.Module):
         self.input_bn = nn.BatchNorm2d(channels)
 
         # Residual tower (19 blocks × 2 conv layers each)
-        self.res_blocks = nn.ModuleList([
-            ResidualBlock(channels) for _ in range(num_res_blocks)
-        ])
+        # Use nn.ModuleDict to match naming convention: residual.0, residual.1, etc.
+        # This is important for federated learning aggregation logic
+        self.residual = nn.ModuleDict({
+            str(i): ResidualBlock(channels) for i in range(num_res_blocks)
+        })
 
         # Policy and value heads
         self.policy_head = PolicyHead(channels)
@@ -245,9 +247,9 @@ class AlphaZeroNet(nn.Module):
         out = self.input_bn(out)
         out = F.relu(out)
 
-        # Residual tower
-        for res_block in self.res_blocks:
-            out = res_block(out)
+        # Residual tower - iterate through ModuleDict in order
+        for i in sorted(self.residual.keys(), key=int):
+            out = self.residual[i](out)
 
         # Dual heads
         policy = self.policy_head(out)
