@@ -251,7 +251,9 @@ class PyTorchSerializer(ModelSerializer):
         
         # Step 3: Reconstruct state_dict using torch.load
         buffer = io.BytesIO(decoded)
-        state_dict = torch.load(buffer, map_location='cpu')  # Load to CPU by default
+        # Use weights_only=False for compatibility with state_dicts (PyTorch 2.6+)
+        # This is safe in our federated learning context where nodes are trusted
+        state_dict = torch.load(buffer, map_location='cpu', weights_only=False)
         
         log.info(f"Deserialization complete, recovered {len(state_dict)} layers")
         log.debug(f"Layer names: {list(state_dict.keys())[:5]}...")  # Log first 5 layer names
