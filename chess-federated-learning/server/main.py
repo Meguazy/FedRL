@@ -487,9 +487,9 @@ class TrainingOrchestrator:
         cluster_metrics: Dict[str, Dict[str, Any]] = {}
 
         # Import serializer for deserialization
-        # IMPORTANT: Must match client serialization settings (no compression, binary)
+        # Use base64 encoding for JSON compatibility over WebSocket
         from common.model_serialization import PyTorchSerializer
-        serializer = PyTorchSerializer(compression=False, encoding='binary')
+        serializer = PyTorchSerializer(compression=True, encoding='base64')
 
         for node_id, update in updates.items():
             cluster_id = update["cluster_id"]
@@ -675,9 +675,9 @@ class TrainingOrchestrator:
         log = logger.bind(context="TrainingOrchestrator._broadcast_cluster_models")
         
         # Import serializer for serialization
-        # IMPORTANT: Must match client deserialization settings (no compression, binary)
+        # Use base64 encoding for JSON compatibility over WebSocket
         from common.model_serialization import PyTorchSerializer
-        serializer = PyTorchSerializer(compression=False, encoding='binary')
+        serializer = PyTorchSerializer(compression=True, encoding='base64')
         
         for cluster_id, model_state in models.items():
             # Serialize model state for network transmission

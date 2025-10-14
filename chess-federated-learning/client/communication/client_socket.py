@@ -641,17 +641,17 @@ class FederatedLearningClient:
         try:
             # Serialize model state for network transmission
             # Import here to avoid circular dependency
-            # IMPORTANT: Must match server deserialization settings
+            # Use base64 encoding for JSON compatibility over WebSocket
             from common.model_serialization import PyTorchSerializer
-            serializer = PyTorchSerializer(compression=False, encoding='binary')
+            serializer = PyTorchSerializer(compression=True, encoding='base64')
             serialized_data = serializer.serialize(model_state)
             
             # Package serialized model with metadata
             packaged_model_state = {
                 "serialized_data": serialized_data,
                 "framework": "pytorch",
-                "compression": False,
-                "encoding": "binary"
+                "compression": True,
+                "encoding": "base64"
             }
             
             # Create model update message
