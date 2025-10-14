@@ -132,8 +132,8 @@ class SupervisedTrainer(TrainerInterface):
         self.board_encoder = BoardEncoder()
         self.move_encoder = MoveEncoder()
 
-        # Model serializer
-        self.serializer = PyTorchSerializer(compression=False)
+        # Model serializer - use base64 encoding for JSON/WebSocket compatibility
+        self.serializer = PyTorchSerializer(compression=True, encoding='base64')
 
         # PGN database path
         self.pgn_database_path = pgn_database_path
