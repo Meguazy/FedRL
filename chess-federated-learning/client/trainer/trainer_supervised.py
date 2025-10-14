@@ -137,6 +137,11 @@ class SupervisedTrainer(TrainerInterface):
 
         # PGN database path
         self.pgn_database_path = pgn_database_path
+        
+        # Cache support (faster than reading compressed files)
+        self.use_cache = False
+        self.cache_loader = None
+        self.cache_dir = Path("chess-federated-learning/data/cache")
 
         # Model (will be created when training starts)
         self.model: Optional[AlphaZeroNet] = None
@@ -154,6 +159,21 @@ class SupervisedTrainer(TrainerInterface):
             max_positions_per_game=None,
             shuffle_games=True
         )
+        
+        # Check if cache exists and use it
+        if self.cache_dir.exists():
+            tactical_cache = self.cache_dir / "tactical_samples.pkl"
+            positional_cache = self.cache_dir / "positional_samples.pkl"
+            
+            if tactical_cache.exists() and positional_cache.exists():
+                from data.database_preprocessor import CachedSampleLoader
+                self.cache_loader = CachedSampleLoader(str(self.cache_dir))
+                self.use_cache = True
+                log.success(f"Using cached samples from {self.cache_dir}")
+            else:
+                log.info(f"Cache not found, will use direct database extraction")
+        else:
+            log.info(f"Cache directory not found, will use direct database extraction")
 
         # Calculate unique base offset for this node to ensure data diversity within cluster
         # Extract numeric part from node_id (e.g., "agg_001" -> 1, "pos_003" -> 3)
@@ -370,7 +390,7 @@ class SupervisedTrainer(TrainerInterface):
 
     async def _extract_samples(self, offset: int) -> List[TrainingSample]:
         """
-        Extract training samples from PGN database.
+        Extract training samples from PGN database or cache.
         
         Args:
             offset: Starting position in the database for sample extraction
@@ -378,7 +398,24 @@ class SupervisedTrainer(TrainerInterface):
         Returns:
             List of training samples
         """
-        # Run extraction in thread pool to avoid blocking
+        log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
+        
+        # Use cache if available (instant access!)
+        if self.use_cache and self.cache_loader:
+            log.info(f"Loading samples from cache (offset={offset})...")
+            loop = asyncio.get_event_loop()
+            
+            def load_from_cache():
+                return self.cache_loader.load_samples(
+                    playstyle=self.config.playstyle,
+                    num_samples=self.config.games_per_round * 70,  # ~70 samples per game average
+                    offset=offset * 70  # Convert game offset to sample offset
+                )
+            
+            return await loop.run_in_executor(None, load_from_cache)
+        
+        # Fall back to direct database extraction (slower)
+        log.info(f"Extracting from database (no cache available)...")
         loop = asyncio.get_event_loop()
 
         def extract():
