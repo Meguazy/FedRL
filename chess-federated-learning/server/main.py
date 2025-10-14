@@ -500,9 +500,16 @@ class TrainingOrchestrator:
             # Deserialize model state if it's packaged
             model_state = update["model_state"]
             if isinstance(model_state, dict) and "serialized_data" in model_state:
-                # Deserialize the model back to state_dict for aggregation
-                model_state = serializer.deserialize(model_state["serialized_data"])
-                log.debug(f"Deserialized model from {node_id}")
+                try:
+                    # Deserialize the model back to state_dict for aggregation
+                    deserialized = serializer.deserialize(model_state["serialized_data"])
+                    log.debug(f"Deserialized model from {node_id}: {type(deserialized)}, keys: {list(deserialized.keys())[:5] if isinstance(deserialized, dict) else 'N/A'}")
+                    model_state = deserialized
+                except Exception as e:
+                    log.error(f"Failed to deserialize model from {node_id}: {e}")
+                    raise
+            else:
+                log.debug(f"Model from {node_id} is already deserialized or has unexpected structure: {type(model_state)}")
             
             cluster_updates[cluster_id][node_id] = model_state
             cluster_metrics[cluster_id][node_id] = {
