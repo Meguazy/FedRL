@@ -227,6 +227,17 @@ class NodeLauncher:
             config=training_config
         )
 
+        # Configure supervised trainer if applicable
+        if config.trainer_type == "supervised":
+            supervised_config = config.config.get("supervised", {})
+            pgn_database_path = supervised_config.get("pgn_database_path")
+
+            if pgn_database_path:
+                trainer.set_pgn_database(pgn_database_path)
+                logger.info(f"[{config.node_id}] Configured supervised trainer with PGN database: {pgn_database_path}")
+            else:
+                logger.warning(f"[{config.node_id}] Supervised trainer configured but no PGN database path specified")
+
         # Create node
         node = FederatedLearningNode(
             node_id=config.node_id,
@@ -239,58 +250,98 @@ class NodeLauncher:
 
         return node
 
-    def run_node_in_thread(self, node: FederatedLearningNode, index: int):
+    def setup_node_logging(self, config: NodeConfig):
+        """
+        Set up logging for a specific node.
+
+        Args:
+            config: Node configuration with logging settings
+        """
+        log_level = config.logging.get("level", "INFO")
+        log_file = config.logging.get("file")
+        log_format = config.logging.get("format", "text")
+
+        if log_format == "json":
+            format_str = "{time} {level} {name}:{function}:{line} {message}"
+        else:
+            format_str = "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>[{extra[node_id]}]</cyan> | <level>{message}</level>"
+
+        # Add file handler for this node if specified
+        if log_file:
+            from pathlib import Path
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Clear the log file if it exists (fresh start each run)
+            if log_path.exists():
+                log_path.unlink()
+
+            logger.add(
+                log_file,
+                level=log_level,
+                format=format_str,
+                rotation="10 MB",
+                filter=lambda record: record["extra"].get("node_id") == config.node_id
+            )
+
+    def run_node_in_thread(self, node: FederatedLearningNode, index: int, config: NodeConfig):
         """
         Run a single node in its own thread with its own event loop.
 
         Args:
             node: Node instance to run
             index: Node index for staggered startup
+            config: Node configuration
         """
         # Stagger node startup to avoid overwhelming the server
         if index > 0 and self.stagger_delay > 0:
             time.sleep(self.stagger_delay * index)
 
-        logger.info(f"Starting node {node.node_id} in thread {threading.current_thread().name}")
+        # Set up logging for this node
+        self.setup_node_logging(config)
 
         # Create a new event loop for this thread
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
 
-        async def run_with_shutdown_check():
-            """Run node while checking for shutdown signal."""
-            start_task = asyncio.create_task(node.start())
+        # Use contextualize to bind node_id for ALL logger calls in this thread/async context
+        with logger.contextualize(node_id=node.node_id):
+            logger.info(f"Starting node in thread {threading.current_thread().name}")
 
-            # Poll for shutdown event
-            while not self.shutdown_event.is_set():
-                if start_task.done():
-                    break
-                await asyncio.sleep(0.1)
+            async def run_with_shutdown_check():
+                """Run node while checking for shutdown signal."""
+                start_task = asyncio.create_task(node.start())
 
-            # If shutdown requested, cancel the task
-            if not start_task.done():
-                start_task.cancel()
-                try:
-                    await start_task
-                except asyncio.CancelledError:
-                    pass
+                # Poll for shutdown event
+                while not self.shutdown_event.is_set():
+                    if start_task.done():
+                        break
+                    await asyncio.sleep(0.1)
 
-        try:
-            loop.run_until_complete(run_with_shutdown_check())
-        except KeyboardInterrupt:
-            logger.info(f"Node {node.node_id} interrupted")
-        except Exception as e:
-            logger.error(f"Node {node.node_id} failed: {e}")
-        finally:
-            # Cleanup
+                # If shutdown requested, cancel the task
+                if not start_task.done():
+                    start_task.cancel()
+                    try:
+                        await start_task
+                    except asyncio.CancelledError:
+                        pass
+
             try:
-                if node.client.is_connected():
-                    loop.run_until_complete(node.stop())
+                loop.run_until_complete(run_with_shutdown_check())
+            except KeyboardInterrupt:
+                logger.info("Node interrupted")
             except Exception as e:
-                logger.error(f"Error stopping node {node.node_id}: {e}")
+                logger.error(f"Node failed: {e}")
+            finally:
+                # Cleanup
+                try:
+                    if node.client.is_connected():
+                        loop.run_until_complete(node.stop())
+                except Exception as e:
+                    logger.error(f"Error stopping node: {e}")
 
-            loop.close()
-            logger.debug(f"Node {node.node_id} stopped")
+                loop.close()
+                logger.debug("Node stopped")
 
     def launch_all(self, configs: List[NodeConfig]):
         """
@@ -316,10 +367,10 @@ class NodeLauncher:
                 logger.error(f"Failed to create node {config.node_id}: {e}")
 
         # Launch all nodes in separate threads
-        for i, node in enumerate(self.nodes):
+        for i, (node, config) in enumerate(zip(self.nodes, configs)):
             thread = threading.Thread(
                 target=self.run_node_in_thread,
-                args=(node, i),
+                args=(node, i, config),
                 name=f"Node-{node.node_id}",
                 daemon=False  # Changed to False so threads are properly waited for
             )

@@ -51,7 +51,8 @@ def generate_node_config(
     cluster_info: Dict[str, Any],
     server_host: str = "localhost",
     server_port: int = 8765,
-    trainer_type: str = "dummy"
+    trainer_type: str = "dummy",
+    pgn_database_path: str = None
 ) -> Dict[str, Any]:
     """
     Generate configuration for a single node.
@@ -63,6 +64,7 @@ def generate_node_config(
         server_host: FL server hostname
         server_port: FL server port
         trainer_type: Type of trainer to use
+        pgn_database_path: Path to PGN database (for supervised trainer)
 
     Returns:
         Node configuration dictionary
@@ -70,7 +72,7 @@ def generate_node_config(
     # Extracting playstyle and returning and error if not found
     if "playstyle" not in cluster_info:
         raise ValueError(f"Cluster info for {cluster_id} missing 'playstyle' key")
-    if cluster_info["playstyle"] not in ["tactical", "defensive", "balanced"]:
+    if cluster_info["playstyle"] not in ["tactical", "positional", "defensive", "balanced"]:
         raise ValueError(f"Invalid playstyle '{cluster_info['playstyle']}' for cluster {cluster_id}")
     playstyle = cluster_info["playstyle"]
 
@@ -103,6 +105,16 @@ def generate_node_config(
         }
     }
 
+    # Add supervised learning specific config
+    if trainer_type == "supervised":
+        config["supervised"] = {
+            "pgn_database_path": pgn_database_path or "./databases/lichess_db.pgn.zst",
+            "min_rating": 2000,
+            "skip_opening_moves": 10,
+            "skip_endgame_pieces": 6,
+            "sample_rate": 1.0,
+        }
+
     return config
 
 
@@ -131,7 +143,8 @@ def generate_all_configs(
     output_dir: str,
     server_host: str = "localhost",
     server_port: int = 8765,
-    trainer_type: str = "dummy"
+    trainer_type: str = "dummy",
+    pgn_database_path: str = None
 ) -> List[str]:
     """
     Generate configuration files for all nodes in the topology.
@@ -142,6 +155,7 @@ def generate_all_configs(
         server_host: FL server hostname
         server_port: FL server port
         trainer_type: Type of trainer to use
+        pgn_database_path: Path to PGN database (for supervised trainer)
 
     Returns:
         List of generated configuration file paths
@@ -179,7 +193,8 @@ def generate_all_configs(
                 cluster_info=cluster,
                 server_host=server_host,
                 server_port=server_port,
-                trainer_type=trainer_type
+                trainer_type=trainer_type,
+                pgn_database_path=pgn_database_path
             )
 
             # Save config
@@ -230,6 +245,12 @@ def main():
         help="Trainer type (default: dummy)"
     )
     parser.add_argument(
+        "--pgn-database",
+        type=str,
+        default=None,
+        help="Path to PGN database for supervised learning (default: ./databases/lichess_db.pgn.zst)"
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Enable verbose logging"
@@ -251,6 +272,9 @@ def main():
     logger.info(f"Output directory: {args.output_dir}")
     logger.info(f"Server: {args.server_host}:{args.server_port}")
     logger.info(f"Trainer type: {args.trainer_type}")
+    if args.trainer_type == "supervised":
+        pgn_path = args.pgn_database or "./databases/lichess_db.pgn.zst"
+        logger.info(f"PGN database: {pgn_path}")
 
     try:
         generated_files = generate_all_configs(
@@ -258,7 +282,8 @@ def main():
             output_dir=args.output_dir,
             server_host=args.server_host,
             server_port=args.server_port,
-            trainer_type=args.trainer_type
+            trainer_type=args.trainer_type,
+            pgn_database_path=args.pgn_database
         )
 
         logger.success(f"Successfully generated {len(generated_files)} configuration files")

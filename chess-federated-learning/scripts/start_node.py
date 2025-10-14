@@ -51,6 +51,13 @@ def setup_logging(config: NodeConfig):
     # File logging if specified
     log_file = config.logging.get("file")
     if log_file:
+        # Clear the log file if it exists (fresh start each run)
+        from pathlib import Path
+        log_path = Path(log_file)
+        log_path.parent.mkdir(parents=True, exist_ok=True)
+        if log_path.exists():
+            log_path.unlink()
+
         logger.add(
             log_file,
             level=log_level,
@@ -63,15 +70,15 @@ def setup_logging(config: NodeConfig):
 async def start_node_from_config(config: NodeConfig):
     """
     Start a node from configuration.
-    
+
     Args:
         config: Node configuration
     """
     logger.info(f"Starting node {config.node_id} in cluster {config.cluster_id}")
-    
+
     # Create training config
     training_config = TrainingConfig(**config.training)
-    
+
     # Create trainer
     trainer = create_trainer(
         trainer_type=config.trainer_type,
@@ -79,7 +86,18 @@ async def start_node_from_config(config: NodeConfig):
         cluster_id=config.cluster_id,
         config=training_config
     )
-    
+
+    # Configure supervised trainer if applicable
+    if config.trainer_type == "supervised":
+        supervised_config = config.config.get("supervised", {})
+        pgn_database_path = supervised_config.get("pgn_database_path")
+
+        if pgn_database_path:
+            trainer.set_pgn_database(pgn_database_path)
+            logger.info(f"Configured supervised trainer with PGN database: {pgn_database_path}")
+        else:
+            logger.warning("Supervised trainer configured but no PGN database path specified")
+
     # Create node
     node = FederatedLearningNode(
         node_id=config.node_id,
@@ -89,7 +107,7 @@ async def start_node_from_config(config: NodeConfig):
         server_port=config.server_port,
         auto_reconnect=config.auto_reconnect
     )
-    
+
     # Start node
     try:
         await node.start()
