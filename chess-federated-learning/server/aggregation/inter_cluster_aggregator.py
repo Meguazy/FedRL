@@ -474,6 +474,17 @@ class InterClusterAggregator(BaseAggregator):
                 first_cluster = next(iter(models))
                 reference_layer = models[first_cluster][layer_name]
                 
+                # Check if it's a PyTorch tensor first
+                try:
+                    import torch
+                    if isinstance(reference_layer, torch.Tensor):
+                        log.debug(f"Aggregating PyTorch tensor: {layer_name} (shape={reference_layer.shape})...")
+                        aggregated_value = self._aggregate_tensor_shared_layer(layer_name, models, normalized_weights)
+                        aggregated_shared[layer_name] = aggregated_value
+                        continue
+                except ImportError:
+                    pass
+                
                 # Aggregate based on parameter type
                 if isinstance(reference_layer, list):
                     if isinstance(reference_layer[0], list):
@@ -493,6 +504,44 @@ class InterClusterAggregator(BaseAggregator):
         except Exception as e:
             log.error(f"Failed to aggregate shared layers: {e}")
             raise RuntimeError(f"Shared layer aggregation failed: {e}")
+    
+    def _aggregate_tensor_shared_layer(
+        self,
+        layer_name: str,
+        models: Dict[str, Any],
+        normalized_weights: Dict[str, float]
+    ):
+        """
+        Aggregate a PyTorch tensor shared layer across clusters.
+        
+        Args:
+            layer_name: Name of the layer to aggregate
+            models: Dictionary of cluster models
+            normalized_weights: Normalized aggregation weights
+        
+        Returns:
+            Aggregated PyTorch tensor
+        """
+        import torch
+        
+        log = logger.bind(context="InterClusterAggregator._aggregate_tensor_shared_layer")
+        log.trace(f"Aggregating PyTorch tensor shared layer: {layer_name}")
+        
+        # Get reference tensor to initialize
+        first_cluster = next(iter(models))
+        reference_tensor = models[first_cluster][layer_name]
+        
+        # Initialize aggregated tensor with zeros
+        aggregated_tensor = torch.zeros_like(reference_tensor)
+        
+        # Compute weighted sum across clusters
+        for cluster_id, model in models.items():
+            weight = normalized_weights[cluster_id]
+            tensor = model[layer_name]
+            aggregated_tensor += weight * tensor
+        
+        log.trace(f"Tensor {layer_name} aggregation complete (shape={aggregated_tensor.shape})")
+        return aggregated_tensor
         
     def _aggregate_2d_shared_layer(
         self,

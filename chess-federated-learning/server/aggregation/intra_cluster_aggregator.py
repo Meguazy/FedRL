@@ -288,6 +288,15 @@ class IntraClusterAggregator(BaseAggregator):
         first_node = next(iter(models))
         reference_param = models[first_node][key]
         
+        # Check if it's a PyTorch tensor
+        try:
+            import torch
+            if isinstance(reference_param, torch.Tensor):
+                log.debug(f"Aggregating PyTorch tensor: {key} (shape={reference_param.shape})...")
+                return self._aggregate_tensor_parameter(key, models, normalized_weights)
+        except ImportError:
+            pass
+        
         # Handle 2D parameters (e.g. weight matrices)
         if isinstance(reference_param, (list)) and isinstance(reference_param[0], (list)):
             log.debug(f"Aggregating 2D parameter: {key}...")
@@ -300,6 +309,40 @@ class IntraClusterAggregator(BaseAggregator):
         else:
             log.debug(f"Aggregating scalar parameter: {key}...")
             return self._aggregate_scalar_parameter(key, models, normalized_weights)
+
+    def _aggregate_tensor_parameter(self, key: str, models: Dict[str, Any],
+                                   normalized_weights: Dict[str, float]):
+        """
+        Aggregate a PyTorch tensor parameter using FedAvg.
+        
+        Args:
+            key: Parameter name/key
+            models: Dictionary of node models  
+            normalized_weights: Normalized aggregation weights
+        
+        Returns:
+            Aggregated PyTorch tensor
+        """
+        import torch
+        
+        log = logger.bind(context="IntraClusterAggregator._aggregate_tensor_parameter")
+        log.trace(f"Aggregating PyTorch tensor: {key}")
+        
+        # Get reference tensor to initialize
+        first_node = next(iter(models))
+        reference_tensor = models[first_node][key]
+        
+        # Initialize aggregated tensor with zeros (same shape and dtype)
+        aggregated_tensor = torch.zeros_like(reference_tensor)
+        
+        # Compute weighted sum
+        for node_id, model in models.items():
+            weight = normalized_weights[node_id]
+            param_tensor = model[key]
+            aggregated_tensor += weight * param_tensor
+        
+        log.trace(f"Tensor {key} aggregation complete (shape={aggregated_tensor.shape})")
+        return aggregated_tensor
 
     def _aggregate_2d_parameter(self, key: str, models: Dict[str, Any],
                               normalized_weights: Dict[str, float]) -> List[List[float]]:
