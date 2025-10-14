@@ -247,11 +247,21 @@ class IntraClusterAggregator(BaseAggregator):
         first_node = next(iter(models))
         reference_model = models[first_node]
         
+        # Metadata fields that should NOT be aggregated (just copied from first model)
+        # These are string/bytes fields used for serialization metadata
+        metadata_fields = {'serialized_data', 'framework', 'compression', 'encoding', 'dtype'}
+        
         # For each parameter in the model
         for key in reference_model.keys():
-            log.trace(f"Aggregating parameter: {key}")
+            log.trace(f"Processing parameter: {key}")
             
-            # Initialize this parameter in the aggregated model
+            # Skip metadata fields - just copy from first model
+            if key in metadata_fields:
+                log.trace(f"Skipping metadata field: {key} (copying from first model)")
+                aggregated_model[key] = reference_model[key]
+                continue
+            
+            # Aggregate numeric parameters (tensors)
             aggregated_model[key] = self._aggregate_parameter(
                 key, models, normalized_weights
             )

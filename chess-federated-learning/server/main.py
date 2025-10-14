@@ -500,14 +500,21 @@ class TrainingOrchestrator:
             
             # Deserialize model state if it's packaged
             model_state = update["model_state"]
+            log.debug(f"Processing model from {node_id}: type={type(model_state)}, has_serialized_data={'serialized_data' in model_state if isinstance(model_state, dict) else False}")
+            
             if isinstance(model_state, dict) and "serialized_data" in model_state:
                 try:
+                    serialized_data = model_state["serialized_data"]
+                    log.debug(f"Serialized data from {node_id}: type={type(serialized_data)}, length={len(serialized_data) if isinstance(serialized_data, (str, bytes)) else 'N/A'}")
+                    
                     # Deserialize the model back to state_dict for aggregation
-                    deserialized = serializer.deserialize(model_state["serialized_data"])
-                    log.debug(f"Deserialized model from {node_id}: {type(deserialized)}, keys: {list(deserialized.keys())[:5] if isinstance(deserialized, dict) else 'N/A'}")
+                    deserialized = serializer.deserialize(serialized_data)
+                    log.info(f"✓ Successfully deserialized model from {node_id}: {type(deserialized)}, {len(deserialized)} layers")
+                    log.debug(f"  Layer names: {list(deserialized.keys())[:5]}")
                     model_state = deserialized
                 except Exception as e:
-                    log.error(f"Failed to deserialize model from {node_id}: {e}")
+                    log.error(f"✗ Failed to deserialize model from {node_id}: {e}")
+                    log.exception("Full traceback:")
                     raise
             else:
                 log.debug(f"Model from {node_id} is already deserialized or has unexpected structure: {type(model_state)}")
