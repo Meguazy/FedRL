@@ -155,11 +155,71 @@ class SupervisedTrainer(TrainerInterface):
             shuffle_games=True
         )
 
-        # Offset for sample extraction (incremented each round for diversity)
+        # Extract node index from node_id (e.g., "agg_001" -> 0, "agg_002" -> 1, etc.)
+        self.node_index = self._extract_node_index(node_id)
+        
+        # Current round counter (starts at 0)
+        self.current_round = 0
+        
+        # Offset for sample extraction (calculated based on node index and round)
         self.sample_offset = 0
 
         log = logger.bind(context=f"SupervisedTrainer.{node_id}")
         log.info(f"Initialized supervised trainer on device: {self.device}")
+        log.info(f"Node index in cluster: {self.node_index}")
+
+    def _extract_node_index(self, node_id: str) -> int:
+        """
+        Extract numeric index from node_id.
+        
+        Examples:
+            "agg_001" -> 0
+            "agg_002" -> 1
+            "pos_001" -> 0
+            "pos_004" -> 3
+        
+        Args:
+            node_id: Node identifier (e.g., "agg_001", "pos_003")
+            
+        Returns:
+            Zero-based node index within cluster
+        """
+        try:
+            # Extract numeric suffix (e.g., "001" from "agg_001")
+            numeric_part = node_id.split('_')[-1]
+            # Convert to int and make zero-based (001 -> 0, 002 -> 1, etc.)
+            return int(numeric_part) - 1
+        except (ValueError, IndexError):
+            logger.warning(f"Could not extract node index from {node_id}, defaulting to 0")
+            return 0
+    
+    def _calculate_offset(self) -> int:
+        """
+        Calculate sample offset based on node index and current round.
+        
+        Formula:
+            offset = round * (num_nodes * games_per_round) + node_index * games_per_round
+        
+        Assuming 4 nodes per cluster with games_per_round=100:
+        - Round 0: node 0 starts at 0, node 1 at 100, node 2 at 200, node 3 at 300
+        - Round 1: node 0 starts at 400, node 1 at 500, node 2 at 600, node 3 at 700
+        - Round 2: node 0 starts at 800, node 1 at 900, node 2 at 1000, node 3 at 1100
+        
+        This ensures:
+        1. Each node in the same round uses different games (no overlap within cluster)
+        2. Each round uses new games (no overlap across rounds)
+        3. Deterministic and reproducible offset calculation
+        
+        Returns:
+            Calculated offset value
+        """
+        # Assume 4 nodes per cluster (can be made configurable if needed)
+        nodes_per_cluster = 4
+        games_per_round = self.config.games_per_round
+        
+        offset = self.current_round * (nodes_per_cluster * games_per_round) + self.node_index * games_per_round
+        
+        return offset
 
     def set_pgn_database(self, path: str):
         """Set the PGN database path."""
@@ -196,7 +256,11 @@ class SupervisedTrainer(TrainerInterface):
             self._initialize_model(initial_model_state)
             log.info(f"Model loaded with {sum(p.numel() for p in self.model.parameters()):,} parameters")
 
-            # 2. Extract training samples
+            # 2. Calculate offset for this round
+            self.sample_offset = self._calculate_offset()
+            log.info(f"Round {self.current_round}: Using offset {self.sample_offset} (node_index={self.node_index})")
+
+            # 3. Extract training samples
             log.info(f"Extracting samples from database (offset={self.sample_offset})")
             samples = await self._extract_samples()
             log.success(f"Extracted {len(samples)} training samples")
@@ -234,7 +298,9 @@ class SupervisedTrainer(TrainerInterface):
             training_time = time.time() - start_time
             self.total_games_played += self.config.games_per_round
             self.total_training_time += training_time
-            self.sample_offset += self.config.games_per_round
+            
+            # Increment round counter for next training iteration
+            self.current_round += 1
 
             # 7. Create result
             result = TrainingResult(
