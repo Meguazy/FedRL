@@ -5,6 +5,6 @@ server_config:
 orchestrator_config:
   games_per_round: 100
   aggregation_threshold: 0.8
-  timeout_seconds: 300
+  timeout_seconds: 1200  # 20 minutes - increased for supervised training with real data
   shared_layer_patterns: ["input_conv.*"]
   cluster_specific_patterns: ["policy_head.*", "value_head.*"]

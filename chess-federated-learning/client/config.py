@@ -16,7 +16,7 @@ from loguru import logger
 class NodeConfig:
     """
     Complete configuration for a federated learning node.
-    
+
     Attributes:
         node_id: Unique identifier for this node
         cluster_id: Cluster this node belongs to
@@ -27,6 +27,7 @@ class NodeConfig:
         training: Training configuration parameters
         storage: Local storage configuration
         logging: Logging configuration
+        config: Additional trainer-specific configuration (e.g., supervised, alphazero)
     """
     node_id: str
     cluster_id: str
@@ -37,6 +38,7 @@ class NodeConfig:
     training: Dict[str, Any] = field(default_factory=dict)
     storage: Dict[str, Any] = field(default_factory=dict)
     logging: Dict[str, Any] = field(default_factory=dict)
+    config: Dict[str, Any] = field(default_factory=dict)
     
     def __post_init__(self):
         """Validate configuration after initialization."""
@@ -79,29 +81,49 @@ class NodeConfig:
     def from_yaml(cls, yaml_path: str) -> "NodeConfig":
         """
         Load configuration from YAML file.
-        
+
         Args:
             yaml_path: Path to YAML configuration file
-        
+
         Returns:
             NodeConfig instance
-        
+
         Raises:
             FileNotFoundError: If config file doesn't exist
             yaml.YAMLError: If config file is malformed
         """
         log = logger.bind(context="NodeConfig.from_yaml")
         log.info(f"Loading node configuration from {yaml_path}")
-        
+
         config_file = Path(yaml_path)
         if not config_file.exists():
             raise FileNotFoundError(f"Configuration file not found: {yaml_path}")
-        
+
         with open(config_file, 'r') as f:
             config_data = yaml.safe_load(f)
-        
-        log.debug(f"Loaded configuration: {config_data}")
-        return cls(**config_data)
+
+        # Extract known fields
+        known_fields = {
+            'node_id', 'cluster_id', 'server_host', 'server_port',
+            'trainer_type', 'auto_reconnect', 'training', 'storage', 'logging'
+        }
+
+        # Separate known fields from additional config
+        node_config_params = {}
+        additional_config = {}
+
+        for key, value in config_data.items():
+            if key in known_fields:
+                node_config_params[key] = value
+            else:
+                additional_config[key] = value
+
+        # Add additional config to the config dict
+        if additional_config:
+            node_config_params['config'] = additional_config
+
+        log.debug(f"Loaded configuration with {len(additional_config)} additional config sections")
+        return cls(**node_config_params)
     
     @classmethod
     def from_dict(cls, config_dict: Dict[str, Any]) -> "NodeConfig":

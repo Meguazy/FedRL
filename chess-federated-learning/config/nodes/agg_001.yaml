@@ -6,7 +6,7 @@ node_id: agg_001
 cluster_id: cluster_tactical
 server_host: localhost
 server_port: 8765
-trainer_type: dummy
+trainer_type: supervised
 auto_reconnect: true
 training:
   games_per_round: 100
@@ -18,10 +18,16 @@ training:
   playstyle: tactical
 storage:
   enabled: true
-  base_path: ./storage
+  base_path: ./chess-federated-learning/storage
   save_models: true
   save_metrics: true
 logging:
   level: INFO
   file: ./logs/agg_001.log
   format: text
+supervised:
+  pgn_database_path: ./chess-federated-learning/data/databases/lichess_db_standard_rated_2024-01.pgn.zst
+  min_rating: 2000
+  skip_opening_moves: 10
+  skip_endgame_pieces: 6
+  sample_rate: 1.0
