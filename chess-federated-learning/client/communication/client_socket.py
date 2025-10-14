@@ -641,16 +641,17 @@ class FederatedLearningClient:
         try:
             # Serialize model state for network transmission
             # Import here to avoid circular dependency
+            # IMPORTANT: Must match server deserialization settings
             from common.model_serialization import PyTorchSerializer
-            serializer = PyTorchSerializer(compression=True, encoding='base64')
+            serializer = PyTorchSerializer(compression=False, encoding='binary')
             serialized_data = serializer.serialize(model_state)
             
             # Package serialized model with metadata
             packaged_model_state = {
                 "serialized_data": serialized_data,
                 "framework": "pytorch",
-                "compression": True,
-                "encoding": "base64"
+                "compression": False,
+                "encoding": "binary"
             }
             
             # Create model update message

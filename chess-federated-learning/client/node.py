@@ -365,7 +365,8 @@ class FederatedLearningNode:
         # Deserialize model state if it's packaged
         if isinstance(model_state, dict) and "serialized_data" in model_state:
             from common.model_serialization import PyTorchSerializer
-            serializer = PyTorchSerializer(compression=True, encoding='base64')
+            # IMPORTANT: Must match server serialization settings
+            serializer = PyTorchSerializer(compression=False, encoding='binary')
             model_state = serializer.deserialize(model_state["serialized_data"])
             log.debug("Deserialized cluster model from server")
         
