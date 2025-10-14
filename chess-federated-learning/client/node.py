@@ -25,6 +25,7 @@ from typing import Dict, Any, Optional
 from enum import Enum
 from loguru import logger
 import time
+import gc
 
 from .communication.client_socket import FederatedLearningClient, ClientState
 from .trainer.trainer_interface import (
@@ -321,10 +322,10 @@ class FederatedLearningNode:
         self.total_training_time += result.training_time
         self.total_samples += result.samples
         self.current_model_state = result.model_state
-        
+
         # Send mode update to server
         log.info(f"Sending model update for round {self.current_round}")
-        
+
         try:
             await self.client.send_model_update(
                 model_state=self.current_model_state,
@@ -332,15 +333,28 @@ class FederatedLearningNode:
                 loss=result.loss,
                 samples=result.samples
             )
-            
-            # Also send additional metrics
+
+            # Also send additional metrics (include loss and samples from result)
+            metrics_with_core = {
+                'loss': result.loss,
+                'samples': result.samples,
+                **result.metrics  # Include additional metrics like accuracy, policy_loss, etc.
+            }
             await  self.client.send_metrics(
-                metrics=result.metrics,
+                metrics=metrics_with_core,
                 round_num=self.current_round
             )
             
             log.info("Model update sent successfully")
             self.lifecycle_state = NodeLifecycleState.IDLE
+
+            # Clean up after sending update to free memory
+            # The model state is now on the server, we can clear local references
+            # (we keep current_model_state for next round's initial state)
+            del result
+            gc.collect()
+            log.debug("Cleaned up training result to free memory")
+
         except Exception as e:
             log.error(f"Failed to send model update: {e}")
             self.lifecycle_state = NodeLifecycleState.ERROR
@@ -369,9 +383,17 @@ class FederatedLearningNode:
             serializer = PyTorchSerializer(compression=True, encoding='base64')
             model_state = serializer.deserialize(model_state["serialized_data"])
             log.debug("Deserialized cluster model from server")
-        
-        # Update current model state
+
+        # Clear old model state before updating to free memory
+        old_model_state = self.current_model_state
         self.current_model_state = model_state
+
+        # Clean up old model state
+        if old_model_state is not None:
+            del old_model_state
+            gc.collect()
+            log.debug("Freed old model state memory")
+
         self.lifecycle_state = NodeLifecycleState.IDLE
         log.info("Model state updated successfully. Ready for next round.")
         

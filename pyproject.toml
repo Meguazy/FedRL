@@ -16,6 +16,8 @@ dependencies = [
     "python-chess>=1.999",
     "zstandard>=0.25.0",
     "redis>=6.4.0",
+    "pyqt6>=6.9.1",
+    "psutils>=3.3.14",
 ]
 
 [project.optional-dependencies]

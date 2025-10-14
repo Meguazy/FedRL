@@ -20,6 +20,7 @@ from typing import Dict, Any, Optional, List
 from pathlib import Path
 import asyncio
 import time
+import gc
 import numpy as np
 from loguru import logger
 
@@ -283,6 +284,18 @@ class SupervisedTrainer(TrainerInterface):
             metrics = await self._train_epoch(dataloader)
             log.success(f"Training complete: loss={metrics['total_loss']:.4f}")
 
+            # 4.5. Save sample count before cleanup
+            num_samples = len(samples)
+
+            # Clean up training data to free memory
+            del samples
+            del dataset
+            del dataloader
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            log.debug("Cleaned up training data and freed memory")
+
             # 5. Get updated model state and serialize
             model_state_dict = self.model.state_dict()
             serialized_model = self.serializer.serialize(model_state_dict)
@@ -298,14 +311,14 @@ class SupervisedTrainer(TrainerInterface):
             training_time = time.time() - start_time
             self.total_games_played += self.config.games_per_round
             self.total_training_time += training_time
-            
+
             # Increment round counter for next training iteration
             self.current_round += 1
 
             # 7. Create result
             result = TrainingResult(
                 model_state=updated_model_state,
-                samples=len(samples),
+                samples=num_samples,
                 loss=metrics['total_loss'],
                 games_played=self.config.games_per_round,
                 training_time=training_time,
@@ -315,7 +328,7 @@ class SupervisedTrainer(TrainerInterface):
                 error_message=None
             )
 
-            self.training_history.append(result)
+            self._add_to_history(result)
             return result
 
         except Exception as e:
@@ -472,12 +485,21 @@ class SupervisedTrainer(TrainerInterface):
             total_loss += loss.item()
             num_batches += 1
 
+            # Free intermediate tensors to prevent memory accumulation
+            del boards, policy_targets, value_targets
+            del policy_logits, value_preds, policy_loss, value_loss, loss
+
             # Log progress
             if (batch_idx + 1) % 10 == 0:
                 log.info(f"Batch {batch_idx + 1}/{len(dataloader)}: "
-                        f"loss={loss.item():.4f}, "
-                        f"policy={policy_loss.item():.4f}, "
-                        f"value={value_loss.item():.4f}")
+                        f"loss={total_loss / num_batches:.4f}, "
+                        f"policy={total_policy_loss / num_batches:.4f}, "
+                        f"value={total_value_loss / num_batches:.4f}")
+
+            # Periodic memory cleanup during training
+            if (batch_idx + 1) % 50 == 0:
+                if torch.cuda.is_available():
+                    torch.cuda.empty_cache()
 
             # Allow other async tasks to run
             await asyncio.sleep(0)

@@ -151,11 +151,11 @@ class DummyTrainer(TrainerInterface):
         )
         
         # Update statistics
-        self.training_history.append(result)
+        self._add_to_history(result)
         self.total_games_played += result.games_played
         self.total_training_time += result.training_time
         self.current_model_state = updated_model
-        
+
         log.info(f"Dummy training complete: loss={loss:.4f}, samples={samples}")
         return result
     

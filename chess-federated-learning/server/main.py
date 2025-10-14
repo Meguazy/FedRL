@@ -28,6 +28,7 @@ from typing import Dict, Any, Optional, Set
 from dataclasses import dataclass, field
 from loguru import logger
 import time
+import gc
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -217,10 +218,14 @@ class TrainingOrchestrator:
                 
                 log.info(f"Round {round_num} completed successfully")
                 
-                # Brief pause between rounds
+                # Brief pause between rounds (check for shutdown during pause)
                 if round_num < num_rounds:
                     log.info("Pausing briefly before next round...")
-                    await asyncio.sleep(5.0)
+                    try:
+                        await asyncio.sleep(5.0)
+                    except asyncio.CancelledError:
+                        log.info("Pause interrupted by shutdown signal")
+                        raise
                 
             log.info("=" * 60)
             log.info(f"TRAINING COMPLETE: {num_rounds} rounds finished")
@@ -234,6 +239,15 @@ class TrainingOrchestrator:
                 )
                 log.info(f"Experiment {self.current_run_id} completed successfully")
         
+        except asyncio.CancelledError:
+            log.warning("Training cancelled by user")
+            # Log cancellation
+            if self.current_run_id:
+                await self.storage_tracker.end_run(
+                    run_id=self.current_run_id,
+                    final_results={'status': 'cancelled', 'rounds_completed': self.current_round}
+                )
+            raise
         except Exception as e:
             log.exception(f"Training failed: {e}")
             # Log failure
@@ -252,22 +266,26 @@ class TrainingOrchestrator:
             raise
         finally:
             self.is_running = False
+            log.info("Orchestrator stopped")
 
     async def _execute_round(self, round_num: int) -> bool:
         """
         Execute a single training round.
-        
+
         Args:
             round_num: Current round number
-        
+
         Returns:
             bool: True if round completed successfully
         """
         log = logger.bind(context=f"TrainingOrchestrator.round_{round_num}")
         log.info(f"Executing training round {round_num}")
-        
+
         round_start_time = time.time()
-        
+        updates = None
+        cluster_models = None
+        final_models = None
+
         try:
             # Step 1: Get ready clusters
             log.info("Step 1: Checking cluster readiness...")
@@ -277,13 +295,13 @@ class TrainingOrchestrator:
             if not ready_clusters:
                 log.error("No clusters are ready. Aborting round.")
                 return False
-            
+
             log.info(f"Ready clusters: {ready_clusters}")
-            
+
             # Step 2: Broadcast START_TRAINING
             log.info("Step 2: Broadcasting START_TRAINING to all nodes...")
             await self._broadcast_start_training(round_num)
-            
+
             # Step 3: Wait for MODEL_UPDATE messages
             log.info("Step 3: Waiting for MODEL_UPDATE messages from nodes...")
             updates = await self._collect_model_updates(round_num)
@@ -291,7 +309,7 @@ class TrainingOrchestrator:
                 log.error("No model updates received. Aborting round.")
                 return False
             log.info(f"Received {len(updates)} model updates")
-            
+
             # Step 4: Intra-cluster aggregation
             log.info("Step 4: Performing intra-cluster aggregation...")
             cluster_models = await self._aggregate_intra_cluster(updates, round_num)
@@ -299,7 +317,7 @@ class TrainingOrchestrator:
                 log.error("Intra-cluster aggregation failed. Aborting round.")
                 return False
             log.info(f"Intra-cluster aggregation produced {len(cluster_models)} cluster models")
-            
+
             # Step 5: Inter-cluster selective aggregation
             log.info("Step 5: Performing inter-cluster selective aggregation...")
             final_models = await self._aggregate_inter_cluster(cluster_models, round_num)
@@ -307,18 +325,21 @@ class TrainingOrchestrator:
                 log.error("Inter-cluster aggregation failed. Aborting round.")
                 return False
             log.info(f"Inter-cluster aggregation produced {len(final_models)} final models")
-            
+
             # Step 6: Save checkpoints (if interval reached)
             if round_num % self.round_config.checkpoint_interval == 0:
                 log.info("Step 6: Saving model checkpoints...")
                 await self._save_checkpoints(final_models, round_num)
-            
+
             # Step 7: Broadcast CLUSTER_MODEL to nodes
             log.info("Step 7: Broadcasting CLUSTER_MODEL to all nodes...")
             await self._broadcast_cluster_models(final_models, round_num)
-            
-            # Log round metrics
+
+            # Log round metrics (before cleanup)
             round_duration = time.time() - round_start_time
+            num_updates = len(updates) if updates else 0
+            num_clusters = len(cluster_models) if cluster_models else 0
+
             if self.current_run_id:
                 await self.storage_tracker.log_metrics(
                     run_id=self.current_run_id,
@@ -327,14 +348,25 @@ class TrainingOrchestrator:
                     entity_id="orchestrator",
                     metrics={
                         'round_duration': round_duration,
-                        'updates_received': len(updates),
-                        'clusters_aggregated': len(cluster_models)
+                        'updates_received': num_updates,
+                        'clusters_aggregated': num_clusters
                     }
                 )
-            
+
+            # Clean up after distributing models and logging metrics
+            # Keep models in self.cluster_models for reference, but clear local variables
+            if updates is not None:
+                del updates
+            if cluster_models is not None:
+                del cluster_models
+            if final_models is not None:
+                del final_models
+            gc.collect()
+            log.debug("Cleaned up round models after distribution")
+
             log.info(f"Round {round_num} execution complete ({round_duration:.2f}s)")
             return True
-            
+
         except Exception as e:
             log.error(f"Round {round_num} execution failed: {e}")
             return False
@@ -428,6 +460,9 @@ class TrainingOrchestrator:
             log.info(f"Threshold met: {len(updates)} updates received")
         except asyncio.TimeoutError:
             log.warning(f"Timeout reached: only {len(updates)} updates received")
+        except asyncio.CancelledError:
+            log.warning(f"Update collection cancelled: {len(updates)} updates received before cancellation")
+            raise
             
             # Log timeout as metrics (not event)
             if self.current_run_id:
@@ -567,7 +602,13 @@ class TrainingOrchestrator:
             
             log.info(f"{cluster_id} aggregation: {metrics.participant_count} nodes, "
                     f"{metrics.total_samples} samples, {metrics.aggregation_time:.2f}s")
-        
+
+        # Clean up individual model updates to free memory after aggregation
+        del cluster_updates
+        del cluster_metrics
+        gc.collect()
+        log.debug("Cleaned up individual model updates after intra-cluster aggregation")
+
         return cluster_models
 
     async def _aggregate_inter_cluster(
@@ -630,10 +671,16 @@ class TrainingOrchestrator:
         log.info(f"Inter-cluster aggregation: {metrics.participant_count} clusters, "
                 f"{metrics.additional_metrics.get('shared_layer_count', 0)} shared layers, "
                 f"{metrics.aggregation_time:.2f}s")
-        
+
+        # Clean up intermediate cluster models after inter-cluster aggregation
+        # (we keep final_models as they are needed for distribution)
+        del cluster_metrics
+        gc.collect()
+        log.debug("Cleaned up intermediate data after inter-cluster aggregation")
+
         # Store for next round
         self.cluster_models = final_models
-        
+
         return final_models
     
     async def _save_checkpoints(
@@ -945,29 +992,57 @@ async def main():
     finally:
         # Cleanup
         log.info("Shutting down server...")
-        
+
         # Stop orchestrator if running
         if orchestrator.is_running:
             orchestrator.is_running = False
-        
-        # Stop server
-        await server.stop_server()
-        
-        # Cancel tasks
+
+        # Cancel all tasks first (before stopping server to break out of any waits)
+        tasks_to_cancel = []
         if not server_task.done():
             server_task.cancel()
-            try:
-                await server_task
-            except asyncio.CancelledError:
-                pass
-        
+            tasks_to_cancel.append(server_task)
         if not menu_task.done():
             menu_task.cancel()
+            tasks_to_cancel.append(menu_task)
+
+        # Wait for task cancellations with timeout
+        if tasks_to_cancel:
+            log.info(f"Cancelling {len(tasks_to_cancel)} tasks...")
             try:
-                await menu_task
-            except asyncio.CancelledError:
-                pass
-    
+                await asyncio.wait_for(
+                    asyncio.gather(*tasks_to_cancel, return_exceptions=True),
+                    timeout=5.0
+                )
+            except asyncio.TimeoutError:
+                log.warning("Task cancellation timed out after 5 seconds")
+
+        # Stop server (disconnect clients)
+        log.info("Stopping server and disconnecting clients...")
+        try:
+            await asyncio.wait_for(server.stop_server(), timeout=10.0)
+        except asyncio.TimeoutError:
+            log.error("Server stop timed out after 10 seconds")
+
+        # Cancel any remaining tasks in the event loop (except the current task)
+        current_task = asyncio.current_task()
+        pending_tasks = [
+            task for task in asyncio.all_tasks()
+            if not task.done() and task is not current_task
+        ]
+        if pending_tasks:
+            log.warning(f"Cancelling {len(pending_tasks)} remaining background tasks...")
+            for task in pending_tasks:
+                task.cancel()
+            # Wait briefly for cancellations with return_exceptions to avoid propagating errors
+            try:
+                await asyncio.wait_for(
+                    asyncio.gather(*pending_tasks, return_exceptions=True),
+                    timeout=2.0
+                )
+            except asyncio.TimeoutError:
+                log.warning("Some tasks did not cancel within 2 seconds")
+
     log.info("Server shutdown complete")
 
 

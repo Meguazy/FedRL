@@ -97,24 +97,27 @@ class TrainerInterface(ABC):
     be cancelled or monitored in real-time.
     """
     
-    def __init__(self, node_id: str, cluster_id: str, config: TrainingConfig):
+    def __init__(self, node_id: str, cluster_id: str, config: TrainingConfig,
+                 max_history_size: int = 10):
         """
         Initialize the trainer.
-        
+
         Args:
             node_id: Unique identifier for this node
             cluster_id: Cluster this node belongs to
             config: Training configuration
+            max_history_size: Maximum number of training results to keep in memory (default: 10)
         """
         self.node_id = node_id
         self.cluster_id = cluster_id
         self.config = config
+        self.max_history_size = max_history_size
 
         self.current_model_state: Optional[Dict[str, Any]] = None
         self.training_history: List[TrainingResult] = []
         self.total_games_played: int = 0
         self.total_training_time: float = 0.0
-        
+
         log = logger.bind(context=f"{self.__class__.__name__}.{node_id}")
         log.info(f"Initialized trainer for node {node_id} in cluster {cluster_id}")
         
@@ -174,10 +177,37 @@ class TrainerInterface(ABC):
         log.info(f"Updating training config: {config}")
         self.config = config
     
+    def _add_to_history(self, result: TrainingResult):
+        """
+        Add training result to history with memory management.
+
+        Keeps only the most recent results to prevent unbounded memory growth.
+        The full model_state is removed from old history entries to save memory.
+
+        Args:
+            result: Training result to add
+        """
+        log = logger.bind(context=f"{self.__class__.__name__}.{self.node_id}")
+
+        # Add the new result
+        self.training_history.append(result)
+
+        # If history exceeds max size, remove oldest entries and clear their model states
+        if len(self.training_history) > self.max_history_size:
+            # Keep only recent entries
+            old_entries = self.training_history[:-self.max_history_size]
+            self.training_history = self.training_history[-self.max_history_size:]
+
+            # Clear model states from old entries to free memory
+            for old_entry in old_entries:
+                old_entry.model_state = None
+
+            log.debug(f"Trimmed training history to {self.max_history_size} most recent entries")
+
     def get_statistics(self) -> Dict[str, Any]:
         """
         Get trainer statistics.
-        
+
         Returns:
             Dict containing cumulative training statistics
         """
