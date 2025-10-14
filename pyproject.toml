@@ -15,6 +15,7 @@ dependencies = [
     "pandas>=2.3.3",
     "python-chess>=1.999",
     "zstandard>=0.25.0",
+    "redis>=6.4.0",
 ]
 
 [project.optional-dependencies]
