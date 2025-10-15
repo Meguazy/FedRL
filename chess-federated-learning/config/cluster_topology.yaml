@@ -2,6 +2,19 @@
 # This file defines the cluster structure, node assignments, and playstyles
 # for the federated learning system.
 
+# Resume training settings (optional)
+# To resume training from a previous checkpoint:
+#   1. Set enabled to true
+#   2. Set starting_round to the round number you're resuming from (e.g., 30)
+#   3. Set the initial_model path for each cluster below
+#   4. The server will:
+#      - Load models and broadcast them to nodes
+#      - Offset data sampling so you use NEW data (not rounds 1-30 again)
+#      - Save new checkpoints starting from round 1 (but using data offset)
+resume_training:
+  enabled: false                     # Enable resume training
+  #starting_round: 30                # Round number to resume from (affects data sampling offset)
+
 clusters:
   # tactical playstyle cluster - focused on tactical, attacking chess
   - id: "cluster_tactical"
@@ -9,13 +22,15 @@ clusters:
     description: "Tactical, attacking chess with piece sacrifices and sharp positions"
     node_count: 4                   # Number of nodes for this cluster
     node_prefix: "agg"               # Prefix for node IDs (generates agg_001, agg_002, etc.)
+    #initial_model: "/home/fra/Uni/Thesis/main_repo/FedRL/storage/models/run_20251014_170903_e247af7e/cluster_tactical/round_0030.pt"  # Resume from round 30
 
   # Positional playstyle cluster - focused on strategic, long-term planning
   - id: "cluster_positional"
     playstyle: "positional"
     description: "Strategic, long-term planning with focus on pawn structure and space control"
-    node_count: 4                    # Number of nodes for this cluster  
+    node_count: 4                    # Number of nodes for this cluster
     node_prefix: "pos"               # Prefix for node IDs (generates pos_001, pos_002, etc.)
+    #initial_model: "/home/fra/Uni/Thesis/main_repo/FedRL/storage/models/run_20251014_170903_e247af7e/cluster_positional/round_0030.pt"  # Resume from round 30
 
 # Configuration notes:
 # - Total nodes: 64 (32 tactical + 32 positional)

@@ -34,16 +34,17 @@ from loguru import logger
 class Cluster:
     """
     Represents a cluster in the federated learning system.
-    
+
     Each cluster groups nodes with the same playstyle (e.g., tactical, positional)
     and maintains metadata about the nodes, their status, and cluster configuration.
-    
+
     Attributes:
         cluster_id: Unique cluster identifier (e.g., "cluster_tactical")
         playstyle: Playstyle this cluster represents (e.g., "tactical", "positional")
         node_count: Target number of nodes for this cluster
         node_prefix: Prefix for auto-generated node IDs (e.g., "agg")
         description: Human-readable description of the cluster
+        initial_model: Path to initial model checkpoint for resuming training
         expected_nodes: Set of expected node IDs for this cluster
         active_nodes: Set of currently registered/active node IDs
         inactive_nodes: Set of registered but currently disconnected nodes
@@ -55,6 +56,7 @@ class Cluster:
     node_count: int
     node_prefix: str
     description: str = ""
+    initial_model: Optional[str] = None
     expected_nodes: Set[str] = field(default_factory=set)
     active_nodes: Set[str] = field(default_factory=set)
     inactive_nodes: Set[str] = field(default_factory=set)
@@ -157,19 +159,23 @@ class ClusterManager:
     def __init__(self, config_path: Optional[str] = None):
         """
         Initialize the cluster manager.
-        
+
         Args:
             config_path: Path to cluster topology YAML file (optional)
         """
         log = logger.bind(context="ClusterManager.__init__")
         log.info("Initializing ClusterManager...")
         log.debug(f"Loading configuration from {config_path if config_path else 'default path'}")
-        
+
         # Core data structures
         self.clusters: Dict[str, Cluster] = {}
         self.node_to_cluster: Dict[str, str] = {}
         self.node_registration_times: Dict[str, float] = {}
         self.node_last_seen: Dict[str, float] = {}
+
+        # Resume training configuration
+        self.resume_training_enabled: bool = False
+        self.starting_round: int = 0
         
         # Configuration
         self.config_path = config_path
@@ -215,17 +221,27 @@ class ClusterManager:
                 config = yaml.safe_load(f)
 
             log.debug(f"Loaded YAML configuration with {len(config.get('clusters', []))} clusters.")
-            
+
+            # Load resume training configuration (optional)
+            if 'resume_training' in config:
+                resume_cfg = config['resume_training']
+                self.resume_training_enabled = resume_cfg.get('enabled', False)
+                self.starting_round = resume_cfg.get('starting_round', 0)
+                if self.resume_training_enabled:
+                    log.info(f"Resume training enabled: starting from round {self.starting_round}")
+                else:
+                    log.debug("Resume training disabled")
+
             # Validate configuration structure
             if 'clusters' not in config:
                 log.error("Configuration missing 'clusters' section.")
                 raise ValueError("Configuration must contain 'clusters' section.")
-            
+
             clusters_config = config['clusters']
             if not isinstance(clusters_config, list):
                 log.error("'clusters' section must be a list.")
                 raise ValueError("'clusters' section must be a list.")
-            
+
             # Process each cluster configuration
             for cluster_cfg in clusters_config:
                 self._create_cluster_from_config(cluster_cfg)
@@ -262,21 +278,25 @@ class ClusterManager:
         node_count = cluster_cfg['node_count']
         node_prefix = cluster_cfg['node_prefix']
         description = cluster_cfg.get('description', "")
-        
+        initial_model = cluster_cfg.get('initial_model')
+
         log.debug(f"Creating cluster {cluster_id} with playstyle {playstyle}, node_count {node_count}, node_prefix {node_prefix}")
-        
+        if initial_model:
+            log.info(f"Cluster {cluster_id} will use initial model: {initial_model}")
+
         # Validate node count
         if not isinstance(node_count, int) or node_count <= 0:
             log.error(f"Invalid node_count {node_count} for cluster {cluster_id}. Must be a positive integer.")
             raise ValueError(f"node_count must be a positive integer for cluster {cluster_id}.")
-        
+
         # Create Cluster instance
         cluster = Cluster(
             cluster_id=cluster_id,
             playstyle=playstyle,
             node_count=node_count,
             node_prefix=node_prefix,
-            description=description
+            description=description,
+            initial_model=initial_model
         )
         
         # Add to cluster registry
@@ -499,17 +519,37 @@ class ClusterManager:
     def get_node_cluster(self, node_id: str) -> Optional[str]:
         """
         Get the cluster ID a node is registered to.
-        
+
         Args:
             node_id: Node identifier to query
-            
+
         Returns:
             Optional[str]: Cluster ID if node is registered, None otherwise
         """
         log = logger.bind(context="ClusterManager.get_node_cluster")
         log.debug(f"Getting cluster for node {node_id}")
         return self.node_to_cluster.get(node_id)
-    
+
+    def get_initial_model(self, cluster_id: str) -> Optional[str]:
+        """
+        Get the initial model path for a cluster (for resume training).
+
+        Args:
+            cluster_id: Cluster identifier to query
+
+        Returns:
+            Optional[str]: Path to initial model checkpoint, None if not set
+        """
+        log = logger.bind(context="ClusterManager.get_initial_model")
+        log.debug(f"Getting initial model for cluster {cluster_id}")
+
+        cluster = self.get_cluster(cluster_id)
+        if cluster is None:
+            log.warning(f"Cluster {cluster_id} does not exist.")
+            return None
+
+        return cluster.initial_model
+
     def is_cluster_ready(self, cluster_id: str, threshold: Optional[float] = None) -> bool:
         """
         Check if a specific cluster is ready based on active node threshold.

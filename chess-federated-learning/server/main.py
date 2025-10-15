@@ -183,6 +183,13 @@ class TrainingOrchestrator:
             log.warning("Continuing without experiment tracking")
             self.current_run_id = None
 
+        # Load and broadcast initial models if configured (for resume training)
+        try:
+            await self._load_and_broadcast_initial_models()
+        except Exception as e:
+            log.error(f"Failed to load initial models: {e}")
+            log.warning("Continuing with random initialization for all clusters")
+
         try:
             for round_num in range(1, num_rounds + 1):
                 self.current_round = round_num
@@ -396,13 +403,20 @@ class TrainingOrchestrator:
             
             # Track pending updates for this cluster
             self.pending_updates[cluster_id] = set(nodes)
-            
+
+            # Calculate round offset for resume training
+            round_offset = 0
+            if self.server.cluster_manager.resume_training_enabled:
+                round_offset = self.server.cluster_manager.starting_round
+                log.debug(f"Resume training enabled: using round offset {round_offset}")
+
             # Create START_TRAINING message
             message = MessageFactory.create_start_training(
                 node_id="server",
                 cluster_id=cluster_id,
                 games_per_round=self.round_config.games_per_round,
-                round_num=round_num
+                round_num=round_num,
+                round_offset=round_offset
             )
             
             # Send to all nodes in the cluster
@@ -760,6 +774,78 @@ class TrainingOrchestrator:
             
             nodes = self.server.get_cluster_nodes(cluster_id, active_only=True)
             log.info(f"Broadcasted model to {len(nodes)} nodes in {cluster_id}")
+
+    async def _load_and_broadcast_initial_models(self):
+        """
+        Load initial models from checkpoints (for resume training) and broadcast to nodes.
+
+        This method checks each cluster for an initial_model path in the config.
+        If found, it loads the model checkpoint and broadcasts it to all nodes in that cluster.
+        """
+        log = logger.bind(context="TrainingOrchestrator._load_and_broadcast_initial_models")
+        log.info("Checking for initial models to load...")
+
+        import torch
+        from common.model_serialization import PyTorchSerializer
+        serializer = PyTorchSerializer(compression=True, encoding='base64')
+
+        clusters = self.server.cluster_manager.get_all_clusters()
+        loaded_count = 0
+
+        for cluster in clusters:
+            cluster_id = cluster.cluster_id
+            initial_model_path = self.server.cluster_manager.get_initial_model(cluster_id)
+
+            if not initial_model_path:
+                log.debug(f"No initial model configured for cluster {cluster_id}")
+                continue
+
+            try:
+                # Load the checkpoint
+                log.info(f"Loading initial model for cluster {cluster_id} from {initial_model_path}")
+                checkpoint = torch.load(initial_model_path, map_location='cpu')
+
+                # Extract model state (checkpoints may contain additional info)
+                if isinstance(checkpoint, dict) and 'model_state_dict' in checkpoint:
+                    model_state = checkpoint['model_state_dict']
+                else:
+                    model_state = checkpoint
+
+                # Serialize model state for network transmission
+                serialized_data = serializer.serialize(model_state)
+                packaged_model_state = {
+                    "serialized_data": serialized_data,
+                    "framework": "pytorch",
+                    "compression": True,
+                    "encoding": "base64"
+                }
+
+                # Create CLUSTER_MODEL message for round 0
+                message = MessageFactory.create_cluster_model(
+                    node_id="server",
+                    cluster_id=cluster_id,
+                    model_state=packaged_model_state,
+                    round_num=0
+                )
+
+                # Broadcast to cluster
+                await self.server.broadcast_to_cluster(cluster_id, message)
+
+                nodes = self.server.get_cluster_nodes(cluster_id, active_only=True)
+                log.info(f"Broadcasted initial model to {len(nodes)} nodes in {cluster_id}")
+                loaded_count += 1
+
+            except FileNotFoundError:
+                log.error(f"Initial model file not found: {initial_model_path}")
+                log.warning(f"Cluster {cluster_id} will start with random initialization")
+            except Exception as e:
+                log.error(f"Failed to load initial model for cluster {cluster_id}: {e}")
+                log.warning(f"Cluster {cluster_id} will start with random initialization")
+
+        if loaded_count > 0:
+            log.info(f"Successfully loaded and broadcasted {loaded_count} initial model(s)")
+        else:
+            log.info("No initial models loaded - all clusters will start with random initialization")
 
 
 class ServerMenu:

@@ -333,32 +333,35 @@ class MessageFactory:
         node_id: str,
         cluster_id: str,
         games_per_round: int,
-        round_num: int
+        round_num: int,
+        round_offset: int = 0
     ) -> Message:
         """
         Create a start training command message from server to client.
-        
+
         The server sends this message to instruct a node to begin
         a new training round with specified parameters.
-        
+
         Args:
             node_id: Unique node identifier (e.g., "agg_001")
             cluster_id: Cluster this node belongs to (e.g., "cluster_tactical")
             games_per_round: Number of games to play in this training round
             round_num: Training round number
+            round_offset: Offset for data sampling (used for resume training)
 
         Returns:
             Message: Start training command message ready to send
         """
         log = logger.bind(context="MessageFactory.create_start_training")
-        log.info(f"Creating START_TRAINING message for node={node_id}, cluster={cluster_id}, round={round_num}")
+        log.info(f"Creating START_TRAINING message for node={node_id}, cluster={cluster_id}, round={round_num}, offset={round_offset}")
 
         return Message(
             type=MessageType.START_TRAINING.value,
             node_id=node_id,
             cluster_id=cluster_id,
             payload={
-                "games_per_round": games_per_round
+                "games_per_round": games_per_round,
+                "round_offset": round_offset
             },
             timestamp=time.time(),
             round_num=round_num
