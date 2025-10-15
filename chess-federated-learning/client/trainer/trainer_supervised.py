@@ -58,7 +58,10 @@ class ChessDataset(Dataset):
         Get a training sample.
 
         Returns:
-            Tuple of (board_tensor, policy_target, value_target)
+            Tuple of (board_tensor, policy_target, value_target):
+                - board_tensor: Shape (119, 8, 8) - encoded board state
+                - policy_target: Scalar integer (0-4671) - move class index for CrossEntropyLoss
+                - value_target: Shape (1,) - game outcome in [-1, 1]
         """
         sample = self.samples[idx]
 
@@ -69,16 +72,16 @@ class ChessDataset(Dataset):
         # Encode move to action index
         move_index = self.move_encoder.encode(sample.move_played, sample.board)
 
-        # Create one-hot policy target
-        policy_target = np.zeros(4672, dtype=np.float32)
-        policy_target[move_index] = 1.0
+        # Return move index directly for CrossEntropyLoss (not one-hot!)
+        # CrossEntropyLoss expects class indices, not probability distributions
+        policy_target = move_index
 
         # Value target is game outcome from player's perspective
         value_target = np.array([sample.game_outcome], dtype=np.float32)
 
         return (
             torch.from_numpy(board_tensor),
-            torch.from_numpy(policy_target),
+            torch.tensor(policy_target, dtype=torch.long),  # Integer class index
             torch.from_numpy(value_target)
         )
 
@@ -123,6 +126,16 @@ class SupervisedTrainer(TrainerInterface):
         """
         super().__init__(node_id, cluster_id, config)
 
+        # Auto-detect playstyle from cluster_id if not explicitly set
+        # e.g., "cluster_tactical" -> "tactical", "cluster_positional" -> "positional"
+        if not self.config.playstyle and cluster_id:
+            if "tactical" in cluster_id.lower():
+                self.config.playstyle = "tactical"
+                logger.info(f"Auto-detected playstyle 'tactical' from cluster_id '{cluster_id}'")
+            elif "positional" in cluster_id.lower():
+                self.config.playstyle = "positional"
+                logger.info(f"Auto-detected playstyle 'positional' from cluster_id '{cluster_id}'")
+
         # Set device
         if device is None:
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -142,10 +155,14 @@ class SupervisedTrainer(TrainerInterface):
         # Model (will be created when training starts)
         self.model: Optional[AlphaZeroNet] = None
         self.optimizer: Optional[optim.Optimizer] = None
+        self.scheduler: Optional[optim.lr_scheduler._LRScheduler] = None
 
         # Loss functions
         self.policy_loss_fn = nn.CrossEntropyLoss()
         self.value_loss_fn = nn.MSELoss()
+        
+        # Track best loss for scheduler
+        self.best_loss = float('inf')
 
         # Sample extractor config
         self.extraction_config = ExtractionConfig(
@@ -197,29 +214,41 @@ class SupervisedTrainer(TrainerInterface):
     def _calculate_offset(self) -> int:
         """
         Calculate sample offset based on node index and current round.
-        
+
         Formula:
-            offset = round * (num_nodes * games_per_round) + node_index * games_per_round
-        
+            offset = (round + round_offset) * (num_nodes * games_per_round) + node_index * games_per_round
+
+        The round_offset is used for resume training. For example, if resuming from round 30:
+        - round_offset = 30
+        - Round 1 (new): Uses data from position 30 onwards (not 0-30 which was already used)
+        - Round 2 (new): Uses data from position 31 onwards
+
         Assuming 4 nodes per cluster with games_per_round=100:
         - Round 0: node 0 starts at 0, node 1 at 100, node 2 at 200, node 3 at 300
         - Round 1: node 0 starts at 400, node 1 at 500, node 2 at 600, node 3 at 700
         - Round 2: node 0 starts at 800, node 1 at 900, node 2 at 1000, node 3 at 1100
-        
+
+        With round_offset=30 (resume training):
+        - Round 1: node 0 starts at 12400, node 1 at 12500, node 2 at 12600, node 3 at 12700
+        - Round 2: node 0 starts at 12800, node 1 at 12900, node 2 at 13000, node 3 at 13100
+
         This ensures:
         1. Each node in the same round uses different games (no overlap within cluster)
         2. Each round uses new games (no overlap across rounds)
-        3. Deterministic and reproducible offset calculation
-        
+        3. Resume training uses new data (no overlap with previous training)
+        4. Deterministic and reproducible offset calculation
+
         Returns:
             Calculated offset value
         """
         # Assume 4 nodes per cluster (can be made configurable if needed)
         nodes_per_cluster = 4
         games_per_round = self.config.games_per_round
-        
-        offset = self.current_round * (nodes_per_cluster * games_per_round) + self.node_index * games_per_round
-        
+
+        # Add round_offset to ensure resume training uses new data
+        effective_round = self.current_round + self.round_offset
+        offset = effective_round * (nodes_per_cluster * games_per_round) + self.node_index * games_per_round
+
         return offset
 
     def set_pgn_database(self, path: str):
@@ -283,6 +312,29 @@ class SupervisedTrainer(TrainerInterface):
             # 4. Train
             metrics = await self._train_epoch(dataloader)
             log.success(f"Training complete: loss={metrics['total_loss']:.4f}")
+            
+            # 4.3. Update learning rate scheduler
+            current_loss = metrics['total_loss']
+            if self.scheduler is not None:
+                # Get current LR before stepping
+                old_lr = self.optimizer.param_groups[0]['lr']
+                
+                # Step the scheduler
+                self.scheduler.step(current_loss)
+                
+                # Get new LR after stepping
+                current_lr = self.optimizer.param_groups[0]['lr']
+                
+                # Log if LR changed (manually since verbose is not available)
+                if current_lr < old_lr:
+                    log.warning(f"Learning rate reduced from {old_lr:.6f} to {current_lr:.6f}")
+                else:
+                    log.info(f"Current learning rate: {current_lr:.6f}")
+                
+                # Track best loss
+                if current_loss < self.best_loss:
+                    self.best_loss = current_loss
+                    log.info(f"New best loss: {current_loss:.4f}")
 
             # 4.5. Save sample count before cleanup
             num_samples = len(samples)
@@ -432,6 +484,23 @@ class SupervisedTrainer(TrainerInterface):
             self.model.parameters(),
             lr=self.config.learning_rate
         )
+        
+        # Create learning rate scheduler
+        # ReduceLROnPlateau: reduce LR when loss plateaus
+        # patience=3: wait 3 rounds before reducing
+        # factor=0.5: reduce LR by half
+        # min_lr=1e-6: don't go below this
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            self.optimizer,
+            mode='min',
+            factor=0.5,
+            patience=3,
+            min_lr=1e-6
+        )
+        
+        log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
+        current_lr = self.optimizer.param_groups[0]['lr']
+        log.info(f"Optimizer created with learning rate: {current_lr}")
 
     async def _extract_samples(self) -> List[TrainingSample]:
         """Extract training samples from PGN database."""
