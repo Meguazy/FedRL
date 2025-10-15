@@ -254,18 +254,38 @@ class FederatedLearningNode:
             return
 
         games_per_round = message.payload.get("games_per_round", 100)
+        round_offset = message.payload.get("round_offset", 0)
         round_num = message.round_num
 
-        log.info(f"Starting training for round {round_num} with {games_per_round} games")
+        if round_offset > 0:
+            log.info(f"Starting training for round {round_num} with {games_per_round} games (offset={round_offset} for resume training)")
+        else:
+            log.info(f"Starting training for round {round_num} with {games_per_round} games")
 
         self.current_round = round_num
         self.lifecycle_state = NodeLifecycleState.TRAINING
 
-        # Update trainer config if needed
+        # Update trainer config and round offset if needed
         if self.trainer.config.games_per_round != games_per_round:
-            new_config = TrainingConfig(games_per_round=games_per_round)
+            # Preserve all existing config parameters, only update games_per_round
+            new_config = TrainingConfig(
+                games_per_round=games_per_round,
+                batch_size=self.trainer.config.batch_size,
+                learning_rate=self.trainer.config.learning_rate,
+                exploration_factor=self.trainer.config.exploration_factor,
+                max_game_length=self.trainer.config.max_game_length,
+                save_games=self.trainer.config.save_games,
+                playstyle=self.trainer.config.playstyle,
+                additional_params=self.trainer.config.additional_params
+            )
             self.trainer.update_config(new_config)
             log.info(f"Updated trainer config: {new_config}")
+
+        # Set round offset for resume training
+        if hasattr(self.trainer, 'set_round_offset'):
+            self.trainer.set_round_offset(round_offset)
+            if round_offset > 0:
+                log.info(f"Set trainer round offset to {round_offset}")
 
         # Start training in background task
         if self.current_model_state is None:

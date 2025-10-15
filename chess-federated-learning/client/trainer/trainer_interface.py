@@ -117,6 +117,7 @@ class TrainerInterface(ABC):
         self.training_history: List[TrainingResult] = []
         self.total_games_played: int = 0
         self.total_training_time: float = 0.0
+        self.round_offset: int = 0  # For resume training
 
         log = logger.bind(context=f"{self.__class__.__name__}.{node_id}")
         log.info(f"Initialized trainer for node {node_id} in cluster {cluster_id}")
@@ -163,13 +164,28 @@ class TrainerInterface(ABC):
         """
         pass
     
+    def set_round_offset(self, offset: int):
+        """
+        Set round offset for resume training.
+
+        This offset is added to the current round number when calculating
+        data sampling positions, ensuring that resumed training uses new data
+        instead of repeating previously-used data.
+
+        Args:
+            offset: Number of rounds to offset (e.g., 30 if resuming from round 30)
+        """
+        self.round_offset = offset
+        log = logger.bind(context=f"{self.__class__.__name__}.{self.node_id}")
+        log.info(f"Set round offset to {offset}")
+
     def update_config(self, config: TrainingConfig):
         """
         Update training configuration.
-        
+
         Allows dynamic adjustment of training parameters between rounds
         (e.g., decreasing exploration over time).
-        
+
         Args:
             config: New training configuration
         """
