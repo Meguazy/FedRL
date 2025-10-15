@@ -82,7 +82,7 @@ server_port: 8765
 trainer_type: supervised
 auto_reconnect: true
 training:
-  games_per_round: 100
+  games_per_round: 200
   batch_size: 32
   learning_rate: 0.001
   exploration_factor: 1.0

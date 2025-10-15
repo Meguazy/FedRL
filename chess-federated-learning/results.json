@@ -1,0 +1,19 @@
+{
+  "model_path": "../storage/models/run_20251014_170903_e247af7e/cluster_tactical/round_0030.pt",
+  "device": "cuda",
+  "timestamp": "2025-10-15T10:51:35.165943",
+  "matches": [
+    {
+      "opponent": "Stockfish-ELO800~",
+      "opponent_elo": 800,
+      "games_played": 10,
+      "wins": 0,
+      "draws": 0,
+      "losses": 10,
+      "score": 0.0,
+      "win_rate": 0.0
+    }
+  ],
+  "estimated_elo": 800,
+  "confidence_range": 300
+}
