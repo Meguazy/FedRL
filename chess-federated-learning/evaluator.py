@@ -92,6 +92,7 @@ class ChessAI:
         self.device = device
         self.board_encoder = BoardEncoder()
         self.move_encoder = MoveEncoder()
+        self.board_history = []  # Track board history for encoding
 
         self.model.to(device)
         self.model.eval()
@@ -111,8 +112,11 @@ class ChessAI:
         if not legal_moves:
             raise ValueError("No legal moves available")
 
-        # Encode board
-        board_tensor = self.board_encoder.encode(board, history=[])
+        # Get last 7 board positions for history (AlphaZero uses 8 time steps total)
+        history = self.board_history[-7:] if self.board_history else []
+
+        # Encode board with history
+        board_tensor = self.board_encoder.encode(board, history=history)
         board_tensor = torch.from_numpy(board_tensor).unsqueeze(0).to(self.device)
 
         # Get model prediction
@@ -123,7 +127,10 @@ class ChessAI:
         # Find best legal move
         best_move = None
         best_prob = -1
-
+        
+        # Debug: Check if model is producing sensible outputs
+        top_5_indices = torch.topk(policy_probs, k=min(5, len(policy_probs))).indices
+        
         for move in legal_moves:
             try:
                 move_index = self.move_encoder.encode(move, board)
@@ -135,6 +142,10 @@ class ChessAI:
             except:
                 # If encoding fails, skip this move
                 continue
+
+        # After selecting move, update history with current board state
+        # (This will be the previous position for the next move)
+        self.board_history.append(board.copy())
 
         return best_move if best_move else legal_moves[0]
 
@@ -245,6 +256,12 @@ class GamePlayer:
         board = chess.Board()
         moves = []
         start_time = time.time()
+
+        # Reset board history for AI players at the start of each game
+        if hasattr(white_player, 'board_history'):
+            white_player.board_history = []
+        if hasattr(black_player, 'board_history'):
+            black_player.board_history = []
 
         if self.verbose:
             log.info(f"\n{white_player.name} (White) vs {black_player.name} (Black)")

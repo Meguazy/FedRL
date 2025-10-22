@@ -97,6 +97,17 @@ async def start_node_from_config(config: NodeConfig):
             logger.info(f"Configured supervised trainer with PGN database: {pgn_database_path}")
         else:
             logger.warning("Supervised trainer configured but no PGN database path specified")
+    
+    # Configure puzzle trainer if applicable
+    elif config.trainer_type == "puzzle":
+        puzzle_config = config.config.get("puzzle", {})
+        puzzle_database_path = puzzle_config.get("puzzle_database_path")
+        
+        if puzzle_database_path:
+            trainer.puzzle_database_path = puzzle_database_path
+            logger.info(f"Configured puzzle trainer with database: {puzzle_database_path}")
+        else:
+            logger.warning("Puzzle trainer configured but no puzzle database path specified")
 
     # Create node
     node = FederatedLearningNode(

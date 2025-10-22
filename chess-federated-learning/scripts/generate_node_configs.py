@@ -52,7 +52,8 @@ def generate_node_config(
     server_host: str = "localhost",
     server_port: int = 8765,
     trainer_type: str = "dummy",
-    pgn_database_path: str = None
+    pgn_database_path: str = None,
+    puzzle_database_path: str = None
 ) -> Dict[str, Any]:
     """
     Generate configuration for a single node.
@@ -65,6 +66,7 @@ def generate_node_config(
         server_port: FL server port
         trainer_type: Type of trainer to use
         pgn_database_path: Path to PGN database (for supervised trainer)
+        puzzle_database_path: Path to puzzle database (for puzzle trainer)
 
     Returns:
         Node configuration dictionary
@@ -76,6 +78,14 @@ def generate_node_config(
         raise ValueError(f"Invalid playstyle '{cluster_info['playstyle']}' for cluster {cluster_id}")
     playstyle = cluster_info["playstyle"]
 
+    # Determine default games_per_round and batch_size based on trainer type
+    if trainer_type == "puzzle":
+        default_games = 500  # Puzzles per round
+        default_batch = 64
+    else:
+        default_games = 200  # Games per round
+        default_batch = 32
+
     config = {
         "node_id": node_id,
         "cluster_id": cluster_id,
@@ -84,9 +94,9 @@ def generate_node_config(
         "trainer_type": trainer_type,
         "auto_reconnect": True,
         "training": {
-            "games_per_round": 100,
-            "batch_size": 32,
-            "learning_rate": 0.001,
+            "games_per_round": default_games,
+            "batch_size": default_batch,
+            "learning_rate": 0.003,
             "exploration_factor": 1.0,
             "max_game_length": 200,
             "save_games": True,
@@ -108,11 +118,37 @@ def generate_node_config(
     # Add supervised learning specific config
     if trainer_type == "supervised":
         config["supervised"] = {
-            "pgn_database_path": pgn_database_path or "./databases/lichess_db.pgn.zst",
+            "pgn_database_path": pgn_database_path or "./data/databases/lichess_db.pgn.zst",
             "min_rating": 2000,
             "skip_opening_moves": 10,
             "skip_endgame_pieces": 6,
             "sample_rate": 1.0,
+        }
+    
+    # Add puzzle learning specific config
+    elif trainer_type == "puzzle":
+        # Define themes based on playstyle
+        if playstyle == "tactical":
+            themes = [
+                "fork", "pin", "skewer", "discoveredAttack", "sacrifice",
+                "attackingF2F7", "doubleCheck", "deflection", "attraction", "clearance"
+            ]
+        elif playstyle == "positional":
+            themes = [
+                "endgame", "advantage", "crushing", "mate", "mateIn2", "mateIn3",
+                "queenRookEndgame", "bishopEndgame", "pawnEndgame", "rookEndgame"
+            ]
+        else:
+            # Default to mixed themes
+            themes = [
+                "fork", "pin", "skewer", "endgame", "mate", "mateIn2"
+            ]
+        
+        config["puzzle"] = {
+            "puzzle_database_path": puzzle_database_path or "./data/databases/lichess_puzzles.csv.zst",
+            "min_rating": 1600,
+            "max_rating": 2400,
+            "themes": themes,
         }
 
     return config
@@ -144,7 +180,8 @@ def generate_all_configs(
     server_host: str = "localhost",
     server_port: int = 8765,
     trainer_type: str = "dummy",
-    pgn_database_path: str = None
+    pgn_database_path: str = None,
+    puzzle_database_path: str = None
 ) -> List[str]:
     """
     Generate configuration files for all nodes in the topology.
@@ -156,6 +193,7 @@ def generate_all_configs(
         server_port: FL server port
         trainer_type: Type of trainer to use
         pgn_database_path: Path to PGN database (for supervised trainer)
+        puzzle_database_path: Path to puzzle database (for puzzle trainer)
 
     Returns:
         List of generated configuration file paths
@@ -194,7 +232,8 @@ def generate_all_configs(
                 server_host=server_host,
                 server_port=server_port,
                 trainer_type=trainer_type,
-                pgn_database_path=pgn_database_path
+                pgn_database_path=pgn_database_path,
+                puzzle_database_path=puzzle_database_path
             )
 
             # Save config
@@ -220,12 +259,6 @@ def main():
         help="Path to cluster topology YAML file (default: config/cluster_topology.yaml)"
     )
     parser.add_argument(
-        "--output-dir",
-        type=str,
-        default="config/nodes",
-        help="Directory to save node configurations (default: config/nodes)"
-    )
-    parser.add_argument(
         "--server-host",
         type=str,
         default="localhost",
@@ -237,18 +270,31 @@ def main():
         default=8765,
         help="FL server port (default: 8765)"
     )
-    parser.add_argument(
-        "--trainer-type",
-        type=str,
-        default="dummy",
-        choices=["dummy", "supervised", "alphazero"],
-        help="Trainer type (default: dummy)"
+    
+    # Mutually exclusive group for trainer type
+    trainer_group = parser.add_mutually_exclusive_group(required=True)
+    trainer_group.add_argument(
+        "--puzzle",
+        action="store_true",
+        help="Generate puzzle trainer configurations (saves to config/nodes/puzzle_configs/)"
     )
+    trainer_group.add_argument(
+        "--supervised",
+        action="store_true",
+        help="Generate supervised trainer configurations (saves to config/nodes/supervised_configs/)"
+    )
+    
     parser.add_argument(
         "--pgn-database",
         type=str,
         default=None,
-        help="Path to PGN database for supervised learning (default: ./databases/lichess_db.pgn.zst)"
+        help="Path to PGN database for supervised learning (default: ./data/databases/lichess_db.pgn.zst)"
+    )
+    parser.add_argument(
+        "--puzzle-database",
+        type=str,
+        default=None,
+        help="Path to puzzle database for puzzle learning (default: ./data/databases/lichess_puzzles.csv.zst)"
     )
     parser.add_argument(
         "--verbose",
@@ -257,6 +303,17 @@ def main():
     )
 
     args = parser.parse_args()
+
+    # Determine trainer type and output directory
+    if args.puzzle:
+        trainer_type = "puzzle"
+        output_dir = "chess-federated-learning/config/nodes/puzzle_configs"
+    elif args.supervised:
+        trainer_type = "supervised"
+        output_dir = "chess-federated-learning/config/nodes/supervised_configs"
+    else:
+        # Should never reach here due to required=True
+        parser.error("Must specify either --puzzle or --supervised")
 
     # Setup logging
     logger.remove()
@@ -269,21 +326,26 @@ def main():
 
     logger.info("Starting node configuration generation")
     logger.info(f"Topology file: {args.topology}")
-    logger.info(f"Output directory: {args.output_dir}")
+    logger.info(f"Output directory: {output_dir}")
     logger.info(f"Server: {args.server_host}:{args.server_port}")
-    logger.info(f"Trainer type: {args.trainer_type}")
-    if args.trainer_type == "supervised":
-        pgn_path = args.pgn_database or "./databases/lichess_db.pgn.zst"
+    logger.info(f"Trainer type: {trainer_type}")
+    
+    if trainer_type == "supervised":
+        pgn_path = args.pgn_database or "./data/databases/lichess_db.pgn.zst"
         logger.info(f"PGN database: {pgn_path}")
+    elif trainer_type == "puzzle":
+        puzzle_path = args.puzzle_database or "./data/databases/lichess_puzzles.csv.zst"
+        logger.info(f"Puzzle database: {puzzle_path}")
 
     try:
         generated_files = generate_all_configs(
             topology_path=args.topology,
-            output_dir=args.output_dir,
+            output_dir=output_dir,
             server_host=args.server_host,
             server_port=args.server_port,
-            trainer_type=args.trainer_type,
-            pgn_database_path=args.pgn_database
+            trainer_type=trainer_type,
+            pgn_database_path=args.pgn_database,
+            puzzle_database_path=args.puzzle_database
         )
 
         logger.success(f"Successfully generated {len(generated_files)} configuration files")

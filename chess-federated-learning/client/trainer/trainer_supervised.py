@@ -479,28 +479,36 @@ class SupervisedTrainer(TrainerInterface):
 
             self.model.load_state_dict(state_dict)
 
-        # Create optimizer
-        self.optimizer = optim.Adam(
-            self.model.parameters(),
-            lr=self.config.learning_rate
-        )
-        
-        # Create learning rate scheduler
-        # ReduceLROnPlateau: reduce LR when loss plateaus
-        # patience=3: wait 3 rounds before reducing
-        # factor=0.5: reduce LR by half
-        # min_lr=1e-6: don't go below this
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer,
-            mode='min',
-            factor=0.5,
-            patience=3,
-            min_lr=1e-6
-        )
-        
-        log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
-        current_lr = self.optimizer.param_groups[0]['lr']
-        log.info(f"Optimizer created with learning rate: {current_lr}")
+        # Create optimizer and scheduler only on first round
+        # This preserves Adam momentum and LR scheduler state across rounds
+        if self.optimizer is None:
+            self.optimizer = optim.Adam(
+                self.model.parameters(),
+                lr=self.config.learning_rate
+            )
+            
+            # Create learning rate scheduler
+            # ReduceLROnPlateau: reduce LR when loss plateaus
+            # patience=15: wait 15 rounds before reducing (optimal for 500 round training)
+            # factor=0.5: reduce LR by half
+            # min_lr=1e-6: don't go below this
+            self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+                self.optimizer,
+                mode='min',
+                factor=0.5,
+                patience=15,
+                min_lr=1e-6
+            )
+            
+            log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
+            current_lr = self.optimizer.param_groups[0]['lr']
+            log.info(f"Optimizer created with learning rate: {current_lr}")
+        else:
+            # Optimizer already exists, just update it with new model parameters
+            # This happens when the model is updated but we want to keep optimizer state
+            log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
+            current_lr = self.optimizer.param_groups[0]['lr']
+            log.info(f"Reusing optimizer with learning rate: {current_lr}")
 
     async def _extract_samples(self) -> List[TrainingSample]:
         """Extract training samples from PGN database."""

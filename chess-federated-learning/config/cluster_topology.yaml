@@ -12,29 +12,33 @@
 #      - Offset data sampling so you use NEW data (not rounds 1-30 again)
 #      - Save new checkpoints starting from round 1 (but using data offset)
 resume_training:
-  enabled: false                     # Enable resume training
-  #starting_round: 30                # Round number to resume from (affects data sampling offset)
+  enabled: true                     # Enable resume training
+  starting_round: 50                # Round number to resume from (affects data sampling offset)
 
 clusters:
-  # tactical playstyle cluster - focused on tactical, attacking chess
+  # tactical playstyle cluster - focused on tactical patterns
+  # Now training on tactical puzzles from Lichess
   - id: "cluster_tactical"
     playstyle: "tactical"
-    description: "Tactical, attacking chess with piece sacrifices and sharp positions"
+    description: "Tactical pattern recognition with focus on combinations, sacrifices, and sharp tactics"
     node_count: 4                   # Number of nodes for this cluster
     node_prefix: "agg"               # Prefix for node IDs (generates agg_001, agg_002, etc.)
-    #initial_model: "/home/fra/Uni/Thesis/main_repo/FedRL/storage/models/run_20251014_170903_e247af7e/cluster_tactical/round_0030.pt"  # Resume from round 30
+    initial_model: "/home/fra/Uni/Thesis/main_repo/FedRL/storage/models/run_20251021_150512_442c0e3c/cluster_tactical/round_0050.pt"  # Resume from round 50
 
   # Positional playstyle cluster - focused on strategic, long-term planning
+  # Now training on positional/endgame puzzles from Lichess
   - id: "cluster_positional"
     playstyle: "positional"
-    description: "Strategic, long-term planning with focus on pawn structure and space control"
+    description: "Strategic, long-term planning with focus on endgame and positional puzzles"
     node_count: 4                    # Number of nodes for this cluster
     node_prefix: "pos"               # Prefix for node IDs (generates pos_001, pos_002, etc.)
-    #initial_model: "/home/fra/Uni/Thesis/main_repo/FedRL/storage/models/run_20251014_170903_e247af7e/cluster_positional/round_0030.pt"  # Resume from round 30
+    initial_model: "/home/fra/Uni/Thesis/main_repo/FedRL/storage/models/run_20251021_150512_442c0e3c/cluster_positional/round_0050.pt"  # Resume from round 50
 
 # Configuration notes:
-# - Total nodes: 64 (32 tactical + 32 positional)
-# - Node IDs are auto-generated: agg_001 through agg_032, pos_001 through pos_032
-# - Each cluster represents a different chess playing style
+# - Total nodes: 8 (4 tactical + 4 positional)
+# - Node IDs: agg_001-004 (tactical puzzles), pos_001-004 (positional/endgame puzzles)
+# - Tactical cluster: Trains on tactical puzzles (fork, pin, sacrifice, discovered attack, etc.)
+# - Positional cluster: Trains on endgame and positional advantage puzzles
+# - Each cluster maintains separate model aggregation
+# - Puzzle-based training provides verified correct moves for supervised learning
 # - Node count can be adjusted based on available computational resources
-# - For testing, you can reduce node_count to smaller values (e.g., 4 per cluster)

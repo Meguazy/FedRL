@@ -14,15 +14,11 @@ training:
   learning_rate: 0.003
   exploration_factor: 1.0
   max_game_length: 200
-  save_games: false
+  save_games: true
   playstyle: tactical
-  additional_params:
-    min_puzzle_rating: 1600
-    max_puzzle_rating: 2400
-    themes: ["fork", "pin", "skewer", "discoveredAttack", "sacrifice", "attackingF2F7", "doubleCheck", "deflection", "attraction", "clearance"]
 storage:
   enabled: true
-  base_path: ./chess-federated-learning/storage
+  base_path: ./storage
   save_models: true
   save_metrics: true
 logging:
@@ -30,6 +26,17 @@ logging:
   file: ./logs/agg_002.log
   format: text
 puzzle:
-  puzzle_database_path: ./chess-federated-learning/data/databases/lichess_puzzles.csv.zst
-  min_puzzle_rating: 1600
-  max_puzzle_rating: 2400
+  puzzle_database_path: ./data/databases/lichess_puzzles.csv.zst
+  min_rating: 1600
+  max_rating: 2400
+  themes:
+  - fork
+  - pin
+  - skewer
+  - discoveredAttack
+  - sacrifice
+  - attackingF2F7
+  - doubleCheck
+  - deflection
+  - attraction
+  - clearance
