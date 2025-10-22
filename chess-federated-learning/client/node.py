@@ -281,6 +281,11 @@ class FederatedLearningNode:
             self.trainer.update_config(new_config)
             log.info(f"Updated trainer config: {new_config}")
 
+        # Set current round for trainer (for offset calculation)
+        if hasattr(self.trainer, 'set_current_round'):
+            self.trainer.set_current_round(round_num)
+            log.debug(f"Set trainer current round to {round_num}")
+        
         # Set round offset for resume training
         if hasattr(self.trainer, 'set_round_offset'):
             self.trainer.set_round_offset(round_offset)

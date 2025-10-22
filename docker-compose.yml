@@ -6,7 +6,7 @@ services:
     container_name: chess-redis-cache
     command: >
       redis-server
-      --maxmemory 4gb
+      --maxmemory 8gb
       --maxmemory-policy noeviction
       --save 60 1000
       --appendonly yes

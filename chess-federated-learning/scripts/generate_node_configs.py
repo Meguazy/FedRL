@@ -149,6 +149,8 @@ def generate_node_config(
         
         config["puzzle"] = {
             "puzzle_database_path": puzzle_database_path or "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/data/databases/lichess_puzzles.csv.zst",
+            "redis_host": "localhost",
+            "redis_port": 6381,
             "min_rating": 1600,
             "max_rating": 2400,
             "themes": themes,

@@ -102,12 +102,30 @@ async def start_node_from_config(config: NodeConfig):
     elif config.trainer_type == "puzzle":
         puzzle_config = config.config.get("puzzle", {})
         puzzle_database_path = puzzle_config.get("puzzle_database_path")
+        redis_host = puzzle_config.get("redis_host", "localhost")
+        redis_port = puzzle_config.get("redis_port", 6381)
+        min_rating = puzzle_config.get("min_rating", 1500)
+        max_rating = puzzle_config.get("max_rating", 2500)
+        themes = puzzle_config.get("themes")
         
         if puzzle_database_path:
             trainer.puzzle_database_path = puzzle_database_path
             logger.info(f"Configured puzzle trainer with database: {puzzle_database_path}")
         else:
             logger.warning("Puzzle trainer configured but no puzzle database path specified")
+        
+        # Update Redis configuration (should already be set from factory, but ensure it's correct)
+        trainer.redis_cache.host = redis_host
+        trainer.redis_cache.port = redis_port
+        
+        # Update puzzle filters
+        trainer.min_rating = min_rating
+        trainer.max_rating = max_rating
+        if themes:
+            trainer.themes = themes
+        
+        logger.info(f"Puzzle trainer config: Redis={redis_host}:{redis_port}, "
+                   f"rating={min_rating}-{max_rating}, themes={themes if themes else 'all'}")
 
     # Create node
     node = FederatedLearningNode(

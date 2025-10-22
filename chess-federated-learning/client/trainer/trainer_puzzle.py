@@ -38,6 +38,7 @@ from client.trainer.trainer_interface import (
 from client.trainer.models.alphazero_net import AlphaZeroNet
 from data.board_encoder import BoardEncoder
 from data.move_encoder import MoveEncoder
+from data.redis_puzzle_cache import RedisPuzzleCache
 from common.model_serialization import PyTorchSerializer
 
 
@@ -187,25 +188,39 @@ class PuzzleTrainer(TrainerInterface):
                  node_id: str,
                  config: TrainingConfig,
                  puzzle_database_path: str,
-                 device: str = 'cpu'):
+                 device: str = 'cpu',
+                 redis_host: str = 'localhost',
+                 redis_port: int = 6381):
         """
         Initialize puzzle trainer.
         
         Args:
-            node_id: Unique identifier for this node
+            node_id: Unique identifier for this node (e.g., "agg_001", "pos_003")
             config: Training configuration
-            puzzle_database_path: Path to Lichess puzzle database (.csv or .csv.zst)
+            puzzle_database_path: Path to Lichess puzzle database (legacy, not used if Redis available)
             device: Device to train on ('cpu' or 'cuda')
+            redis_host: Redis server host
+            redis_port: Redis server port
         """
         self.node_id = node_id
         self.config = config
         self.puzzle_database_path = puzzle_database_path
         self.device = torch.device(device)
         
+        # Extract node index from node_id (e.g., "agg_001" -> 0, "agg_002" -> 1, etc.)
+        # Format: {prefix}_{index:03d}
+        try:
+            self.node_index = int(node_id.split('_')[-1]) - 1  # 0-indexed
+        except (ValueError, IndexError):
+            logger.warning(f"Could not extract node index from node_id '{node_id}', defaulting to 0")
+            self.node_index = 0
+        
         # Track current round (for offset calculation in federated setting)
         self.current_round = 0
         self.round_offset = 0
-        self.node_index = 0
+        
+        # Redis cache for puzzles
+        self.redis_cache = RedisPuzzleCache(host=redis_host, port=redis_port)
         
         # Initialize encoders
         self.board_encoder = BoardEncoder()
@@ -238,10 +253,6 @@ class PuzzleTrainer(TrainerInterface):
     def set_round_offset(self, offset: int):
         """Set the round offset for resume training."""
         self.round_offset = offset
-        
-    def set_node_index(self, index: int):
-        """Set the node index within cluster."""
-        self.node_index = index
         
     async def train(self, initial_model_state: Dict[str, Any]) -> TrainingResult:
         """
@@ -376,54 +387,114 @@ class PuzzleTrainer(TrainerInterface):
             log.info(f"Reusing optimizer with learning rate: {current_lr}")
     
     async def _load_puzzles(self) -> List[Puzzle]:
-        """Load puzzles from database."""
+        """
+        Load puzzles from Redis cache with proper offset calculation.
+        
+        Offset Strategy (Federated Learning):
+        - Nodes within the SAME cluster must see DIFFERENT puzzles (for aggregation benefit)
+        - Nodes in DIFFERENT clusters can see SAME puzzles (for fair comparison)
+        
+        Offset Formula:
+            offset = (current_round + round_offset) * (nodes_per_cluster * games_per_round) + node_index * games_per_round
+        
+        Where:
+            - current_round: Current training round (0, 1, 2, ...)
+            - round_offset: Offset for resume training (e.g., 50 if resuming from round 50)
+            - nodes_per_cluster: Number of nodes in this cluster (e.g., 4)
+            - games_per_round: Puzzles per round per node (e.g., 500)
+            - node_index: Index within cluster (0, 1, 2, 3 for a 4-node cluster)
+        
+        Example with 4 nodes, 500 puzzles/round, resuming from round 50:
+            Round 0 (actual round 50):
+                node_index=0: offset = 50 * (4 * 500) + 0 * 500 = 100,000
+                node_index=1: offset = 50 * (4 * 500) + 1 * 500 = 100,500
+                node_index=2: offset = 50 * (4 * 500) + 2 * 500 = 101,000
+                node_index=3: offset = 50 * (4 * 500) + 3 * 500 = 101,500
+            Round 1 (actual round 51):
+                node_index=0: offset = 51 * (4 * 500) + 0 * 500 = 102,000
+                ...
+        
+        Returns:
+            List of Puzzle objects loaded from Redis
+        """
+        log = logger.bind(context=f"PuzzleTrainer.{self.node_id}")
         loop = asyncio.get_event_loop()
         
         def load():
+            # Get total puzzle count from Redis
+            total_puzzles = self.redis_cache.get_total_puzzles()
+            if total_puzzles == 0:
+                log.error("No puzzles found in Redis. Please run index_puzzles_to_redis.py first.")
+                raise TrainingError("Redis puzzle cache is empty")
+            
+            log.info(f"Total puzzles in Redis: {total_puzzles:,}")
+            
+            # Calculate nodes per cluster from config (assume symmetric clusters)
+            # This should ideally come from cluster topology, but we can infer from node_id
+            # For now, we'll use a reasonable default of 4 nodes per cluster
+            # TODO: Pass this from cluster_topology.yaml in the future
+            nodes_per_cluster = 4
+            
+            # Calculate offset for this node
+            # Formula: (round + round_offset) * (nodes_per_cluster * games_per_round) + node_index * games_per_round
+            effective_round = self.current_round + self.round_offset
+            round_base = effective_round * (nodes_per_cluster * self.config.games_per_round)
+            node_offset = self.node_index * self.config.games_per_round
+            offset = round_base + node_offset
+            
+            log.info(f"Calculating offset: round={self.current_round}, round_offset={self.round_offset}, "
+                    f"effective_round={effective_round}, nodes_per_cluster={nodes_per_cluster}, "
+                    f"games_per_round={self.config.games_per_round}, node_index={self.node_index}")
+            log.info(f"Offset calculation: round_base={round_base}, node_offset={node_offset}, total_offset={offset}")
+            
+            # Ensure offset doesn't exceed available puzzles (wrap around if needed)
+            if offset >= total_puzzles:
+                log.warning(f"Offset {offset} >= total puzzles {total_puzzles}. Wrapping around.")
+                offset = offset % total_puzzles
+            
+            # Load puzzles from Redis
+            count = self.config.games_per_round
+            log.info(f"Loading {count} puzzles from Redis starting at offset {offset}")
+            
+            puzzle_dicts = self.redis_cache.get_puzzles(offset=offset, count=count)
+            
+            if not puzzle_dicts:
+                log.error(f"No puzzles retrieved from Redis at offset {offset}")
+                raise TrainingError(f"Failed to load puzzles from Redis at offset {offset}")
+            
+            # Convert to Puzzle objects
             puzzles = []
-            path = Path(self.puzzle_database_path)
-            
-            # Handle compressed files
-            if path.suffix == '.zst':
-                import subprocess
-                cmd = ['unzstd', '-c', str(path)]
-                proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, text=True)
-                reader = csv.DictReader(proc.stdout)
-            else:
-                with open(path, 'r') as f:
-                    reader = csv.DictReader(f)
-            
-            for row in reader:
+            for pd in puzzle_dicts:
                 try:
-                    rating = int(row['Rating'])
-                    
-                    # Filter by rating
+                    # Apply rating filter if configured
+                    rating = pd['rating']
                     if rating < self.min_rating or rating > self.max_rating:
                         continue
                     
-                    # Filter by themes if specified
-                    themes = row['Themes'].split()
+                    # Apply theme filter if configured
+                    themes = pd['themes']
                     if self.themes and not any(t in themes for t in self.themes):
                         continue
                     
                     puzzle = Puzzle(
-                        puzzle_id=row['PuzzleId'],
-                        fen=row['FEN'],
-                        moves=row['Moves'].split(),
+                        puzzle_id=pd['puzzle_id'],
+                        fen=pd['fen'],
+                        moves=pd['moves'],
                         rating=rating,
                         themes=themes
                     )
                     puzzles.append(puzzle)
                     
-                    # Limit puzzles per round
-                    if len(puzzles) >= self.config.games_per_round:
-                        break
-                        
                 except (ValueError, KeyError) as e:
+                    log.warning(f"Skipping invalid puzzle: {e}")
                     continue
             
-            # Shuffle puzzles
-            random.shuffle(puzzles)
+            # If filters reduced puzzle count too much, log warning
+            if len(puzzles) < count * 0.5:  # Less than 50% of expected
+                log.warning(f"Filters reduced puzzle count significantly: {len(puzzles)}/{count} "
+                          f"(rating: {self.min_rating}-{self.max_rating}, themes: {self.themes})")
+            
+            log.info(f"Loaded {len(puzzles)} puzzles after filtering (offset={offset}, count={count})")
             return puzzles
         
         return await loop.run_in_executor(None, load)

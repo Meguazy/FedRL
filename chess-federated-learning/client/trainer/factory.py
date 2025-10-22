@@ -30,7 +30,23 @@ def create_trainer(trainer_type: str, node_id: str, cluster_id: str,
     elif trainer_type == "supervised":
         return SupervisedTrainer(node_id, cluster_id, config)
     elif trainer_type == "puzzle":
-        return PuzzleTrainer(node_id, cluster_id, config)
+        # Default puzzle database path (can be overridden later in start_node.py)
+        puzzle_database_path = config.additional_params.get(
+            'puzzle_database_path',
+            'chess-federated-learning/data/databases/lichess_puzzles.csv.zst'
+        )
+        redis_host = config.additional_params.get('redis_host', 'localhost')
+        redis_port = config.additional_params.get('redis_port', 6381)
+        device = config.additional_params.get('device', 'cpu')
+        
+        return PuzzleTrainer(
+            node_id=node_id,
+            config=config,
+            puzzle_database_path=puzzle_database_path,
+            device=device,
+            redis_host=redis_host,
+            redis_port=redis_port
+        )
     elif trainer_type == "alphazero":
         # TODO: Implement AlphaZeroTrainer
         raise NotImplementedError("AlphaZeroTrainer not yet implemented")
