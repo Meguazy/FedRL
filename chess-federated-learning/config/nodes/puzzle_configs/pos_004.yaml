@@ -26,7 +26,7 @@ logging:
   file: ./logs/pos_004.log
   format: text
 puzzle:
-  puzzle_database_path: ./data/databases/lichess_puzzles.csv.zst
+  puzzle_database_path: /home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/data/databases/lichess_puzzles.csv.zst
   min_rating: 1600
   max_rating: 2400
   themes:

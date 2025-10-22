@@ -148,7 +148,7 @@ def generate_node_config(
             ]
         
         config["puzzle"] = {
-            "puzzle_database_path": puzzle_database_path or "./data/databases/lichess_puzzles.csv.zst",
+            "puzzle_database_path": puzzle_database_path or "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/data/databases/lichess_puzzles.csv.zst",
             "min_rating": 1600,
             "max_rating": 2400,
             "themes": themes,
@@ -297,7 +297,7 @@ def main():
         "--puzzle-database",
         type=str,
         default=None,
-        help="Path to puzzle database for puzzle learning (default: ./data/databases/lichess_puzzles.csv.zst)"
+        help="Path to puzzle database for puzzle learning (default: /home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/data/databases/lichess_puzzles.csv.zst)"
     )
     parser.add_argument(
         "--verbose",
@@ -337,7 +337,7 @@ def main():
         pgn_path = args.pgn_database or "./data/databases/lichess_db.pgn.zst"
         logger.info(f"PGN database: {pgn_path}")
     elif trainer_type == "puzzle":
-        puzzle_path = args.puzzle_database or "./data/databases/lichess_puzzles.csv.zst"
+        puzzle_path = args.puzzle_database or "/home/fra/Uni/Thesis/main_repo/FedRL/chess-federated-learning/data/databases/lichess_puzzles.csv.zst"
         logger.info(f"Puzzle database: {puzzle_path}")
 
     try:
