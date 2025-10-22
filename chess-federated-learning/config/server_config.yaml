@@ -3,8 +3,8 @@ server_config:
   port: 8765
 
 orchestrator_config:
-  games_per_round: 200               # Increased from 100 to 200 for better training
   aggregation_threshold: 0.8
   timeout_seconds: 1200              # 20 minutes - increased for supervised training with real data
   shared_layer_patterns: ["input_conv.*"]
   cluster_specific_patterns: ["policy_head.*", "value_head.*"]
+  # Note: games_per_round is now configured per-cluster in cluster_topology.yaml

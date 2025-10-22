@@ -46,7 +46,6 @@ from server.storage.factory import create_experiment_tracker
 @dataclass
 class RoundConfig:
     """Configuration for each training round."""
-    games_per_round: int = 100
     aggregation_threshold: float = 0.8  # Fraction of nodes required to proceed
     timeout_seconds: int = 300  # Max wait time for nodes
     intra_cluster_weighting: str = "samples"  # "samples" or "uniform"
@@ -54,6 +53,7 @@ class RoundConfig:
     shared_layer_patterns: list = field(default_factory=lambda: ["input_conv.*"])
     cluster_specific_patterns: list = field(default_factory=lambda: ["policy_head.*", "value_head.*"])
     checkpoint_interval: int = 5  # Save every N rounds
+    # Note: games_per_round is now configured per-cluster in cluster_topology.yaml
     
     def from_yaml(self, path: str):
         """Load configuration from YAML file."""
@@ -156,9 +156,9 @@ class TrainingOrchestrator:
         self.is_running = True
         
         # Create experiment configuration
+        # Note: games_per_round is per-cluster, logged separately in cluster configs
         experiment_config = {
             'num_rounds': num_rounds,
-            'games_per_round': self.round_config.games_per_round,
             'aggregation_threshold': self.round_config.aggregation_threshold,
             'intra_cluster_weighting': self.round_config.intra_cluster_weighting,
             'inter_cluster_weighting': self.round_config.inter_cluster_weighting,
@@ -168,6 +168,14 @@ class TrainingOrchestrator:
             'server_config': {
                 'host': self.server.host,
                 'port': self.server.port
+            },
+            'clusters': {
+                cluster.cluster_id: {
+                    'playstyle': cluster.playstyle,
+                    'games_per_round': cluster.games_per_round,
+                    'node_count': cluster.node_count
+                }
+                for cluster in self.server.cluster_manager.get_all_clusters()
             }
         }
         
@@ -410,18 +418,26 @@ class TrainingOrchestrator:
                 round_offset = self.server.cluster_manager.starting_round
                 log.debug(f"Resume training enabled: using round offset {round_offset}")
 
+            # Use cluster-specific games_per_round (required)
+            if not cluster.games_per_round or cluster.games_per_round <= 0:
+                log.error(f"Cluster {cluster_id} missing valid games_per_round configuration")
+                raise ValueError(f"Cluster {cluster_id} must have games_per_round > 0 in cluster_topology.yaml")
+            
+            games_per_round = cluster.games_per_round
+            log.debug(f"Cluster {cluster_id} will train with {games_per_round} games per round")
+
             # Create START_TRAINING message
             message = MessageFactory.create_start_training(
                 node_id="server",
                 cluster_id=cluster_id,
-                games_per_round=self.round_config.games_per_round,
+                games_per_round=games_per_round,
                 round_num=round_num,
                 round_offset=round_offset
             )
             
             # Send to all nodes in the cluster
             await self.server.broadcast_to_cluster(cluster_id, message)
-            log.info(f"Sent START_TRAINING to cluster {cluster_id} with {len(nodes)} nodes")
+            log.info(f"Sent START_TRAINING to cluster {cluster_id} with {len(nodes)} nodes ({games_per_round} games/round)")
             
     async def _collect_model_updates(self, round_num: int) -> Dict[str, Any]:
         """
@@ -651,8 +667,10 @@ class TrainingOrchestrator:
         for cluster_id in cluster_models.keys():
             cluster = self.server.cluster_manager.get_cluster(cluster_id)
             if cluster:
+                # Estimate samples: nodes × games_per_round × avg_positions_per_game
+                # Note: This is an approximation (50 positions/game is average)
                 cluster_metrics[cluster_id] = {
-                    "samples": cluster.get_active_node_count() * self.round_config.games_per_round * 50,
+                    "samples": cluster.get_active_node_count() * cluster.games_per_round * 50,
                     "loss": 0.3  # Placeholder
                 }
         
@@ -1022,8 +1040,8 @@ async def main():
     log.info("Server started successfully")
     
     # Create round configuration
+    # Note: games_per_round is now configured per-cluster in cluster_topology.yaml
     round_config = RoundConfig(
-        games_per_round=orchestrator_config.get("games_per_round", 100),
         aggregation_threshold=orchestrator_config.get("aggregation_threshold", 0.8),
         timeout_seconds=orchestrator_config.get("timeout_seconds", 300),
         shared_layer_patterns=orchestrator_config.get("shared_layer_patterns", ["input_conv.*"]),

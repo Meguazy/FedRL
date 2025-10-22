@@ -78,13 +78,16 @@ def generate_node_config(
         raise ValueError(f"Invalid playstyle '{cluster_info['playstyle']}' for cluster {cluster_id}")
     playstyle = cluster_info["playstyle"]
 
-    # Determine default games_per_round and batch_size based on trainer type
-    if trainer_type == "puzzle":
-        default_games = 500  # Puzzles per round
-        default_batch = 64
+    # Get games_per_round from cluster config or use defaults based on trainer type
+    if "games_per_round" in cluster_info:
+        games_per_round = cluster_info["games_per_round"]
+    elif trainer_type == "puzzle":
+        games_per_round = 500  # Default for puzzle trainer
     else:
-        default_games = 200  # Games per round
-        default_batch = 32
+        games_per_round = 200  # Default for supervised/other trainers
+    
+    # Determine batch_size based on trainer type
+    batch_size = 64 if trainer_type == "puzzle" else 32
 
     config = {
         "node_id": node_id,
@@ -94,8 +97,8 @@ def generate_node_config(
         "trainer_type": trainer_type,
         "auto_reconnect": True,
         "training": {
-            "games_per_round": default_games,
-            "batch_size": default_batch,
+            "games_per_round": games_per_round,
+            "batch_size": batch_size,
             "learning_rate": 0.003,
             "exploration_factor": 1.0,
             "max_game_length": 200,

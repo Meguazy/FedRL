@@ -44,6 +44,7 @@ class Cluster:
         node_count: Target number of nodes for this cluster
         node_prefix: Prefix for auto-generated node IDs (e.g., "agg")
         description: Human-readable description of the cluster
+        games_per_round: Number of games/puzzles per training round for this cluster
         initial_model: Path to initial model checkpoint for resuming training
         expected_nodes: Set of expected node IDs for this cluster
         active_nodes: Set of currently registered/active node IDs
@@ -56,6 +57,7 @@ class Cluster:
     node_count: int
     node_prefix: str
     description: str = ""
+    games_per_round: int = 100
     initial_model: Optional[str] = None
     expected_nodes: Set[str] = field(default_factory=set)
     active_nodes: Set[str] = field(default_factory=set)
@@ -279,8 +281,15 @@ class ClusterManager:
         node_prefix = cluster_cfg['node_prefix']
         description = cluster_cfg.get('description', "")
         initial_model = cluster_cfg.get('initial_model')
+        
+        # games_per_round is now required
+        if 'games_per_round' not in cluster_cfg:
+            log.error(f"Cluster {cluster_id} missing required 'games_per_round' field")
+            raise ValueError(f"Cluster {cluster_id} must specify 'games_per_round' in cluster_topology.yaml")
+        
+        games_per_round = cluster_cfg['games_per_round']
 
-        log.debug(f"Creating cluster {cluster_id} with playstyle {playstyle}, node_count {node_count}, node_prefix {node_prefix}")
+        log.debug(f"Creating cluster {cluster_id} with playstyle {playstyle}, node_count {node_count}, node_prefix {node_prefix}, games_per_round {games_per_round}")
         if initial_model:
             log.info(f"Cluster {cluster_id} will use initial model: {initial_model}")
 
@@ -289,6 +298,11 @@ class ClusterManager:
             log.error(f"Invalid node_count {node_count} for cluster {cluster_id}. Must be a positive integer.")
             raise ValueError(f"node_count must be a positive integer for cluster {cluster_id}.")
 
+        # Validate games_per_round
+        if not isinstance(games_per_round, int) or games_per_round <= 0:
+            log.error(f"Invalid games_per_round {games_per_round} for cluster {cluster_id}. Must be a positive integer.")
+            raise ValueError(f"games_per_round must be a positive integer for cluster {cluster_id}.")
+
         # Create Cluster instance
         cluster = Cluster(
             cluster_id=cluster_id,
@@ -296,6 +310,7 @@ class ClusterManager:
             node_count=node_count,
             node_prefix=node_prefix,
             description=description,
+            games_per_round=games_per_round,
             initial_model=initial_model
         )
         
@@ -309,7 +324,7 @@ class ClusterManager:
         log.info(f"Cluster {cluster_id} created with {len(cluster.expected_nodes)} expected nodes.")
         
     def add_cluster(self, cluster_id: str, playstyle: str, node_count: int, 
-                   node_prefix: str, description: str = "") -> Cluster:
+                   node_prefix: str, description: str = "", games_per_round: int = 100) -> Cluster:
         """
         Manually add a cluster to the manager.
         
@@ -319,6 +334,7 @@ class ClusterManager:
             node_count: Number of nodes expected in this cluster
             node_prefix: Prefix for auto-generated node IDs
             description: Optional description
+            games_per_round: Number of games/puzzles per training round for this cluster
         
         Returns:
             Cluster: Created cluster instance
@@ -339,7 +355,8 @@ class ClusterManager:
             playstyle=playstyle,
             node_count=node_count,
             node_prefix=node_prefix,
-            description=description
+            description=description,
+            games_per_round=games_per_round
         )
         
         # Add to cluster registry
@@ -676,6 +693,7 @@ class ClusterManager:
                      f"Expected: {cluster.get_expected_node_count()}, "
                      f"Active: {cluster.get_active_node_count()}, "
                      f"Inactive: {len(cluster.inactive_nodes)}, "
+                     f"Games/round: {cluster.games_per_round}, "
                      f"Ready: {cluster.is_ready(self.default_threshold)}")
             
     def export_configuration(self) -> Dict[str, Any]:
@@ -697,7 +715,8 @@ class ClusterManager:
                 "playstyle": cluster.playstyle,
                 "node_count": cluster.node_count,
                 "node_prefix": cluster.node_prefix,
-                "description": cluster.description
+                "description": cluster.description,
+                "games_per_round": cluster.games_per_round
             }
             config["clusters"].append(cluster_config)
         
