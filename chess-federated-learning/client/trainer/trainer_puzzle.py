@@ -541,12 +541,12 @@ class PuzzleTrainer(TrainerInterface):
             
             # Accumulate metrics
             total_policy_loss += policy_loss.item()
-            total_value_loss += value_loss.item()
+            total_value_loss += value_loss.item()  # For monitoring only
             total_loss += loss.item()
             num_batches += 1
             
             # Free memory
-            del boards, policy_targets, value_targets
+            del boards, policy_targets, value_targets, value_targets_device
             del policy_logits, value_preds, policy_loss, value_loss, loss
             
             # Log progress
@@ -632,10 +632,10 @@ class PuzzleTrainer(TrainerInterface):
                     # Forward pass
                     policy_logits, value_preds = self.model(boards)
                     
-                    # Compute losses
+                    # Compute losses (only policy loss matters for puzzles)
                     policy_loss = self.policy_loss_fn(policy_logits, policy_targets)
-                    value_loss = self.value_loss_fn(value_preds, value_targets)
-                    loss = policy_loss + value_loss
+                    value_loss = self.value_loss_fn(value_preds, value_targets)  # For monitoring
+                    loss = policy_loss  # Only policy loss
                     
                     # Accumulate metrics
                     total_policy_loss += policy_loss.item()
