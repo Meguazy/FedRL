@@ -41,6 +41,7 @@ def create_trainer(trainer_type: str, node_id: str, cluster_id: str,
         
         return PuzzleTrainer(
             node_id=node_id,
+            cluster_id=cluster_id,
             config=config,
             puzzle_database_path=puzzle_database_path,
             device=device,

@@ -186,6 +186,7 @@ class PuzzleTrainer(TrainerInterface):
     
     def __init__(self,
                  node_id: str,
+                 cluster_id: str,
                  config: TrainingConfig,
                  puzzle_database_path: str,
                  device: str = 'cpu',
@@ -196,14 +197,16 @@ class PuzzleTrainer(TrainerInterface):
         
         Args:
             node_id: Unique identifier for this node (e.g., "agg_001", "pos_003")
+            cluster_id: Cluster identifier (e.g., "cluster_tactical")
             config: Training configuration
             puzzle_database_path: Path to Lichess puzzle database (legacy, not used if Redis available)
             device: Device to train on ('cpu' or 'cuda')
             redis_host: Redis server host
             redis_port: Redis server port
         """
-        self.node_id = node_id
-        self.config = config
+        # Initialize parent class
+        super().__init__(node_id, cluster_id, config)
+        
         self.puzzle_database_path = puzzle_database_path
         self.device = torch.device(device)
         
@@ -352,7 +355,7 @@ class PuzzleTrainer(TrainerInterface):
         if self.model is None:
             self.model = AlphaZeroNet(
                 num_res_blocks=19,
-                num_channels=256
+                channels=256
             )
             self.model.to(self.device)
         
@@ -514,15 +517,22 @@ class PuzzleTrainer(TrainerInterface):
             # Move to device
             boards = boards.to(self.device)
             policy_targets = policy_targets.to(self.device)
-            value_targets = value_targets.to(self.device)
+            # Note: value_targets not moved to device - we don't use them for training
             
             # Forward pass
             policy_logits, value_preds = self.model(boards)
             
             # Compute losses
+            # IMPORTANT: Only train policy head on puzzles!
+            # Value head should only learn from supervised training (real game outcomes)
+            # Puzzles have artificial value=1.0 which would confuse the value head
             policy_loss = self.policy_loss_fn(policy_logits, policy_targets)
-            value_loss = self.value_loss_fn(value_preds, value_targets)
-            loss = policy_loss + value_loss
+            loss = policy_loss  # Only policy loss, no value loss!
+            
+            # For monitoring only (not used in backprop)
+            with torch.no_grad():
+                value_targets_device = value_targets.to(self.device)
+                value_loss = self.value_loss_fn(value_preds, value_targets_device)
             
             # Backward pass
             self.optimizer.zero_grad()
@@ -559,3 +569,95 @@ class PuzzleTrainer(TrainerInterface):
             "total_loss": total_loss / num_batches,
             "num_batches": num_batches
         }
+    
+    async def evaluate(self, model_state: Dict[str, Any], 
+                      num_games: int = 10) -> Dict[str, Any]:
+        """
+        Evaluate model performance on puzzle dataset.
+        
+        Args:
+            model_state: Model weights to evaluate
+            num_games: Number of puzzles to evaluate on (default: 10)
+            
+        Returns:
+            Dict containing evaluation metrics
+        """
+        log = logger.bind(context=f"PuzzleTrainer.{self.node_id}")
+        log.info(f"Starting evaluation on {num_games} puzzles")
+        
+        # Load model
+        self._initialize_model(model_state)
+        self.model.eval()
+        
+        # Load a small set of puzzles for evaluation
+        # Temporarily override games_per_round to load only num_games puzzles
+        original_games_per_round = self.config.games_per_round
+        self.config.games_per_round = num_games
+        
+        try:
+            puzzles = await self._load_puzzles()
+            
+            if len(puzzles) == 0:
+                log.warning("No puzzles available for evaluation")
+                return {
+                    "evaluated_puzzles": 0,
+                    "avg_loss": 0.0,
+                    "policy_loss": 0.0,
+                    "value_loss": 0.0
+                }
+            
+            # Create dataset and dataloader
+            dataset = PuzzleDataset(puzzles, self.board_encoder, self.move_encoder)
+            dataloader = DataLoader(
+                dataset,
+                batch_size=self.config.batch_size,
+                shuffle=False,
+                num_workers=0,
+                pin_memory=True if self.device.type == "cuda" else False
+            )
+            
+            # Evaluate
+            total_policy_loss = 0.0
+            total_value_loss = 0.0
+            total_loss = 0.0
+            num_batches = 0
+            
+            with torch.no_grad():
+                for boards, policy_targets, value_targets in dataloader:
+                    # Move to device
+                    boards = boards.to(self.device)
+                    policy_targets = policy_targets.to(self.device)
+                    value_targets = value_targets.to(self.device)
+                    
+                    # Forward pass
+                    policy_logits, value_preds = self.model(boards)
+                    
+                    # Compute losses
+                    policy_loss = self.policy_loss_fn(policy_logits, policy_targets)
+                    value_loss = self.value_loss_fn(value_preds, value_targets)
+                    loss = policy_loss + value_loss
+                    
+                    # Accumulate metrics
+                    total_policy_loss += policy_loss.item()
+                    total_value_loss += value_loss.item()
+                    total_loss += loss.item()
+                    num_batches += 1
+                    
+                    # Free memory
+                    del boards, policy_targets, value_targets
+                    del policy_logits, value_preds, policy_loss, value_loss, loss
+                    
+                    await asyncio.sleep(0)
+            
+            log.success(f"Evaluation complete: {len(puzzles)} puzzles, loss={total_loss / num_batches:.4f}")
+            
+            return {
+                "evaluated_puzzles": len(puzzles),
+                "avg_loss": total_loss / num_batches,
+                "policy_loss": total_policy_loss / num_batches,
+                "value_loss": total_value_loss / num_batches
+            }
+            
+        finally:
+            # Restore original games_per_round
+            self.config.games_per_round = original_games_per_round
