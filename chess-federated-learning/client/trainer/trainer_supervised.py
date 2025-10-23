@@ -273,11 +273,8 @@ class SupervisedTrainer(TrainerInterface):
         log = logger.bind(context=f"SupervisedTrainer.{self.node_id}")
         log.info("Starting supervised training")
 
-        if not self.pgn_database_path:
-            raise TrainingError("PGN database path not set")
-
-        if not Path(self.pgn_database_path).exists():
-            raise TrainingError(f"PGN database not found: {self.pgn_database_path}")
+        # Note: pgn_database_path can be None if using Redis cache
+        # GameLoader will handle the validation and fallback logic
 
         start_time = time.time()
 

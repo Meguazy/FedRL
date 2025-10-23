@@ -69,13 +69,9 @@ class GameLoader:
             redis_port: Redis server port (default: 6381)
         """
         log = logger.bind(component="GameLoader.__init__")
-        self.pgn_path = Path(pgn_path)
+        self.pgn_path = Path(pgn_path) if pgn_path else None
         self.eco_classifier = ECOClassifier()
         self.redis_cache = None
-
-        if not self.pgn_path.exists():
-            log.error(f"PGN file not found: {pgn_path}")
-            raise FileNotFoundError(f"PGN file not found: {pgn_path}")
 
         # Try to connect to Redis cache if enabled
         if use_redis and REDIS_AVAILABLE:
@@ -87,7 +83,21 @@ class GameLoader:
                 log.warning("Will load games from PGN file instead")
                 self.redis_cache = None
 
-        log.info(f"GameLoader initialized with: {self.pgn_path}")
+        # Check PGN file only if Redis is not available
+        if self.pgn_path:
+            if not self.pgn_path.exists():
+                # Only raise error if Redis is also not available
+                if not self.redis_cache:
+                    log.error(f"PGN file not found: {pgn_path}")
+                    raise FileNotFoundError(f"PGN file not found: {pgn_path}")
+                else:
+                    log.warning(f"PGN file not found: {pgn_path}, but Redis cache is available")
+        else:
+            if not self.redis_cache:
+                log.error("No PGN path provided and Redis cache not available")
+                raise ValueError("Must provide either PGN path or Redis connection")
+
+        log.info(f"GameLoader initialized with: {self.pgn_path if self.pgn_path else 'Redis cache only'}")
 
     def load_games(self, game_filter: Optional[GameFilter] = None, offset: int = 0) -> Iterator[chess.pgn.Game]:
         """
@@ -220,7 +230,13 @@ class GameLoader:
 
         Returns:
             File handle for reading PGN data
+            
+        Raises:
+            ValueError: If pgn_path is None (should use Redis instead)
         """
+        if not self.pgn_path:
+            raise ValueError("No PGN file path available. Use Redis cache instead.")
+            
         suffix = self.pgn_path.suffix.lower()
 
         if suffix == '.pgn':
