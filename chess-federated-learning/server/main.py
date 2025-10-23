@@ -131,6 +131,7 @@ class TrainingOrchestrator:
         
         # State tracking
         self.current_round = 0
+        self.starting_round = 0  # For resume training: offset for checkpoint naming
         self.current_run_id: Optional[str] = None
         self.is_running = False
         self.cluster_models: Dict[str, Dict[str, Any]] = {}  # cluster_id -> model_state
@@ -190,6 +191,13 @@ class TrainingOrchestrator:
             log.error(f"Failed to start experiment tracking: {e}")
             log.warning("Continuing without experiment tracking")
             self.current_run_id = None
+
+        # Set starting round for resume training (affects checkpoint naming)
+        if self.server.cluster_manager.resume_training_enabled:
+            self.starting_round = self.server.cluster_manager.starting_round
+            log.info(f"Resume training enabled: starting from round {self.starting_round}")
+        else:
+            self.starting_round = 0
 
         # Load and broadcast initial models if configured (for resume training)
         try:
@@ -725,7 +733,7 @@ class TrainingOrchestrator:
         
         Args:
             models: Cluster models to save
-            round_num: Current round number
+            round_num: Current round number (relative to training loop)
         """
         log = logger.bind(context="TrainingOrchestrator._save_checkpoints")
         
@@ -733,20 +741,25 @@ class TrainingOrchestrator:
             log.warning("No run_id available, skipping checkpoint save")
             return
         
+        # Calculate absolute round number (includes resume offset)
+        absolute_round = self.starting_round + round_num
+        
         for cluster_id, model_state in models.items():
             try:
                 await self.storage_tracker.save_checkpoint(
                     run_id=self.current_run_id,
                     cluster_id=cluster_id,
-                    round_num=round_num,
+                    round_num=absolute_round,  # Use absolute round number for file naming
                     model_state=model_state,
-                    metrics={'round': round_num},  # Required metrics parameter
+                    metrics={'round': absolute_round},  # Required metrics parameter
                     metadata={
                         'timestamp': time.time(),
-                        'cluster_id': cluster_id
+                        'cluster_id': cluster_id,
+                        'relative_round': round_num,  # Track both for reference
+                        'starting_round': self.starting_round
                     }
                 )
-                log.info(f"Saved checkpoint for {cluster_id} round {round_num}")
+                log.info(f"Saved checkpoint for {cluster_id} round {absolute_round} (relative: {round_num})")
             except Exception as e:
                 log.error(f"Failed to save checkpoint for {cluster_id}: {e}")
     
