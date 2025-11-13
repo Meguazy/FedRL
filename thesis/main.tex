@@ -1,0 +1,105 @@
+% Main thesis document
+\documentclass[12pt,a4paper,twoside]{report}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{cite}
+\usepackage{setspace}
+\usepackage{geometry}
+\usepackage{titling}
+\usepackage{array}
+
+% Page geometry
+\geometry{
+    a4paper,
+    left=3cm,
+    right=3cm,
+    top=2.5cm,
+    bottom=2.5cm
+}
+
+% Line spacing
+\onehalfspacing
+
+% Hyperref setup
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+% Define fullwidth environment (if not using tufte-book class)
+\newenvironment{fullwidth}{}{}
+
+\begin{document}
+
+% Title page
+\begin{fullwidth}
+    \begin{titlingpage}
+\setlength{\hoffset}{26 pt}%
+  \begin{center}
+    \LARGE{\textsc{\textbf{University of Camerino}}}\\
+    \vspace{0.3 em}
+    \large{\textsc{School of Science and Technology}}\\
+    \vspace{0.3 em}
+    \textsc{\large{Master Degree in Computer Science }}\\
+    \vspace{0.3 em}
+    \vspace{4 em}
+    \includegraphics[width=0.25\textwidth]{figures/Logo_ScuDo.png}\\
+    \vspace{2 em}
+    \textbf{\Huge Clustered Federated Deep Reinforcement Learning with Selective Aggregation}\\
+    \vspace{1 em}
+    \textbf{\Large A Framework for Chess Playstyle Preservation}
+    \vspace{5 em}
+    \vspace{-.75cm}
+    \begin{tabular}[H]{p{220pt}p{35pt}p{130pt}}
+      \normalsize{\textit{\textbf{Supervisor}}\vspace{0.3em}} &&  \normalsize{\textit{\textbf{Student}}}  \\
+      \normalsize{Prof. Massimo Callisto De Donato\vspace{0.3em}}  && {Francesco Finucci}\\
+      \normalsize{\textit{\textbf{Co-Supervisor}}\vspace{0.3em}} && \\
+      \normalsize{PhD. Student Martina Zannotti\vspace{0.3em}}  && \\
+    \vspace{2 em}
+    \end{tabular}\\
+    \vspace{1.2 em} \vfill
+    \newlength{\gnateng}
+    \settowidth{\gnateng}{\Huge{\textsc{University of Camerino}}}
+    \rule{\gnateng}{.5pt}\\
+    \large{\textsc{Academic Year 2024-2025}}
+  \end{center}
+  \thispagestyle{empty}
+\setlength{\hoffset}{0 pt}
+\end{titlingpage}
+\end{fullwidth}
+
+% Abstract
+\begin{abstract}
+\input{chapters/abstract}
+\end{abstract}
+
+% Table of contents
+\tableofcontents
+\listoffigures
+\listoftables
+
+% Chapters
+\include{chapters/01-introduction}
+\include{chapters/02-background}
+\include{chapters/03-methodology}
+\include{chapters/04-implementation}
+\include{chapters/05-experiments}
+\include{chapters/06-results}
+\include{chapters/07-conclusion}
+
+% Bibliography
+\bibliographystyle{plain}
+\bibliography{bibliography/references}
+
+% Appendices
+\appendix
+\include{appendices/appendix-a}
+
+\end{document}
