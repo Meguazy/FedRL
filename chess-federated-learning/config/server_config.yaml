@@ -8,3 +8,18 @@ orchestrator_config:
   shared_layer_patterns: ["input_conv.*"]
   cluster_specific_patterns: ["policy_head.*", "value_head.*"]
   # Note: games_per_round is now configured per-cluster in cluster_topology.yaml
+
+# Playstyle evaluation configuration
+evaluation_config:
+  enabled: true                      # Enable playstyle evaluation
+  interval_rounds: 10                # Run evaluation every N rounds
+  games_per_elo_level: 10            # Number of games per Stockfish ELO level
+  stockfish_elo_levels: [1000, 1200, 1400]  # Stockfish ELO levels to test against
+  time_per_move: 0.1                 # Time per move in seconds
+  skip_check_positions: true         # Skip positions in check for playstyle analysis
+  stockfish_path: null               # Path to Stockfish (null = auto-detect)
+
+  # Enhanced metrics configuration
+  enable_delta_analysis: true        # Enable delta (tipping point) metric analysis
+  delta_sampling_rate: 3             # Analyze every Nth middlegame position (3 = every 3rd)
+  stockfish_depth: 12                # Stockfish search depth for delta analysis (12-15 recommended)

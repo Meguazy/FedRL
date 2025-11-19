@@ -41,6 +41,7 @@ from server.cluster_manager import ClusterManager
 from server.storage.base import EntityType
 from server.storage.experiment_tracker import FileExperimentTracker
 from server.storage.factory import create_experiment_tracker
+from server.evaluation.model_evaluator import ModelEvaluator
 
 
 @dataclass
@@ -54,6 +55,22 @@ class RoundConfig:
     cluster_specific_patterns: list = field(default_factory=lambda: ["policy_head.*", "value_head.*"])
     checkpoint_interval: int = 5  # Save every N rounds
     # Note: games_per_round is now configured per-cluster in cluster_topology.yaml
+
+
+@dataclass
+class EvaluationConfig:
+    """Configuration for playstyle evaluation."""
+    enabled: bool = True
+    interval_rounds: int = 10  # Run evaluation every N rounds
+    games_per_elo_level: int = 10
+    stockfish_elo_levels: list = field(default_factory=lambda: [1000, 1200, 1400])
+    time_per_move: float = 0.1
+    skip_check_positions: bool = True
+    stockfish_path: Optional[str] = None
+    # Enhanced metrics
+    enable_delta_analysis: bool = True
+    delta_sampling_rate: int = 3
+    stockfish_depth: int = 12
     
     def from_yaml(self, path: str):
         """Load configuration from YAML file."""
@@ -86,7 +103,8 @@ class TrainingOrchestrator:
         self,
         server: FederatedLearningServer,
         round_config: RoundConfig,
-        storage_tracker: Optional[FileExperimentTracker] = None
+        storage_tracker: Optional[FileExperimentTracker] = None,
+        evaluation_config: Optional[EvaluationConfig] = None
     ):
         """
         Initialize the orchestrator with server and configuration.
@@ -102,7 +120,8 @@ class TrainingOrchestrator:
         # Core components
         self.server = server
         self.round_config = round_config
-        
+        self.evaluation_config = evaluation_config or EvaluationConfig()
+
         # Initialize or create storage tracker
         if storage_tracker is None:
             log.info("No storage tracker provided, creating default")
@@ -114,6 +133,27 @@ class TrainingOrchestrator:
             )
         else:
             self.storage_tracker = storage_tracker
+
+        # Initialize model evaluator if evaluation is enabled
+        if self.evaluation_config.enabled:
+            try:
+                self.model_evaluator = ModelEvaluator(
+                    stockfish_path=self.evaluation_config.stockfish_path,
+                    device='cpu',  # TODO: Make configurable
+                    skip_check_positions=self.evaluation_config.skip_check_positions,
+                    enable_delta_analysis=self.evaluation_config.enable_delta_analysis,
+                    delta_sampling_rate=self.evaluation_config.delta_sampling_rate,
+                    stockfish_depth=self.evaluation_config.stockfish_depth
+                )
+                log.info("Model evaluator initialized for playstyle analysis")
+            except Exception as e:
+                log.warning(f"Failed to initialize model evaluator: {e}")
+                log.warning("Playstyle evaluation will be disabled")
+                self.evaluation_config.enabled = False
+                self.model_evaluator = None
+        else:
+            self.model_evaluator = None
+            log.info("Playstyle evaluation is disabled")
         
         # Aggregators
         self.intra_aggregator = IntraClusterAggregator(
@@ -353,6 +393,12 @@ class TrainingOrchestrator:
             if round_num % self.round_config.checkpoint_interval == 0:
                 log.info("Step 6: Saving model checkpoints...")
                 await self._save_checkpoints(final_models, round_num)
+
+            # Step 6.5: Run playstyle evaluation (if interval reached)
+            if (self.evaluation_config.enabled and
+                round_num % self.evaluation_config.interval_rounds == 0):
+                log.info("Step 6.5: Running playstyle evaluation...")
+                await self._run_playstyle_evaluation(round_num, final_models)
 
             # Step 7: Broadcast CLUSTER_MODEL to nodes
             log.info("Step 7: Broadcasting CLUSTER_MODEL to all nodes...")
@@ -878,6 +924,147 @@ class TrainingOrchestrator:
         else:
             log.info("No initial models loaded - all clusters will start with random initialization")
 
+    async def _run_playstyle_evaluation(self, round_num: int, cluster_models: Dict[str, Any]):
+        """
+        Run playstyle evaluation for cluster models.
+
+        Args:
+            round_num: Current round number
+            cluster_models: Dict of cluster_id -> model_state_dict
+        """
+        log = logger.bind(context="TrainingOrchestrator._run_playstyle_evaluation")
+        log.info(f"=" * 60)
+        log.info(f"Running playstyle evaluation at round {round_num}")
+        log.info(f"=" * 60)
+
+        if not self.evaluation_config.enabled or self.model_evaluator is None:
+            log.warning("Playstyle evaluation is disabled, skipping")
+            return
+
+        eval_start_time = time.time()
+
+        try:
+            # Run evaluation
+            evaluation_results = await self.model_evaluator.evaluate_models(
+                cluster_models=cluster_models,
+                num_games=self.evaluation_config.games_per_elo_level,
+                stockfish_elo_levels=self.evaluation_config.stockfish_elo_levels,
+                time_per_move=self.evaluation_config.time_per_move
+            )
+
+            eval_duration = time.time() - eval_start_time
+
+            # Log summary to console
+            summary = evaluation_results.get("summary", {})
+            log.info(f"\n{'=' * 60}")
+            log.info(f"Evaluation Summary (Round {round_num}):")
+            log.info(f"{'=' * 60}")
+
+            # ELO Rankings
+            log.info("\nELO Rankings:")
+            for rank in summary.get("elo_rankings", []):
+                log.info(f"  {rank['cluster_id']}: "
+                        f"ELO {rank['estimated_elo']} ± {rank['elo_confidence']}, "
+                        f"Win Rate: {rank['overall_winrate'] * 100:.1f}%")
+
+            # Tactical Rankings
+            log.info("\nTactical Score Rankings:")
+            for rank in summary.get("tactical_rankings", []):
+                log.info(f"  {rank['cluster_id']}: "
+                        f"{rank['tactical_score']:.3f} ({rank['classification']})")
+
+            # Opening Preferences (Top 5 per cluster)
+            log.info("\nOpening Preferences:")
+            for cluster_id, cluster_metrics in evaluation_results.get("cluster_metrics", {}).items():
+                log.info(f"  {cluster_id}:")
+                top_openings = cluster_metrics.get("top_openings", [])[:5]
+                for opening in top_openings:
+                    log.info(f"    {opening['eco']}: {opening['name']} ({opening['count']} games)")
+
+            log.info(f"\nPlaystyle Divergence: {summary.get('playstyle_divergence', 0):.3f}")
+            log.info(f"ELO Spread: {summary.get('elo_spread', 0)} points")
+            log.info(f"Evaluation Duration: {eval_duration:.1f}s")
+            log.info(f"{'=' * 60}\n")
+
+            # Store evaluation results in metrics
+            if self.current_run_id:
+                # Store per-game raw metrics
+                for i, game_result in enumerate(evaluation_results.get("game_results", [])):
+                    await self.storage_tracker.log_metrics(
+                        run_id=self.current_run_id,
+                        round_num=round_num,
+                        entity_type=EntityType.CUSTOM,
+                        entity_id=f"playstyle_eval_game_{i}",
+                        metrics=game_result,
+                        metadata={
+                            "evaluation_type": "playstyle",
+                            "game_number": i,
+                            "evaluation_round": round_num
+                        }
+                    )
+
+                # Store per-game computed metrics
+                for i, computed_metrics in enumerate(evaluation_results.get("computed_metrics", [])):
+                    await self.storage_tracker.log_metrics(
+                        run_id=self.current_run_id,
+                        round_num=round_num,
+                        entity_type=EntityType.CUSTOM,
+                        entity_id=f"playstyle_eval_game_{i}_computed",
+                        metrics=computed_metrics,
+                        metadata={
+                            "evaluation_type": "playstyle_computed",
+                            "game_number": i,
+                            "evaluation_round": round_num
+                        }
+                    )
+
+                # Store per-cluster aggregated metrics
+                for cluster_id, cluster_metrics in evaluation_results.get("cluster_metrics", {}).items():
+                    await self.storage_tracker.log_metrics(
+                        run_id=self.current_run_id,
+                        round_num=round_num,
+                        entity_type=EntityType.CLUSTER,
+                        entity_id=cluster_id,
+                        metrics={"playstyle_evaluation": cluster_metrics},
+                        metadata={
+                            "evaluation_type": "playstyle_cluster_summary",
+                            "evaluation_round": round_num
+                        }
+                    )
+
+                # Store global evaluation summary
+                await self.storage_tracker.log_metrics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    entity_type=EntityType.SERVER,
+                    entity_id="playstyle_evaluator",
+                    metrics={
+                        "evaluation_summary": summary,
+                        "evaluation_duration_seconds": eval_duration
+                    },
+                    metadata={
+                        "evaluation_type": "playstyle_global_summary",
+                        "evaluation_round": round_num
+                    }
+                )
+
+                log.info(f"Playstyle evaluation metrics stored for round {round_num}")
+
+        except Exception as e:
+            log.error(f"Playstyle evaluation failed: {e}")
+            log.exception("Full traceback:")
+
+            # Log failure
+            if self.current_run_id:
+                await self.storage_tracker.log_metrics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    entity_type=EntityType.SERVER,
+                    entity_id="playstyle_evaluator",
+                    metrics={"evaluation_error": str(e), "evaluation_failed": True},
+                    metadata={"evaluation_round": round_num}
+                )
+
 
 class ServerMenu:
     """Interactive menu for server control."""
@@ -1022,11 +1209,13 @@ async def main():
             config_data = yaml.safe_load(f)
             server_config = config_data.get("server_config", {})
             orchestrator_config = config_data.get("orchestrator_config", {})
+            evaluation_config_data = config_data.get("evaluation_config", {})
         log.info("Loaded configuration from YAML")
     except FileNotFoundError:
         log.warning(f"Config file {server_config_path} not found, using defaults")
         server_config = {}
         orchestrator_config = {}
+        evaluation_config_data = {}
     
     server_host = server_config.get("host", "localhost")
     server_port = server_config.get("port", 8765)
@@ -1061,6 +1250,20 @@ async def main():
         cluster_specific_patterns=orchestrator_config.get("cluster_specific_patterns", ["policy_head.*", "value_head.*"]),
         checkpoint_interval=orchestrator_config.get("checkpoint_interval", 5)
     )
+
+    # Create evaluation configuration
+    evaluation_config = EvaluationConfig(
+        enabled=evaluation_config_data.get("enabled", True),
+        interval_rounds=evaluation_config_data.get("interval_rounds", 10),
+        games_per_elo_level=evaluation_config_data.get("games_per_elo_level", 10),
+        stockfish_elo_levels=evaluation_config_data.get("stockfish_elo_levels", [1000, 1200, 1400]),
+        time_per_move=evaluation_config_data.get("time_per_move", 0.1),
+        skip_check_positions=evaluation_config_data.get("skip_check_positions", True),
+        stockfish_path=evaluation_config_data.get("stockfish_path"),
+        enable_delta_analysis=evaluation_config_data.get("enable_delta_analysis", True),
+        delta_sampling_rate=evaluation_config_data.get("delta_sampling_rate", 3),
+        stockfish_depth=evaluation_config_data.get("stockfish_depth", 12)
+    )
     
     # Create storage backend using factory
     log.info("Initializing storage backend...")
@@ -1077,7 +1280,8 @@ async def main():
     orchestrator = TrainingOrchestrator(
         server=server,
         round_config=round_config,
-        storage_tracker=tracker
+        storage_tracker=tracker,
+        evaluation_config=evaluation_config
     )
     log.info("Orchestrator initialized")
     
