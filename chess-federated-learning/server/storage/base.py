@@ -151,6 +151,20 @@ class MetricsStore(ABC):
         """Record multiple metric events (batch operation)."""
         pass
 
+    async def save_playstyle_evaluation(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Save playstyle evaluation metrics to a separate file.
+
+        Default implementation does nothing - override in subclasses.
+        """
+        pass
+
     @abstractmethod
     async def query_events(
         self,

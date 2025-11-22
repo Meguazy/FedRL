@@ -177,29 +177,9 @@ class IntraClusterAggregator(BaseAggregator):
                 custom_metrics = self.metric_registry.compute_all(context, skip_on_error=True)
                 log.debug(f"Computed {len(custom_metrics)} custom metrics")
 
-            # Step 6: Store metrics and checkpoint if tracker is available
+            # Step 6: Save model checkpoint if tracker is available (no metrics logging)
             if self.experiment_tracker and run_id:
-                log.debug("Step 6a: Logging metrics to storage...")
-
-                # Combine standard and custom metrics
-                all_metrics = {
-                    "aggregation_time": aggregation_time,
-                    "participant_count": len(models),
-                    "total_samples": int(sum(weights.values())),
-                    "weighting_strategy": self.weighting_strategy,
-                    **custom_metrics
-                }
-
-                # Log cluster-level metrics
-                self.experiment_tracker.log_metrics(
-                    run_id=run_id,
-                    entity_type=EntityType.CLUSTER,
-                    entity_id=cluster_id,
-                    round_num=round_num,
-                    metrics=all_metrics
-                )
-
-                log.debug("Step 6b: Saving cluster model checkpoint...")
+                log.debug("Step 6: Saving cluster model checkpoint...")
 
                 # Save cluster model checkpoint
                 checkpoint_metrics = {"loss": metrics.average_loss} if metrics.average_loss else {}
@@ -211,7 +191,7 @@ class IntraClusterAggregator(BaseAggregator):
                     metrics=checkpoint_metrics
                 )
 
-                log.info(f"Stored metrics and checkpoint for cluster {cluster_id}, round {round_num}")
+                log.info(f"Stored checkpoint for cluster {cluster_id}, round {round_num}")
 
             # Step 7: Update internal statistics
             self._update_statistics(len(models), aggregation_time)

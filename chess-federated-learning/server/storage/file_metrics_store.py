@@ -102,6 +102,86 @@ class FileMetricsStore(MetricsStore):
         """Get path to index file."""
         return self._get_run_path(run_id) / "index.json"
 
+    def _get_cluster_folder(self, run_id: str, cluster_id: str) -> Path:
+        """Get path to cluster-specific folder for playstyle evaluations."""
+        # Map cluster_id to folder name (e.g., cluster_tactical -> tactical)
+        folder_name = cluster_id.replace("cluster_", "")
+        cluster_path = self._get_run_path(run_id) / folder_name
+        cluster_path.mkdir(parents=True, exist_ok=True)
+        return cluster_path
+
+    async def save_playstyle_evaluation(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Save playstyle evaluation metrics to a separate JSON file.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/evaluation_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier (e.g., cluster_tactical)
+            metrics: Playstyle evaluation metrics dict
+        """
+        import json
+
+        cluster_folder = self._get_cluster_folder(run_id, cluster_id)
+        output_file = cluster_folder / f"evaluation_round_{round_num}.json"
+
+        def _write():
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(metrics, f, indent=2)
+
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write)
+
+        logger.debug(f"Saved playstyle evaluation to {output_file}")
+
+    def _get_divergence_folder(self, run_id: str) -> Path:
+        """Get path to model divergence folder."""
+        divergence_path = self._get_run_path(run_id) / "model_divergence"
+        divergence_path.mkdir(parents=True, exist_ok=True)
+        return divergence_path
+
+    async def save_model_divergence(
+        self,
+        run_id: str,
+        round_num: int,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Save model divergence metrics to a separate JSON file.
+
+        Creates structure:
+            storage/metrics/{run_id}/model_divergence/round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            metrics: Model divergence metrics dict from compute_cluster_divergence
+        """
+        import json
+
+        divergence_folder = self._get_divergence_folder(run_id)
+        output_file = divergence_folder / f"round_{round_num}.json"
+
+        def _write():
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(metrics, f, indent=2)
+
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write)
+
+        logger.debug(f"Saved model divergence metrics to {output_file}")
+
     async def record_event(self, event: MetricEvent) -> None:
         """Record a single metric event."""
         await self.record_events([event])
