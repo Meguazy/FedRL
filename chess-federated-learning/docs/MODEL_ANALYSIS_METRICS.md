@@ -9,10 +9,11 @@ This document provides a comprehensive explanation of the model-level analysis m
 3. [Network Architecture Reference](#network-architecture-reference)
 4. [Cluster Divergence Metrics](#cluster-divergence-metrics)
 5. [Weight Statistics Metrics](#weight-statistics-metrics)
-6. [Implementation Plan](#implementation-plan)
-7. [Expected Results and Hypotheses](#expected-results-and-hypotheses)
-8. [Storage Structure](#storage-structure)
-9. [Future Extensions](#future-extensions)
+6. [Move Type Distribution Metrics](#move-type-distribution-metrics)
+7. [Implementation Plan](#implementation-plan)
+8. [Expected Results and Hypotheses](#expected-results-and-hypotheses)
+9. [Storage Structure](#storage-structure)
+10. [Future Extensions](#future-extensions)
 
 ---
 
@@ -28,12 +29,13 @@ These metrics are crucial for validating the core thesis hypothesis: **Selective
 
 ### Metrics Categories
 
-| Category | Purpose | Complexity |
-|----------|---------|------------|
-| Cluster Divergence | Measure differentiation between tactical/positional models | Medium |
-| Weight Statistics | Track weight distributions and changes | Low |
-| Activation Analysis | Understand neuron behavior (future) | High |
-| Explainability | Interpret model decisions (future) | High |
+| Category | Purpose | Complexity | Status |
+|----------|---------|------------|--------|
+| Cluster Divergence | Measure differentiation between tactical/positional models | Medium | ✅ Implemented |
+| Weight Statistics | Track weight distributions and changes | Low | ✅ Implemented |
+| Move Type Distribution | Analyze move patterns (captures, checks, quiet moves) | Low | ✅ Implemented |
+| Activation Analysis | Understand neuron behavior (future) | High | 📋 Documented |
+| Saliency Maps | Interpret model decisions (future) | High | 📋 Documented |
 
 ---
 
@@ -338,9 +340,189 @@ def is_layer_dead(weight_change_history: List[float], threshold: float = 0.001) 
 
 ---
 
+## Move Type Distribution Metrics
+
+Move Type Distribution metrics analyze the actual moves made during evaluation games to quantify tactical vs positional playing style through move classification.
+
+### 1. Move Categories
+
+**Move Types Tracked**:
+
+| Move Type | Definition | Style Indicator |
+|-----------|------------|-----------------|
+| **Captures** | Moves that take opponent pieces | Tactical |
+| **Checks** | Moves that give check to opponent king | Tactical |
+| **Aggressive** | Captures + Checks combined | Tactical |
+| **Pawn Advances** | Non-capture pawn moves | Mixed |
+| **Piece Development** | Knight/Bishop moves in opening (ply 1-20) | Positional |
+| **Castling** | Kingside or queenside castling | Safety |
+| **Quiet Moves** | Non-capture, non-check moves | Positional |
+
+**Expected Patterns**:
+- **Tactical cluster**: Higher % of captures, checks, aggressive moves
+- **Positional cluster**: Higher % of quiet moves, pawn advances
+
+---
+
+### 2. Per-Game Analysis
+
+**Implementation**: `server/evaluation/move_type_analyzer.py`
+
+```python
+@dataclass
+class MoveTypeStats:
+    """Statistics for move types in a single game."""
+    total_moves: int = 0
+    captures: int = 0
+    checks: int = 0
+    pawn_advances: int = 0
+    piece_development: int = 0  # N/B moves in opening (ply 1-20)
+    castling: int = 0
+    quiet_moves: int = 0
+    aggressive_moves: int = 0  # captures + checks (derived)
+
+    # By color breakdown
+    white_captures: int = 0
+    white_checks: int = 0
+    black_captures: int = 0
+    black_checks: int = 0
+    # ... etc
+```
+
+**Move Classification Logic**:
+
+```python
+def _classify_move(board: chess.Board, move: chess.Move, ply: int) -> Dict[str, bool]:
+    """Classify a single move into categories."""
+    result = {
+        "is_capture": board.is_capture(move),
+        "is_check": False,  # Computed after making move
+        "is_pawn_advance": False,
+        "is_piece_development": False,
+        "is_castling": board.is_castling(move),
+        "is_quiet": False
+    }
+
+    # Check if move gives check
+    board_copy = board.copy()
+    board_copy.push(move)
+    result["is_check"] = board_copy.is_check()
+
+    # Pawn advance (non-capture)
+    piece = board.piece_at(move.from_square)
+    if piece and piece.piece_type == chess.PAWN and not result["is_capture"]:
+        result["is_pawn_advance"] = True
+
+    # Piece development (N/B in opening)
+    if ply <= 20 and piece and piece.piece_type in [chess.KNIGHT, chess.BISHOP]:
+        result["is_piece_development"] = True
+
+    # Quiet move: not capture, not check
+    if not result["is_capture"] and not result["is_check"]:
+        result["is_quiet"] = True
+
+    return result
+```
+
+---
+
+### 3. Cluster-Level Aggregation
+
+**Per-Cluster Metrics**:
+
+```python
+@dataclass
+class ClusterMoveTypeMetrics:
+    """Aggregated move type metrics for a cluster."""
+    cluster_id: str
+    games_analyzed: int = 0
+
+    # Aggregated totals
+    total_moves: int = 0
+    total_captures: int = 0
+    total_checks: int = 0
+    total_pawn_advances: int = 0
+    total_quiet_moves: int = 0
+    total_aggressive: int = 0  # captures + checks
+
+    # Per-game averages (computed)
+    avg_captures_per_game: float = 0.0
+    avg_checks_per_game: float = 0.0
+    avg_aggressive_per_game: float = 0.0
+```
+
+**Percentage Calculations**:
+
+```
+captures_pct = (total_captures / total_moves) × 100
+checks_pct = (total_checks / total_moves) × 100
+aggressive_pct = (total_aggressive / total_moves) × 100
+quiet_moves_pct = (total_quiet_moves / total_moves) × 100
+```
+
+---
+
+### 4. Cluster Comparison
+
+**Inter-Cluster Analysis**:
+
+```python
+def compute_move_type_comparison(
+    cluster_metrics: Dict[str, ClusterMoveTypeMetrics]
+) -> Dict[str, Any]:
+    """Compare move type distributions between clusters."""
+    # Get percentages for each cluster
+    # Compute differences between tactical and positional
+    # Identify which cluster is more tactical/positional
+
+    return {
+        "clusters_compared": ["tactical", "positional"],
+        "differences": {
+            "captures_diff": tactical_pct - positional_pct,
+            "checks_diff": ...,
+            "aggressive_diff": ...
+        },
+        "interpretation": {
+            "tactical_cluster": "cluster_tactical",  # Higher aggressive %
+            "positional_cluster": "cluster_positional"  # Lower aggressive %
+        }
+    }
+```
+
+**Key Metrics**:
+
+| Metric | Formula | Interpretation |
+|--------|---------|----------------|
+| Aggressive Difference | `aggressive_pct_A - aggressive_pct_B` | Positive = A more tactical |
+| Capture Rate Ratio | `captures_pct_A / captures_pct_B` | >1 = A captures more |
+| Quiet Move Ratio | `quiet_pct_A / quiet_pct_B` | >1 = A more positional |
+
+---
+
+### 5. Expected Results
+
+**Hypothesis**: Tactical cluster should show higher aggressive move percentage.
+
+**Expected Ranges**:
+
+| Metric | Tactical Cluster | Positional Cluster |
+|--------|------------------|-------------------|
+| `aggressive_pct` | 15-25% | 10-18% |
+| `captures_pct` | 12-20% | 8-15% |
+| `checks_pct` | 3-6% | 2-4% |
+| `quiet_moves_pct` | 65-75% | 75-85% |
+
+**Validation**:
+- If tactical cluster shows < 2% higher aggressive rate → clusters may not be sufficiently different
+- If positional cluster shows higher aggressive rate → clustering may be incorrect
+
+---
+
 ## Implementation Plan
 
-### Phase 1: Cluster Divergence (Priority: HIGH)
+### Phase 1: Cluster Divergence (Priority: HIGH) ✅ IMPLEMENTED
+
+**Implementation**: `server/evaluation/model_divergence.py`
 
 **When computed**: Every 10 rounds (alongside playstyle evaluation)
 
@@ -404,7 +586,9 @@ async def compute_cluster_divergence(
 
 ---
 
-### Phase 2: Weight Statistics (Priority: MEDIUM)
+### Phase 2: Weight Statistics (Priority: MEDIUM) ✅ IMPLEMENTED
+
+**Implementation**: `server/evaluation/weight_statistics.py`
 
 **When computed**: Every 10 rounds
 
@@ -461,6 +645,41 @@ async def compute_weight_statistics(
     }
 
     return results
+```
+
+---
+
+### Phase 3: Move Type Distribution (Priority: HIGH) ✅ IMPLEMENTED
+
+**Implementation**: `server/evaluation/move_type_analyzer.py`
+
+**When computed**: Every evaluation round (alongside playstyle evaluation)
+
+**Input**: List of PGN strings from evaluation games
+
+**Output**: Per-cluster move type statistics
+
+**Storage**: `storage/metrics/{run_id}/{cluster}/move_types_round_{N}.json`
+
+**Integration**: Called from `server/evaluation/model_evaluator.py` during cluster evaluation
+
+**Algorithm**:
+```python
+async def analyze_cluster_games(
+    pgn_strings: List[str],
+    cluster_id: str
+) -> ClusterMoveTypeMetrics:
+    """
+    Analyze all games from a cluster evaluation.
+    """
+    cluster_metrics = ClusterMoveTypeMetrics(cluster_id=cluster_id)
+
+    for pgn in pgn_strings:
+        game_stats = analyze_game(pgn)
+        cluster_metrics.add_game_stats(game_stats)
+
+    cluster_metrics.compute_averages()
+    return cluster_metrics
 ```
 
 ---
@@ -539,12 +758,16 @@ storage/metrics/{run_id}/
 │   ├── evaluation_round_10.json      # Playstyle metrics
 │   ├── evaluation_round_20.json
 │   ├── weight_stats_round_10.json    # Weight statistics
-│   └── weight_stats_round_20.json
+│   ├── weight_stats_round_20.json
+│   ├── move_types_round_10.json      # Move type distribution
+│   └── move_types_round_20.json
 ├── positional/
 │   ├── evaluation_round_10.json
 │   ├── evaluation_round_20.json
 │   ├── weight_stats_round_10.json
-│   └── weight_stats_round_20.json
+│   ├── weight_stats_round_20.json
+│   ├── move_types_round_10.json
+│   └── move_types_round_20.json
 └── model_divergence/
     ├── round_10.json                  # Cluster divergence
     ├── round_20.json
@@ -634,18 +857,96 @@ storage/metrics/{run_id}/
       "max": 0.3567,
       "l2_norm": 12.456,
       "num_parameters": 274176,
+      "tensor_shape": [256, 119, 3, 3],
       "sparsity": 0.0023,
-      "weight_change": 0.0456
+      "absolute_l2_change": 0.0456,
+      "relative_change": 0.0032,
+      "max_element_change": 0.0089,
+      "mean_element_change": 0.0012
     },
     // ... more layers
+  },
+
+  "per_group": {
+    "input_block": {
+      "mean_l2_norm": 12.456,
+      "mean_sparsity": 0.0023,
+      "mean_std": 0.0891,
+      "num_layers": 2,
+      "mean_relative_change": 0.0032
+    },
+    "early_residual": { ... },
+    "middle_residual": { ... },
+    "late_residual": { ... },
+    "policy_head": { ... },
+    "value_head": { ... }
   },
 
   "summary": {
     "total_parameters": 22892949,
     "global_sparsity": 0.0034,
     "layers_analyzed": 78,
+    "dead_layers_count": 0,
     "dead_layers": [],
-    "highly_active_layers": ["residual.15.conv1.weight", "policy_head.conv.weight"]
+    "highly_active_layers_count": 5,
+    "highly_active_layers": ["residual.15.conv1.weight", "policy_head.conv.weight"],
+    "mean_relative_change": 0.0045,
+    "max_relative_change": 0.0123,
+    "min_relative_change": 0.0001
+  }
+}
+```
+
+### JSON Schema: Move Type Distribution
+
+```json
+{
+  "cluster_id": "cluster_tactical",
+  "games_analyzed": 10,
+
+  "totals": {
+    "total_moves": 1523,
+    "captures": 287,
+    "checks": 45,
+    "pawn_advances": 312,
+    "quiet_moves": 1134,
+    "aggressive_moves": 332
+  },
+
+  "percentages": {
+    "captures_pct": 18.85,
+    "checks_pct": 2.95,
+    "pawn_advances_pct": 20.49,
+    "quiet_moves_pct": 74.46,
+    "aggressive_pct": 21.80
+  },
+
+  "averages_per_game": {
+    "avg_captures": 28.7,
+    "avg_checks": 4.5,
+    "avg_aggressive": 33.2
+  }
+}
+```
+
+### JSON Schema: Move Type Comparison (in evaluation summary)
+
+```json
+{
+  "move_type_comparison": {
+    "clusters_compared": ["cluster_tactical", "cluster_positional"],
+    "differences": {
+      "captures_diff": 3.45,
+      "checks_diff": 0.78,
+      "pawn_advances_diff": -2.12,
+      "quiet_moves_diff": -4.23,
+      "aggressive_diff": 4.23
+    },
+    "interpretation": {
+      "cluster_tactical_more_tactical": true,
+      "tactical_cluster": "cluster_tactical",
+      "positional_cluster": "cluster_positional"
+    }
   }
 }
 ```
@@ -1262,6 +1563,12 @@ Would require architecture modification.
 
 ---
 
-*Document Version: 1.0*
-*Last Updated: 2025-11-22*
+*Document Version: 1.2*
+*Last Updated: 2025-11-23*
 *Author: Chess Federated Learning Team*
+
+## Changelog
+
+- **v1.2** (2025-11-23): Added Move Type Distribution metrics (Phase 3). Documented move categories, per-game analysis, cluster aggregation, and comparison methods. Added JSON schemas for move type metrics.
+- **v1.1** (2025-11-23): Marked Cluster Divergence and Weight Statistics as implemented. Updated JSON schemas to match actual implementation. Added per_group aggregations to Weight Statistics schema.
+- **v1.0** (2025-11-22): Initial documentation with all metrics specifications and future extensions.

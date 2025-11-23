@@ -182,6 +182,74 @@ class FileMetricsStore(MetricsStore):
 
         logger.debug(f"Saved model divergence metrics to {output_file}")
 
+    async def save_weight_statistics(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Save weight statistics metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/weight_stats_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier (e.g., cluster_tactical)
+            metrics: Weight statistics dict from compute_weight_statistics
+        """
+        import json
+
+        cluster_folder = self._get_cluster_folder(run_id, cluster_id)
+        output_file = cluster_folder / f"weight_stats_round_{round_num}.json"
+
+        def _write():
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(metrics, f, indent=2)
+
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write)
+
+        logger.debug(f"Saved weight statistics to {output_file}")
+
+    async def save_move_type_metrics(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Save move type distribution metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/move_types_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier (e.g., cluster_tactical)
+            metrics: Move type metrics dict from MoveTypeAnalyzer
+        """
+        import json
+
+        cluster_folder = self._get_cluster_folder(run_id, cluster_id)
+        output_file = cluster_folder / f"move_types_round_{round_num}.json"
+
+        def _write():
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(metrics, f, indent=2)
+
+        # Run in executor to avoid blocking
+        loop = asyncio.get_event_loop()
+        await loop.run_in_executor(None, _write)
+
+        logger.debug(f"Saved move type metrics to {output_file}")
+
     async def record_event(self, event: MetricEvent) -> None:
         """Record a single metric event."""
         await self.record_events([event])

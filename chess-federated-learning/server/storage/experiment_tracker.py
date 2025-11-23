@@ -224,6 +224,68 @@ class FileExperimentTracker(ExperimentTracker):
             f"mean_divergence={metrics.get('global', {}).get('mean_divergence', 'N/A')}"
         )
 
+    async def log_weight_statistics(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Log weight statistics metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/weight_stats_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier
+            metrics: Weight statistics dict from compute_weight_statistics
+        """
+        await self.metrics_store.save_weight_statistics(
+            run_id=run_id,
+            round_num=round_num,
+            cluster_id=cluster_id,
+            metrics=metrics
+        )
+
+        logger.debug(
+            f"Logged weight statistics for {cluster_id} round {round_num}: "
+            f"params={metrics.get('summary', {}).get('total_parameters', 'N/A')}"
+        )
+
+    async def log_move_type_metrics(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Log move type distribution metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/move_types_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier
+            metrics: Move type metrics dict from MoveTypeAnalyzer
+        """
+        await self.metrics_store.save_move_type_metrics(
+            run_id=run_id,
+            round_num=round_num,
+            cluster_id=cluster_id,
+            metrics=metrics
+        )
+
+        logger.debug(
+            f"Logged move type metrics for {cluster_id} round {round_num}: "
+            f"aggressive_pct={metrics.get('percentages', {}).get('aggressive_pct', 'N/A')}%"
+        )
+
     async def save_checkpoint(
         self,
         run_id: str,

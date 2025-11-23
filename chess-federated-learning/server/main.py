@@ -43,6 +43,7 @@ from server.storage.experiment_tracker import FileExperimentTracker
 from server.storage.factory import create_experiment_tracker
 from server.evaluation.model_evaluator import ModelEvaluator
 from server.evaluation.model_divergence import compute_cluster_divergence
+from server.evaluation.weight_statistics import compute_weight_statistics
 
 
 @dataclass
@@ -225,6 +226,7 @@ class TrainingOrchestrator:
         try:
             self.current_run_id = await self.storage_tracker.start_run(
                 config=experiment_config,
+                run_id=experiment_name,  # Use experiment name as folder name
                 description=f"Federated learning training: {experiment_name}"
             )
             log.info(f"Started experiment tracking with run_id: {self.current_run_id}")
@@ -915,6 +917,9 @@ class TrainingOrchestrator:
                 # Compute and store model divergence metrics
                 await self._compute_and_store_divergence(round_num, cluster_models)
 
+                # Compute and store weight statistics for each cluster
+                await self._compute_and_store_weight_statistics(round_num, cluster_models)
+
         except Exception as e:
             log.error(f"Playstyle evaluation failed: {e}")
             log.exception("Full traceback:")
@@ -991,6 +996,94 @@ class TrainingOrchestrator:
         except Exception as e:
             log.error(f"Failed to compute model divergence: {e}")
             log.exception("Full traceback:")
+
+    async def _compute_and_store_weight_statistics(
+        self,
+        round_num: int,
+        cluster_models: Dict[str, Any]
+    ):
+        """
+        Compute and store weight statistics for each cluster model.
+
+        Tracks per-layer weight distributions and changes over training.
+
+        Args:
+            round_num: Current round number
+            cluster_models: Dict of cluster_id -> model_state_dict
+        """
+        log = logger.bind(context="TrainingOrchestrator._compute_and_store_weight_statistics")
+
+        if not self.current_run_id:
+            return
+
+        try:
+            for cluster_id, model_state in cluster_models.items():
+                # Try to get previous model state for change computation
+                previous_state = self._get_previous_model_state(cluster_id, round_num)
+
+                # Compute weight statistics
+                weight_stats = compute_weight_statistics(
+                    model_state=model_state,
+                    previous_state=previous_state,
+                    round_num=round_num,
+                    cluster_id=cluster_id
+                )
+
+                # Log summary to console
+                summary = weight_stats.get("summary", {})
+                log.info(f"\n{'=' * 60}")
+                log.info(f"Weight Statistics - {cluster_id} (Round {round_num}):")
+                log.info(f"{'=' * 60}")
+                log.info(f"  Total Parameters: {summary.get('total_parameters', 0):,}")
+                log.info(f"  Global Sparsity: {summary.get('global_sparsity', 0):.4f}")
+                log.info(f"  Dead Layers: {summary.get('dead_layers_count', 0)}")
+                log.info(f"  Highly Active Layers: {summary.get('highly_active_layers_count', 0)}")
+
+                if "mean_relative_change" in summary:
+                    log.info(f"  Mean Relative Change: {summary['mean_relative_change']:.6f}")
+
+                # Log per-group summary
+                log.info("\n  Per-Layer-Group Statistics:")
+                for group_name, group_stats in weight_stats.get("per_group", {}).items():
+                    change_str = ""
+                    if "mean_relative_change" in group_stats:
+                        change_str = f", change={group_stats['mean_relative_change']:.6f}"
+                    log.info(
+                        f"    {group_name}: "
+                        f"sparsity={group_stats.get('mean_sparsity', 0):.4f}"
+                        f"{change_str}"
+                    )
+
+                log.info(f"{'=' * 60}\n")
+
+                # Store weight statistics
+                await self.storage_tracker.log_weight_statistics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    cluster_id=cluster_id,
+                    metrics=weight_stats
+                )
+
+            log.info(f"Weight statistics stored for round {round_num}")
+
+        except Exception as e:
+            log.error(f"Failed to compute weight statistics: {e}")
+            log.exception("Full traceback:")
+
+    def _get_previous_model_state(
+        self,
+        cluster_id: str,
+        current_round: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Try to get the previous model state for comparison.
+
+        For now, returns None (no comparison with previous).
+        Could be extended to load from checkpoint.
+        """
+        # TODO: Could load from checkpoint if needed
+        # For now, we skip change computation on first evaluation
+        return None
 
 
 class ServerMenu:
