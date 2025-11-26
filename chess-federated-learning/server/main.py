@@ -912,6 +912,15 @@ class TrainingOrchestrator:
                         metrics=cluster_metrics
                     )
 
+                    # Also save move type metrics separately if present
+                    if "move_type_metrics" in cluster_metrics and cluster_metrics["move_type_metrics"]:
+                        await self.storage_tracker.log_move_type_metrics(
+                            run_id=self.current_run_id,
+                            round_num=round_num,
+                            cluster_id=cluster_id,
+                            metrics=cluster_metrics["move_type_metrics"]
+                        )
+
                 log.info(f"Playstyle evaluation metrics stored for round {round_num}")
 
                 # Compute and store model divergence metrics
