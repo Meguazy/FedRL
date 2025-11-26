@@ -268,31 +268,9 @@ class InterClusterAggregator(BaseAggregator):
                 custom_metrics = self.metric_registry.compute_all(context, skip_on_error=True)
                 log.debug(f"Computed {len(custom_metrics)} custom metrics")
 
-            # Step 8: Store metrics and checkpoints if tracker is available
+            # Step 8: Save checkpoints if tracker is available (no metrics logging)
             if self.experiment_tracker and run_id:
-                log.debug("Step 8a: Logging global metrics to storage...")
-
-                # Combine standard and custom metrics for global aggregation
-                all_metrics = {
-                    "aggregation_time": aggregation_time,
-                    "cluster_count": len(models),
-                    "shared_layer_count": len(shared_layers),
-                    "cluster_specific_count": len(cluster_specific_layers),
-                    "weighting_strategy": self.weighting_strategy,
-                    **custom_metrics
-                }
-
-                # Log global inter-cluster metrics
-                self.experiment_tracker.log_metrics(
-                    run_id=run_id,
-                    entity_type=EntityType.GLOBAL,
-                    entity_id="global",
-                    round_num=round_num,
-                    metrics=all_metrics
-                )
-
-                # Save updated cluster models as checkpoints
-                log.debug("Step 8b: Saving updated cluster model checkpoints...")
+                log.debug("Step 8: Saving updated cluster model checkpoints...")
                 for cluster_id, updated_model in updated_models.items():
                     self.experiment_tracker.save_checkpoint(
                         run_id=run_id,
@@ -302,7 +280,7 @@ class InterClusterAggregator(BaseAggregator):
                         metrics={}
                     )
 
-                log.info(f"Stored global metrics and {len(updated_models)} cluster checkpoints for round {round_num}")
+                log.info(f"Stored {len(updated_models)} cluster checkpoints for round {round_num}")
 
             # Step 9: Update internal statistics
             self._update_statistics(len(models), aggregation_time)

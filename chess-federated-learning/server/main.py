@@ -42,6 +42,8 @@ from server.storage.base import EntityType
 from server.storage.experiment_tracker import FileExperimentTracker
 from server.storage.factory import create_experiment_tracker
 from server.evaluation.model_evaluator import ModelEvaluator
+from server.evaluation.model_divergence import compute_cluster_divergence
+from server.evaluation.weight_statistics import compute_weight_statistics
 
 
 @dataclass
@@ -224,6 +226,7 @@ class TrainingOrchestrator:
         try:
             self.current_run_id = await self.storage_tracker.start_run(
                 config=experiment_config,
+                run_id=experiment_name,  # Use experiment name as folder name
                 description=f"Federated learning training: {experiment_name}"
             )
             log.info(f"Started experiment tracking with run_id: {self.current_run_id}")
@@ -258,26 +261,7 @@ class TrainingOrchestrator:
                 
                 if not success:
                     log.error(f"Round {round_num} failed or timed out")
-                    # Log failure as metrics
-                    if self.current_run_id:
-                        await self.storage_tracker.log_metrics(
-                            run_id=self.current_run_id,
-                            round_num=round_num,
-                            entity_type=EntityType.SERVER,
-                            entity_id="orchestrator",
-                            metrics={'status': 'failed', 'reason': 'execution_failed'}
-                        )
                     break  # Stop training on failure
-                
-                # Log round completion as metrics
-                if self.current_run_id:
-                    await self.storage_tracker.log_metrics(
-                        run_id=self.current_run_id,
-                        round_num=round_num,
-                        entity_type=EntityType.SERVER,
-                        entity_id="orchestrator",
-                        metrics={'status': 'complete'}
-                    )
                 
                 log.info(f"Round {round_num} completed successfully")
                 
@@ -313,15 +297,8 @@ class TrainingOrchestrator:
             raise
         except Exception as e:
             log.exception(f"Training failed: {e}")
-            # Log failure
+            # End run on failure
             if self.current_run_id:
-                await self.storage_tracker.log_metrics(
-                    run_id=self.current_run_id,
-                    round_num=self.current_round,
-                    entity_type=EntityType.SERVER,
-                    entity_id="orchestrator",
-                    metrics={'status': 'failed', 'error': str(e)}
-                )
                 await self.storage_tracker.end_run(
                     run_id=self.current_run_id,
                     final_results={'status': 'failed', 'error': str(e)}
@@ -404,25 +381,9 @@ class TrainingOrchestrator:
             log.info("Step 7: Broadcasting CLUSTER_MODEL to all nodes...")
             await self._broadcast_cluster_models(final_models, round_num)
 
-            # Log round metrics (before cleanup)
             round_duration = time.time() - round_start_time
-            num_updates = len(updates) if updates else 0
-            num_clusters = len(cluster_models) if cluster_models else 0
 
-            if self.current_run_id:
-                await self.storage_tracker.log_metrics(
-                    run_id=self.current_run_id,
-                    round_num=round_num,
-                    entity_type=EntityType.SERVER,
-                    entity_id="orchestrator",
-                    metrics={
-                        'round_duration': round_duration,
-                        'updates_received': num_updates,
-                        'clusters_aggregated': num_clusters
-                    }
-                )
-
-            # Clean up after distributing models and logging metrics
+            # Clean up after distributing models
             # Keep models in self.cluster_models for reference, but clear local variables
             if updates is not None:
                 del updates
@@ -547,21 +508,7 @@ class TrainingOrchestrator:
         except asyncio.CancelledError:
             log.warning(f"Update collection cancelled: {len(updates)} updates received before cancellation")
             raise
-            
-            # Log timeout as metrics (not event)
-            if self.current_run_id:
-                await self.storage_tracker.log_metrics(
-                    run_id=self.current_run_id,
-                    round_num=round_num,
-                    entity_type=EntityType.SERVER,
-                    entity_id="orchestrator",
-                    metrics={
-                        'collection_timeout': True,
-                        'updates_received': len(updates),
-                        'timeout_seconds': self.round_config.timeout_seconds
-                    }
-                )
-        
+
         return updates
     
     def _check_threshold_met(self) -> bool:
@@ -667,23 +614,7 @@ class TrainingOrchestrator:
             )
             
             cluster_models[cluster_id] = aggregated_model
-            
-            # Log aggregation metrics using correct API
-            if self.current_run_id:
-                await self.storage_tracker.log_metrics(
-                    run_id=self.current_run_id,
-                    round_num=round_num,
-                    entity_type=EntityType.CLUSTER,
-                    entity_id=cluster_id,
-                    metrics={
-                        'aggregation_type': 'intra_cluster',
-                        'aggregation_time': metrics.aggregation_time,
-                        'participant_count': metrics.participant_count,
-                        'total_samples': metrics.total_samples,
-                        'average_loss': metrics.average_loss
-                    }
-                )
-            
+
             log.info(f"{cluster_id} aggregation: {metrics.participant_count} nodes, "
                     f"{metrics.total_samples} samples, {metrics.aggregation_time:.2f}s")
 
@@ -737,23 +668,7 @@ class TrainingOrchestrator:
             weights=weights,
             round_num=round_num
         )
-        
-        # Log aggregation metrics using correct API
-        if self.current_run_id:
-            await self.storage_tracker.log_metrics(
-                run_id=self.current_run_id,
-                round_num=round_num,
-                entity_type=EntityType.SERVER,
-                entity_id="inter_cluster_aggregator",
-                metrics={
-                    'aggregation_type': 'inter_cluster',
-                    'aggregation_time': metrics.aggregation_time,
-                    'cluster_count': metrics.participant_count,
-                    'shared_layer_count': metrics.additional_metrics.get('shared_layer_count', 0),
-                    'cluster_specific_count': metrics.additional_metrics.get('cluster_specific_count', 0)
-                }
-            )
-        
+
         log.info(f"Inter-cluster aggregation: {metrics.participant_count} clusters, "
                 f"{metrics.additional_metrics.get('shared_layer_count', 0)} shared layers, "
                 f"{metrics.aggregation_time:.2f}s")
@@ -986,84 +901,189 @@ class TrainingOrchestrator:
             log.info(f"Evaluation Duration: {eval_duration:.1f}s")
             log.info(f"{'=' * 60}\n")
 
-            # Store evaluation results in metrics
+            # Store evaluation results in metrics - only cluster summaries
             if self.current_run_id:
-                # Store per-game raw metrics
-                for i, game_result in enumerate(evaluation_results.get("game_results", [])):
-                    await self.storage_tracker.log_metrics(
-                        run_id=self.current_run_id,
-                        round_num=round_num,
-                        entity_type=EntityType.CUSTOM,
-                        entity_id=f"playstyle_eval_game_{i}",
-                        metrics=game_result,
-                        metadata={
-                            "evaluation_type": "playstyle",
-                            "game_number": i,
-                            "evaluation_round": round_num
-                        }
-                    )
-
-                # Store per-game computed metrics
-                for i, computed_metrics in enumerate(evaluation_results.get("computed_metrics", [])):
-                    await self.storage_tracker.log_metrics(
-                        run_id=self.current_run_id,
-                        round_num=round_num,
-                        entity_type=EntityType.CUSTOM,
-                        entity_id=f"playstyle_eval_game_{i}_computed",
-                        metrics=computed_metrics,
-                        metadata={
-                            "evaluation_type": "playstyle_computed",
-                            "game_number": i,
-                            "evaluation_round": round_num
-                        }
-                    )
-
                 # Store per-cluster aggregated metrics
                 for cluster_id, cluster_metrics in evaluation_results.get("cluster_metrics", {}).items():
-                    await self.storage_tracker.log_metrics(
+                    await self.storage_tracker.log_playstyle_evaluation(
                         run_id=self.current_run_id,
                         round_num=round_num,
-                        entity_type=EntityType.CLUSTER,
-                        entity_id=cluster_id,
-                        metrics={"playstyle_evaluation": cluster_metrics},
-                        metadata={
-                            "evaluation_type": "playstyle_cluster_summary",
-                            "evaluation_round": round_num
-                        }
+                        cluster_id=cluster_id,
+                        metrics=cluster_metrics
                     )
 
-                # Store global evaluation summary
-                await self.storage_tracker.log_metrics(
-                    run_id=self.current_run_id,
-                    round_num=round_num,
-                    entity_type=EntityType.SERVER,
-                    entity_id="playstyle_evaluator",
-                    metrics={
-                        "evaluation_summary": summary,
-                        "evaluation_duration_seconds": eval_duration
-                    },
-                    metadata={
-                        "evaluation_type": "playstyle_global_summary",
-                        "evaluation_round": round_num
-                    }
-                )
-
                 log.info(f"Playstyle evaluation metrics stored for round {round_num}")
+
+                # Compute and store model divergence metrics
+                await self._compute_and_store_divergence(round_num, cluster_models)
+
+                # Compute and store weight statistics for each cluster
+                await self._compute_and_store_weight_statistics(round_num, cluster_models)
 
         except Exception as e:
             log.error(f"Playstyle evaluation failed: {e}")
             log.exception("Full traceback:")
 
-            # Log failure
+    async def _compute_and_store_divergence(
+        self,
+        round_num: int,
+        cluster_models: Dict[str, Any]
+    ):
+        """
+        Compute and store model divergence metrics between clusters.
+
+        This measures how much the tactical and positional clusters have
+        diverged in their learned representations. Key metric for thesis.
+
+        Args:
+            round_num: Current round number
+            cluster_models: Dict of cluster_id -> model_state_dict
+        """
+        log = logger.bind(context="TrainingOrchestrator._compute_and_store_divergence")
+
+        # Need at least 2 clusters to compute divergence
+        cluster_ids = list(cluster_models.keys())
+        if len(cluster_ids) < 2:
+            log.warning("Need at least 2 clusters to compute divergence, skipping")
+            return
+
+        try:
+            # Get the two main clusters (tactical and positional)
+            # Sort to ensure consistent ordering
+            cluster_ids.sort()
+            cluster_a_id = cluster_ids[0]
+            cluster_b_id = cluster_ids[1]
+
+            model_a = cluster_models[cluster_a_id]
+            model_b = cluster_models[cluster_b_id]
+
+            # Compute divergence metrics
+            divergence_metrics = compute_cluster_divergence(
+                model_a_state=model_a,
+                model_b_state=model_b,
+                round_num=round_num,
+                cluster_a_id=cluster_a_id,
+                cluster_b_id=cluster_b_id
+            )
+
+            # Log summary to console
+            global_metrics = divergence_metrics.get("global", {})
+            log.info(f"\n{'=' * 60}")
+            log.info(f"Model Divergence Metrics (Round {round_num}):")
+            log.info(f"{'=' * 60}")
+            log.info(f"  Mean Divergence Index: {global_metrics.get('mean_divergence', 'N/A'):.6f}")
+            log.info(f"  Mean Cosine Similarity: {global_metrics.get('mean_cosine_similarity', 'N/A'):.6f}")
+            log.info(f"  Max Divergence: {global_metrics.get('max_divergence', 'N/A'):.6f}")
+
+            # Log per-group metrics
+            log.info("\n  Per-Layer-Group Divergence:")
+            for group_name, group_metrics in divergence_metrics.get("per_group", {}).items():
+                div_idx = group_metrics.get("mean_divergence_index", 0)
+                cos_sim = group_metrics.get("mean_cosine_similarity", 0)
+                log.info(f"    {group_name}: divergence={div_idx:.4f}, similarity={cos_sim:.4f}")
+
+            log.info(f"{'=' * 60}\n")
+
+            # Store divergence metrics
             if self.current_run_id:
-                await self.storage_tracker.log_metrics(
+                await self.storage_tracker.log_model_divergence(
                     run_id=self.current_run_id,
                     round_num=round_num,
-                    entity_type=EntityType.SERVER,
-                    entity_id="playstyle_evaluator",
-                    metrics={"evaluation_error": str(e), "evaluation_failed": True},
-                    metadata={"evaluation_round": round_num}
+                    metrics=divergence_metrics
                 )
+                log.info(f"Model divergence metrics stored for round {round_num}")
+
+        except Exception as e:
+            log.error(f"Failed to compute model divergence: {e}")
+            log.exception("Full traceback:")
+
+    async def _compute_and_store_weight_statistics(
+        self,
+        round_num: int,
+        cluster_models: Dict[str, Any]
+    ):
+        """
+        Compute and store weight statistics for each cluster model.
+
+        Tracks per-layer weight distributions and changes over training.
+
+        Args:
+            round_num: Current round number
+            cluster_models: Dict of cluster_id -> model_state_dict
+        """
+        log = logger.bind(context="TrainingOrchestrator._compute_and_store_weight_statistics")
+
+        if not self.current_run_id:
+            return
+
+        try:
+            for cluster_id, model_state in cluster_models.items():
+                # Try to get previous model state for change computation
+                previous_state = self._get_previous_model_state(cluster_id, round_num)
+
+                # Compute weight statistics
+                weight_stats = compute_weight_statistics(
+                    model_state=model_state,
+                    previous_state=previous_state,
+                    round_num=round_num,
+                    cluster_id=cluster_id
+                )
+
+                # Log summary to console
+                summary = weight_stats.get("summary", {})
+                log.info(f"\n{'=' * 60}")
+                log.info(f"Weight Statistics - {cluster_id} (Round {round_num}):")
+                log.info(f"{'=' * 60}")
+                log.info(f"  Total Parameters: {summary.get('total_parameters', 0):,}")
+                log.info(f"  Global Sparsity: {summary.get('global_sparsity', 0):.4f}")
+                log.info(f"  Dead Layers: {summary.get('dead_layers_count', 0)}")
+                log.info(f"  Highly Active Layers: {summary.get('highly_active_layers_count', 0)}")
+
+                if "mean_relative_change" in summary:
+                    log.info(f"  Mean Relative Change: {summary['mean_relative_change']:.6f}")
+
+                # Log per-group summary
+                log.info("\n  Per-Layer-Group Statistics:")
+                for group_name, group_stats in weight_stats.get("per_group", {}).items():
+                    change_str = ""
+                    if "mean_relative_change" in group_stats:
+                        change_str = f", change={group_stats['mean_relative_change']:.6f}"
+                    log.info(
+                        f"    {group_name}: "
+                        f"sparsity={group_stats.get('mean_sparsity', 0):.4f}"
+                        f"{change_str}"
+                    )
+
+                log.info(f"{'=' * 60}\n")
+
+                # Store weight statistics
+                await self.storage_tracker.log_weight_statistics(
+                    run_id=self.current_run_id,
+                    round_num=round_num,
+                    cluster_id=cluster_id,
+                    metrics=weight_stats
+                )
+
+            log.info(f"Weight statistics stored for round {round_num}")
+
+        except Exception as e:
+            log.error(f"Failed to compute weight statistics: {e}")
+            log.exception("Full traceback:")
+
+    def _get_previous_model_state(
+        self,
+        cluster_id: str,
+        current_round: int
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Try to get the previous model state for comparison.
+
+        For now, returns None (no comparison with previous).
+        Could be extended to load from checkpoint.
+        """
+        # TODO: Could load from checkpoint if needed
+        # For now, we skip change computation on first evaluation
+        return None
 
 
 class ServerMenu:

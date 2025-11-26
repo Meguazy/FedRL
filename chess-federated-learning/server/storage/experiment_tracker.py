@@ -171,6 +171,121 @@ class FileExperimentTracker(ExperimentTracker):
             f"round {round_num}: {list(metrics.keys())}"
         )
 
+    async def log_playstyle_evaluation(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Log playstyle evaluation metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/evaluation_round_{round_num}.json
+        """
+        await self.metrics_store.save_playstyle_evaluation(
+            run_id=run_id,
+            round_num=round_num,
+            cluster_id=cluster_id,
+            metrics=metrics
+        )
+
+        logger.debug(
+            f"Logged playstyle evaluation for {cluster_id} "
+            f"round {round_num}"
+        )
+
+    async def log_model_divergence(
+        self,
+        run_id: str,
+        round_num: int,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Log model divergence metrics to a separate JSON file per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/model_divergence/round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            metrics: Model divergence metrics dict from compute_cluster_divergence
+        """
+        await self.metrics_store.save_model_divergence(
+            run_id=run_id,
+            round_num=round_num,
+            metrics=metrics
+        )
+
+        logger.debug(
+            f"Logged model divergence for round {round_num}: "
+            f"mean_divergence={metrics.get('global', {}).get('mean_divergence', 'N/A')}"
+        )
+
+    async def log_weight_statistics(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Log weight statistics metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/weight_stats_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier
+            metrics: Weight statistics dict from compute_weight_statistics
+        """
+        await self.metrics_store.save_weight_statistics(
+            run_id=run_id,
+            round_num=round_num,
+            cluster_id=cluster_id,
+            metrics=metrics
+        )
+
+        logger.debug(
+            f"Logged weight statistics for {cluster_id} round {round_num}: "
+            f"params={metrics.get('summary', {}).get('total_parameters', 'N/A')}"
+        )
+
+    async def log_move_type_metrics(
+        self,
+        run_id: str,
+        round_num: int,
+        cluster_id: str,
+        metrics: Dict[str, Any]
+    ) -> None:
+        """
+        Log move type distribution metrics to a separate JSON file per cluster per round.
+
+        Creates structure:
+            storage/metrics/{run_id}/{cluster_name}/move_types_round_{round_num}.json
+
+        Args:
+            run_id: Experiment run ID
+            round_num: Training round number
+            cluster_id: Cluster identifier
+            metrics: Move type metrics dict from MoveTypeAnalyzer
+        """
+        await self.metrics_store.save_move_type_metrics(
+            run_id=run_id,
+            round_num=round_num,
+            cluster_id=cluster_id,
+            metrics=metrics
+        )
+
+        logger.debug(
+            f"Logged move type metrics for {cluster_id} round {round_num}: "
+            f"aggressive_pct={metrics.get('percentages', {}).get('aggressive_pct', 'N/A')}%"
+        )
+
     async def save_checkpoint(
         self,
         run_id: str,

@@ -40,6 +40,10 @@ from server.evaluation.playstyle_metrics import (
     ComputedGameMetrics,
     PlayerComputedMetrics
 )
+from server.evaluation.move_type_analyzer import (
+    MoveTypeAnalyzer,
+    ClusterMoveTypeMetrics
+)
 
 
 @dataclass
@@ -117,6 +121,9 @@ class ClusterEvaluationMetrics:
     opening_frequency: Dict[str, int] = field(default_factory=dict)  # ECO code -> count
     top_openings: List[Tuple[str, str, int]] = field(default_factory=list)  # (ECO, name, count)
 
+    # Move type distribution
+    move_type_metrics: Optional[Dict[str, Any]] = None
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary for storage."""
         return {
@@ -158,7 +165,8 @@ class ClusterEvaluationMetrics:
             "top_openings": [
                 {"eco": eco, "name": name, "count": count}
                 for eco, name, count in self.top_openings
-            ]
+            ],
+            "move_type_metrics": self.move_type_metrics
         }
 
 
@@ -754,6 +762,12 @@ class ModelEvaluator:
             sorted_openings = sorted(opening_counts.items(), key=lambda x: x[1][1], reverse=True)
             cm.top_openings = [(eco, name, count) for eco, (name, count) in sorted_openings[:10]]
 
+            # Compute move type metrics from PGN strings
+            move_type_analyzer = MoveTypeAnalyzer()
+            pgn_strings = [gr.pgn for gr in game_results]
+            move_type_cluster_metrics = move_type_analyzer.analyze_games(pgn_strings, cluster_id)
+            cm.move_type_metrics = move_type_cluster_metrics.to_dict()
+
         return cm
 
     def _create_summary(self, cluster_metrics: Dict[str, ClusterEvaluationMetrics]) -> Dict[str, Any]:
@@ -786,10 +800,33 @@ class ModelEvaluator:
         elos = [cm.estimated_elo for cm in cluster_metrics.values()]
         elo_spread = max(elos) - min(elos) if len(elos) > 1 else 0
 
+        # Move type comparison
+        move_type_comparison = None
+        if len(cluster_metrics) >= 2:
+            from server.evaluation.move_type_analyzer import compute_move_type_comparison, ClusterMoveTypeMetrics
+            # Reconstruct ClusterMoveTypeMetrics from dicts
+            cluster_move_metrics = {}
+            for cid, cm in cluster_metrics.items():
+                if cm.move_type_metrics:
+                    mtm = ClusterMoveTypeMetrics(cluster_id=cid)
+                    mtm.games_analyzed = cm.move_type_metrics.get("games_analyzed", 0)
+                    totals = cm.move_type_metrics.get("totals", {})
+                    mtm.total_moves = totals.get("total_moves", 0)
+                    mtm.total_captures = totals.get("captures", 0)
+                    mtm.total_checks = totals.get("checks", 0)
+                    mtm.total_pawn_advances = totals.get("pawn_advances", 0)
+                    mtm.total_quiet_moves = totals.get("quiet_moves", 0)
+                    mtm.total_aggressive = totals.get("aggressive_moves", 0)
+                    cluster_move_metrics[cid] = mtm
+
+            if len(cluster_move_metrics) >= 2:
+                move_type_comparison = compute_move_type_comparison(cluster_move_metrics)
+
         return {
             "total_clusters_evaluated": len(cluster_metrics),
             "elo_rankings": elo_rankings,
             "tactical_rankings": tactical_rankings,
             "playstyle_divergence": round(divergence, 3),
-            "elo_spread": elo_spread
+            "elo_spread": elo_spread,
+            "move_type_comparison": move_type_comparison
         }
