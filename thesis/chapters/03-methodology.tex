@@ -2,12 +2,188 @@
 
 \section{Problem Formulation}
 
-% Define the problem formally
+% This section formally defines the problem addressed in the thesis
 
-\section{Proposed Approach}
+\subsection{Markov Decision Process Formulation}
 
-% Describe your methodology
+% Define the chess problem as an MDP: state space, action space, reward function, transition dynamics
 
-\section{System Architecture}
+\subsection{Strategic Diversity Objective}
 
-% Detail the architecture
+% Formalize the goal of maintaining multiple distinct playstyles while enabling collaborative learning
+
+\subsection{Federated Learning Constraints}
+
+% Define constraints: distributed training, communication efficiency, privacy preservation
+
+\subsection{Performance Metrics}
+
+% Introduce the metrics used to evaluate both playing strength and playstyle diversity
+
+
+\section{Clustered Federated Learning Framework}
+
+% This section presents the overall architecture of the proposed system
+
+\subsection{Framework Overview}
+
+% High-level description of the three-tier clustered federated learning approach
+
+\subsection{Cluster Design}
+
+% Explain the tactical vs positional cluster organization and the rationale behind it
+
+\subsection{Client-Server Architecture}
+
+% Describe the distributed system architecture with clients and central aggregation server
+
+\subsection{Communication Protocol}
+
+% Detail the message passing and synchronization mechanisms between clients and server
+
+
+\section{Neural Network Architecture}
+
+% This section describes the AlphaZero-style neural network used by all agents
+
+\subsection{Input Representation}
+
+% Explain the 119-plane board representation encoding position, game state, and history
+
+\subsection{Residual Network Structure}
+
+% Detail the 19 residual blocks architecture with convolutional layers
+
+\subsection{Policy and Value Heads}
+
+% Describe the dual-head architecture for move prediction and position evaluation
+
+\subsection{Layer Grouping for Selective Aggregation}
+
+% Define the layer groups: input block, early/middle/late residual blocks, policy/value heads
+
+
+\section{Three-Tier Aggregation System}
+
+% This section details the hierarchical aggregation mechanism
+
+\subsection{Local Training Phase}
+
+% Describe individual client training using self-play and MCTS
+
+\subsection{Intra-Cluster Aggregation}
+
+% Explain federated averaging within each cluster to create cluster-specific models
+
+\subsection{Inter-Cluster Selective Aggregation}
+
+% Detail the selective weight sharing mechanism across clusters
+
+\subsection{Aggregation Scheduling}
+
+% Describe the timing and frequency of aggregation at each tier
+
+
+\section{Selective Layer Aggregation}
+
+% This section focuses on the novel selective aggregation mechanism
+
+\subsection{Layer Sharing Strategy}
+
+% Explain which layers are shared across clusters and which remain cluster-specific
+
+\subsection{Weight Aggregation Algorithm}
+
+% Provide the algorithmic details of selective federated averaging
+
+\subsection{Knowledge Transfer Mechanism}
+
+% Discuss how low-level features are shared while preserving high-level strategic characteristics
+
+\subsection{Convergence Properties}
+
+% Discuss the expected convergence behavior of the selective aggregation approach
+
+
+\section{Playstyle-Aware Data Filtering}
+
+% This section describes how training data is curated to establish distinct playstyles
+
+\subsection{ECO Opening Code Classification}
+
+% Explain how chess openings are classified and filtered for tactical vs positional characteristics
+
+\subsection{Puzzle Type Filtering}
+
+% Describe the puzzle dataset filtering based on tactical vs positional puzzle types
+
+\subsection{Cluster Assignment Strategy}
+
+% Detail how filtered data is assigned to clients within each cluster
+
+\subsection{Data Distribution Balance}
+
+% Discuss measures to ensure adequate training data volume across clusters
+
+
+\section{Training Procedures}
+
+% This section describes the complete training pipeline
+
+\subsection{Supervised Bootstrapping Phase}
+
+% Explain the initial supervised learning from filtered Lichess games and puzzles
+
+\subsection{Self-Play Training Phase}
+
+% Detail the transition to self-play reinforcement learning with MCTS
+
+\subsection{Monte Carlo Tree Search Integration}
+
+% Describe the MCTS policy improvement operator and its parameters
+
+\subsection{Experience Replay and Batch Generation}
+
+% Explain how training experiences are collected, stored, and sampled for neural network updates
+
+
+\section{Evaluation Methodology}
+
+% This section presents the comprehensive evaluation framework
+
+\subsection{Playing Strength Evaluation}
+
+% Describe ELO estimation through matches against Stockfish at multiple difficulty levels
+
+\subsection{Playstyle Metrics}
+
+% Detail the playstyle score computation based on move type distributions
+
+\subsection{Cluster Divergence Metrics}
+
+% Explain how cluster separation is measured through model weight analysis
+
+\subsection{Statistical Analysis}
+
+% Describe the statistical tests and validation procedures used in experiments
+
+
+\section{Experimental Design}
+
+% This section outlines the systematic experiments to be conducted
+
+\subsection{Baseline Experiments}
+
+% Define B1 (Full Sharing) and B2 (No Sharing) baseline configurations
+
+\subsection{Partial Sharing Experiments}
+
+% Outline P1-P4 experiments testing different layer sharing combinations
+
+\subsection{Performance Evaluation Experiments}
+
+% Describe E1-E3 experiments for comprehensive model assessment
+
+\subsection{Hypothesis Validation Framework}
+
+% Present the hypotheses and validation criteria for each experiment
