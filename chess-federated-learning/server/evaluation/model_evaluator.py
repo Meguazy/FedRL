@@ -102,6 +102,26 @@ class ClusterEvaluationMetrics:
         "Very Positional": 0
     })
 
+    # Delta (tipping point) metrics
+    avg_delta: float = 0.0
+    max_delta: float = 0.0
+    min_delta: float = float('inf')
+    delta_samples: int = 0
+
+    # Pawn structure metrics
+    avg_pawn_rank: float = 0.0
+    avg_isolated_pawns: float = 0.0
+    avg_doubled_pawns: float = 0.0
+
+    # Legal moves per phase
+    avg_legal_moves_opening: float = 0.0
+    avg_legal_moves_middlegame: float = 0.0
+    avg_legal_moves_endgame: float = 0.0
+
+    # Move diversity metrics
+    avg_unique_move_destinations: float = 0.0
+    avg_move_diversity_ratio: float = 0.0
+
     # Game outcomes
     wins: int = 0
     draws: int = 0
@@ -143,6 +163,18 @@ class ClusterEvaluationMetrics:
             "tactical_score_max": round(self.tactical_score_max, 3) if self.tactical_score_max != float('-inf') else 0.0,
             "classification": self.classification,
             "classification_distribution": self.classification_distribution,
+            "avg_delta": round(self.avg_delta, 2),
+            "max_delta": round(self.max_delta, 2),
+            "min_delta": round(self.min_delta, 2) if self.min_delta != float('inf') else 0.0,
+            "delta_samples": self.delta_samples,
+            "avg_pawn_rank": round(self.avg_pawn_rank, 2),
+            "avg_isolated_pawns": round(self.avg_isolated_pawns, 2),
+            "avg_doubled_pawns": round(self.avg_doubled_pawns, 2),
+            "avg_legal_moves_opening": round(self.avg_legal_moves_opening, 2),
+            "avg_legal_moves_middlegame": round(self.avg_legal_moves_middlegame, 2),
+            "avg_legal_moves_endgame": round(self.avg_legal_moves_endgame, 2),
+            "avg_unique_move_destinations": round(self.avg_unique_move_destinations, 2),
+            "avg_move_diversity_ratio": round(self.avg_move_diversity_ratio, 3),
             "win_rate": round(self.win_rate, 3),
             "draw_rate": round(self.draw_rate, 3),
             "loss_rate": round(self.loss_rate, 3),
@@ -674,6 +706,7 @@ class ModelEvaluator:
 
         tactical_scores = []
         opening_counts = {}  # ECO code -> (opening_name, count)
+        all_deltas = []  # Collect all delta values across games
 
         for game_result, (computed, ai_is_white) in zip(game_results, computed_metrics_list):
             # Get AI player metrics
@@ -713,6 +746,31 @@ class ModelEvaluator:
             if player_metrics.tactical_score > cm.tactical_score_max:
                 cm.tactical_score_max = player_metrics.tactical_score
 
+            # Delta metrics aggregation
+            if player_metrics.delta_samples > 0:
+                cm.delta_samples += player_metrics.delta_samples
+                # Collect delta values for proper averaging
+                # Note: We approximate by collecting individual game deltas
+                all_deltas.append(player_metrics.avg_delta)
+                if player_metrics.max_delta > cm.max_delta:
+                    cm.max_delta = player_metrics.max_delta
+                if player_metrics.min_delta < cm.min_delta:
+                    cm.min_delta = player_metrics.min_delta
+
+            # Pawn structure metrics
+            cm.avg_pawn_rank += player_metrics.avg_pawn_rank
+            cm.avg_isolated_pawns += player_metrics.avg_isolated_pawns
+            cm.avg_doubled_pawns += player_metrics.avg_doubled_pawns
+
+            # Legal moves per phase
+            cm.avg_legal_moves_opening += player_metrics.avg_legal_moves_opening
+            cm.avg_legal_moves_middlegame += player_metrics.avg_legal_moves_middlegame
+            cm.avg_legal_moves_endgame += player_metrics.avg_legal_moves_endgame
+
+            # Move diversity metrics
+            cm.avg_unique_move_destinations += player_metrics.unique_move_destinations
+            cm.avg_move_diversity_ratio += player_metrics.move_diversity_ratio
+
             # Classification distribution
             cm.classification_distribution[player_metrics.classification] += 1
 
@@ -745,6 +803,28 @@ class ModelEvaluator:
 
             # Calculate std
             cm.tactical_score_std = float(np.std(tactical_scores))
+
+            # Calculate delta average
+            if all_deltas:
+                cm.avg_delta = sum(all_deltas) / len(all_deltas)
+
+            # Reset min_delta if no samples were found
+            if cm.min_delta == float('inf'):
+                cm.min_delta = 0.0
+
+            # Pawn structure averages
+            cm.avg_pawn_rank /= cm.games_analyzed
+            cm.avg_isolated_pawns /= cm.games_analyzed
+            cm.avg_doubled_pawns /= cm.games_analyzed
+
+            # Legal moves per phase averages
+            cm.avg_legal_moves_opening /= cm.games_analyzed
+            cm.avg_legal_moves_middlegame /= cm.games_analyzed
+            cm.avg_legal_moves_endgame /= cm.games_analyzed
+
+            # Move diversity averages
+            cm.avg_unique_move_destinations /= cm.games_analyzed
+            cm.avg_move_diversity_ratio /= cm.games_analyzed
 
             # Classification
             cm.classification = PlaystyleMetricsCalculator.classify_tactical_score(cm.tactical_score)

@@ -905,11 +905,14 @@ class TrainingOrchestrator:
             if self.current_run_id:
                 # Store per-cluster aggregated metrics
                 for cluster_id, cluster_metrics in evaluation_results.get("cluster_metrics", {}).items():
+                    # Create a copy without move_type_metrics for evaluation file
+                    evaluation_metrics = {k: v for k, v in cluster_metrics.items() if k != "move_type_metrics"}
+
                     await self.storage_tracker.log_playstyle_evaluation(
                         run_id=self.current_run_id,
                         round_num=round_num,
                         cluster_id=cluster_id,
-                        metrics=cluster_metrics
+                        metrics=evaluation_metrics
                     )
 
                     # Also save move type metrics separately if present
