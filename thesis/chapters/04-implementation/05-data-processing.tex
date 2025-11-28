@@ -1,0 +1,65 @@
+\section{Data Processing Implementation}
+
+% This section describes the data loading and preprocessing pipeline.
+
+\subsection{Board Encoder}
+
+% Describe the 119-plane encoding implementation.
+%
+% Cover:
+% - File: data/board_encoder.py
+% - Function: encode_board(board, history) → Tensor[8, 8, 119]
+% - Planes 0-95: Current + 7 historical piece positions
+% - Planes 96-118: Game state (repetition, castling, side to move, move count, 50-move rule)
+% - Efficient numpy/torch tensor operations
+% - Handling board history for temporal context
+
+\subsection{Game Loader and Filters}
+
+% Describe the game loading system.
+%
+% Cover:
+% - File: data/game_loader.py
+% - Class: GameLoader
+% - PGN parsing with python-chess library
+% - Compression support via zstandard (zst files)
+% - GameFilter dataclass: min_rating, playstyle, time_control, result, max_games
+% - Optional Redis caching for distributed access
+% - Streaming for memory efficiency with large databases
+
+\subsection{ECO Classification}
+
+% Describe the ECO-based playstyle classifier.
+%
+% Cover:
+% - File: data/eco_classifier.py
+% - Class: ECOClassifier
+% - Tactical ECO codes: 100+ codes (Sicilian B20-B99, King's Gambit C30-C39, etc.)
+% - Positional ECO codes: 100+ codes (QGD D30-D69, Slav D10-D19, London D00-D05, etc.)
+% - Mapping from opening code to playstyle label
+% - Integration with GameFilter
+
+\subsection{Sample Extractor}
+
+% Describe position extraction from games.
+%
+% Cover:
+% - File: data/sample_extractor.py
+% - Class: SampleExtractor
+% - TrainingSample structure: board, move_played, game_outcome, move_number, eco_code, playstyle, history
+% - ExtractionConfig: skip_opening_moves=10, skip_endgame_moves (when <5 pieces), sample_rate
+% - Extracting positions from python-chess Game objects
+% - Creating 8-move history for each position
+% - Shuffling for training diversity
+
+\subsection{Dataset Classes}
+
+% Describe PyTorch Dataset implementations.
+%
+% Cover:
+% - ChessDataset (in trainer_supervised.py):
+%   * __getitem__ returns (board_tensor, move_index, outcome)
+%   * Integration with DataLoader for batching
+% - PuzzleDataset (in trainer_puzzle.py):
+%   * Similar structure for puzzle positions
+%   * Extracts all positions from multi-move puzzle sequences

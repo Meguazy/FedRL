@@ -1,0 +1,17 @@
+\section{Research Questions}
+
+This thesis investigates the following research questions:
+
+\begin{enumerate}
+    \item \textbf{How can federated learning be adapted to preserve strategic diversity in reinforcement learning domains?} Traditional federated averaging produces a single global model, but many domains benefit from maintaining distinct behavioral strategies. We investigate whether a clustered federated architecture can balance knowledge sharing with playstyle preservation.
+
+    \item \textbf{What aggregation mechanisms enable knowledge transfer without homogenizing agent behaviors?} We explore selective aggregation strategies that share low-level feature representations while maintaining cluster-specific decision-making layers. The question is whether this approach can accelerate learning while preserving the distinct characteristics of different playing styles.
+
+    \item \textbf{Can playstyle-specific training data effectively bootstrap distinct strategic identities in a federated setting?} We investigate whether filtering training data by chess opening classifications (ECO codes) and puzzle types can establish and maintain tactical versus positional specializations throughout federated training rounds.
+
+    \item \textbf{How can we measure and quantify strategic diversity in federated chess engines?} Beyond standard performance metrics like ELO ratings, we need methods to assess whether cluster-specific models maintain distinct strategic characteristics or converge toward homogeneous play.
+
+    \item \textbf{Does clustered federated learning provide performance benefits compared to isolated training?} We examine whether the proposed three-tier aggregation system (local training, intra-cluster averaging, inter-cluster selective sharing) improves learning efficiency and final playing strength compared to agents training independently.
+\end{enumerate}
+
+These questions guide our exploration of clustered federated deep reinforcement learning, with chess serving as a concrete testbed for principles applicable to broader distributed AI systems requiring both collaboration and specialization.

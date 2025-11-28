@@ -1,0 +1,42 @@
+\section{Aggregation Implementation}
+
+% This section describes the implementation of the three-tier aggregation system.
+% Note: Chapter 3.4-3.5 covered the algorithms; this focuses on code structure.
+
+\subsection{Base Aggregator Framework}
+
+% Describe the base aggregation infrastructure.
+%
+% Cover:
+% - File: server/aggregation/base_aggregator.py
+% - Class: BaseAggregator (abstract base class)
+% - AggregationMetrics dataclass
+% - Model validation: check_model_compatibility()
+% - Diversity calculation: calculate_diversity()
+% - Support for PyTorch and TensorFlow frameworks
+
+\subsection{Intra-Cluster Aggregator}
+
+% Describe the within-cluster aggregation implementation.
+%
+% Cover:
+% - File: server/aggregation/intra_cluster_aggregator.py
+% - Class: IntraClusterAggregator
+% - FedAvg implementation: weighted average of state_dicts
+% - Weighting strategies: "samples", "uniform", "loss"
+% - Operating on single cluster at a time
+% - Output: one aggregated model per cluster
+
+\subsection{Inter-Cluster Aggregator}
+
+% Describe the selective layer sharing implementation.
+%
+% Cover:
+% - File: server/aggregation/inter_cluster_aggregator.py
+% - Class: InterClusterAggregator
+% - Layer pattern matching for selective sharing
+% - Shared patterns: ["input_conv.*", "residual_blocks.0.*", ...]
+% - Cluster-specific patterns: ["policy_head.*", "value_head.*"]
+% - FedAvg applied only to matched shared layers
+% - Preserving cluster-specific layers unchanged
+% - Output: N updated cluster models (not 1 global model)

@@ -1,0 +1,24 @@
+\section{Model Serialization}
+
+% This section describes model encoding for network transmission.
+
+\subsection{Serialization Format}
+
+% Describe how models are encoded for WebSocket transmission.
+%
+% Cover:
+% - File: common/model_serialization.py
+% - Class: PyTorchSerializer
+% - Process: state_dict → pickle → gzip → base64
+% - JSON compatibility for WebSocket messages
+% - Compression ratio (typically 5-10× reduction)
+
+\subsection{Parameter Differencing}
+
+% Describe bandwidth optimization technique.
+%
+% Cover:
+% - Clients transmit Δθ = θ_new - θ_old instead of full parameters
+% - Server reconstructs: θ_new = θ_old + Δθ
+% - Significant bandwidth savings in early rounds (small updates)
+% - Implementation in client communication layer

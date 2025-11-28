@@ -1,0 +1,54 @@
+\section{Client Implementation}
+
+% This section describes the client-side (node) implementation.
+
+\subsection{Federated Learning Node}
+
+% Describe the main node class that manages client-side operations.
+%
+% Cover:
+% - File: chess-federated-learning/client/node.py
+% - Class: FederatedLearningNode
+% - State machine: INITIALIZING → READY → TRAINING → UPDATING → IDLE → ERROR/SHUTDOWN
+% - WebSocket client connection management
+% - Async training task execution
+% - Message handlers: _handle_start_training(), _handle_cluster_model()
+% - Model serialization and transmission
+
+\subsection{Trainer Implementations}
+
+% Describe the pluggable trainer system and specific implementations.
+%
+% Cover:
+% - File: client/trainer/trainer_interface.py
+% - Abstract base: TrainerInterface with train() method
+% - TrainingConfig and TrainingResult structures
+% - Factory pattern: TrainerFactory for instantiation
+%
+% DummyTrainer (trainer_dummy.py):
+%   - For testing without actual chess training
+%   - Simulates training with random parameter modifications
+%
+% SupervisedTrainer (trainer_supervised.py):
+%   - Loads Lichess PGN files (supports .pgn, .pgn.zst, .pgn.gz)
+%   - Filters by playstyle using ECO codes
+%   - Filters by rating (1800+ default)
+%   - Creates ChessDataset for PyTorch DataLoader
+%   - Training loop with combined policy + value loss
+%
+% PuzzleTrainer (trainer_puzzle.py):
+%   - Loads Lichess puzzle database
+%   - Filters by puzzle rating and themes
+%   - Creates PuzzleDataset from FEN + move sequences
+%   - Emphasis on tactical pattern learning
+
+\subsection{Client Communication}
+
+% Describe the WebSocket client implementation.
+%
+% Cover:
+% - File: client/communication/client_socket.py
+% - Class: FederatedLearningClient
+% - Async message handling with callbacks
+% - Auto-reconnect on connection loss
+% - Parameter differencing for bandwidth reduction (sends Δθ instead of θ)

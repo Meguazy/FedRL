@@ -1,0 +1,109 @@
+\section{Neural Network Architecture}
+\label{sec:network-architecture}
+
+This section describes the deep neural network architecture used by all agents in our federated learning framework. We employ an AlphaZero-style convolutional residual network that takes board positions as input and produces dual outputs: a policy distribution over legal moves and a scalar value estimation. The architecture is designed to support selective layer aggregation, with distinct functional groups that can be shared across clusters or maintained cluster-specifically (see Figure~\ref{fig:network-architecture}). We detail the input representation, the residual network structure, the dual output heads, and the layer grouping scheme that enables our selective aggregation strategy.
+
+\subsection{Input Representation}
+
+The neural network receives chess positions as a structured tensor representation encoding the board state, game rules, and move history. Rather than using a simple 8×8 grid with piece identifiers, we employ a rich multi-plane encoding that provides the network with comprehensive positional information while maintaining spatial structure.
+
+The input tensor has shape $8 \times 8 \times 119$, representing 119 feature planes over the standard chessboard grid (Figure~\ref{fig:network-architecture}). The first 12 planes encode the current piece positions using one-hot encoding, with separate planes for each piece type and color: white pawns, white knights, white bishops, white rooks, white queens, white king, and the corresponding black pieces. Each plane is a binary matrix where a 1 indicates the presence of that piece type at the corresponding square.
+
+To provide temporal context, we include piece positions from the previous seven board states, using an additional 84 planes (12 planes per historical position × 7 time steps). This history enables the network to recognize repetitions, understand pawn structure changes, and track piece mobility patterns across recent moves. The historical encoding is essential for positions where the optimal move depends on the sequence of preceding moves rather than the current position alone.
+
+The remaining 23 planes encode game state information that cannot be inferred from piece positions alone. One plane indicates whose turn it is to move, with all squares set to 1 for white to move and 0 for black to move. Four planes encode castling rights, with separate planes for white kingside, white queenside, black kingside, and black queenside castling availability. One plane marks en passant target squares when applicable. The final 17 planes encode the halfmove clock using a thermometer encoding, representing the number of moves since the last pawn advance or capture, which is critical for the fifty-move rule.
+
+This 119-plane representation provides the network with complete information about the position while preserving the 2D spatial structure of the board. Convolutional layers can exploit translational patterns across the board, learning features that apply regardless of whether a tactical pattern appears on the kingside or queensside. The representation is compatible with the standard AlphaZero approach while containing all information necessary to determine legal moves and evaluate positions according to chess rules.
+
+\subsection{Residual Network Structure}
+
+Following the input representation, the network applies an initial convolution block to transform the 119 input planes into a higher-dimensional feature space. This input convolution consists of a $3 \times 3$ convolutional layer with 256 output channels, followed by batch normalization and a ReLU activation function. The use of 256 channels provides sufficient representational capacity for the network to learn rich feature representations while remaining computationally tractable for distributed training across multiple clients.
+
+The core of the architecture consists of 19 residual blocks, each implementing the standard residual connection pattern introduced by He et al. Each residual block contains two $3 \times 3$ convolutional layers with 256 channels, with batch normalization and ReLU activation applied after each convolution. The residual connection adds the block's input directly to its output before the final activation, enabling gradient flow through the deep network and facilitating the learning of incremental refinements to the feature representation.
+
+The choice of 19 residual blocks balances network depth with training efficiency. Deeper networks can learn more sophisticated positional patterns but require more computational resources and training data. Our 19-block configuration matches the architecture scale used in moderate-strength AlphaZero implementations and proves sufficient for learning chess at an advanced amateur level. Each block operates on $8 \times 8 \times 256$ feature maps, progressively refining the internal representation through the depth of the network.
+
+The residual blocks are grouped functionally into three categories based on their position in the network: early blocks (blocks 1-6), middle blocks (blocks 7-13), and late blocks (blocks 14-19), as shown in Figure~\ref{fig:network-architecture}. This grouping reflects the hierarchical nature of feature learning in deep networks. Early blocks tend to learn low-level spatial patterns and piece configurations. Middle blocks learn tactical motifs and multi-piece coordination. Late blocks integrate high-level strategic concepts and complex positional evaluations. This functional division becomes important for our selective aggregation strategy, as different layer groups may benefit differently from cross-cluster sharing.
+\subsection{Policy and Value Heads}
+
+After the 19 residual blocks, the feature representation branches into two separate output heads: a policy head that predicts move probabilities and a value head that estimates position evaluation (Figure~\ref{fig:network-architecture}). This dual-head architecture enables the network to learn both which moves to consider and how to evaluate the resulting positions, supporting the Monte Carlo Tree Search algorithm used during move selection.
+
+The policy head transforms the $8 \times 8 \times 256$ feature maps into a probability distribution over possible moves. It consists of a $1 \times 1$ convolution that reduces the channel dimension from 256 to 2, followed by batch normalization and ReLU activation. The resulting $8 \times 8 \times 2$ tensor is flattened to a vector of length 128, which is then passed through a fully connected layer with 4672 output units. This output dimension corresponds to the maximum number of possible chess moves in the standard representation: 64 source squares × 73 possible destination patterns (including underpromotions and all move types). A softmax activation produces the final policy distribution $\pi$, with illegal moves masked to zero probability based on the current position.
+
+The value head estimates the expected outcome from the current position. It applies a $1 \times 1$ convolution to reduce the channel dimension from 256 to 1, followed by batch normalization and ReLU activation. The resulting $8 \times 8 \times 1$ tensor is flattened to a 64-dimensional vector and passed through a fully connected layer with 256 hidden units and ReLU activation. A final fully connected layer with a single output unit, followed by a tanh activation, produces the value estimation $v \in [-1, 1]$, where -1 represents a certain loss, +1 represents a certain win, and 0 represents an even position.
+
+Both heads are trained simultaneously using a combined loss function. The policy head is trained with cross-entropy loss against the improved policy distribution produced by MCTS during self-play, encouraging the network to predict the same moves that tree search identifies as strong. The value head is trained with mean squared error against the actual game outcomes, learning to predict position evaluation directly. The dual-head design shares the representational work of the residual tower while specializing the final layers for their distinct prediction tasks.
+\subsection{Layer Grouping for Selective Aggregation}
+
+To enable selective parameter sharing in our federated learning framework, we partition the neural network into functionally distinct layer groups. Each group represents a coherent set of parameters that can be independently chosen for cluster-specific or cross-cluster aggregation. This grouping reflects both the hierarchical structure of the network and the hypothesis that different layers may benefit differently from exposure to diverse playing styles.
+
+We define five layer groups (Figure~\ref{fig:network-architecture}). The \textbf{input block} comprises the initial $3 \times 3$ convolutional layer, batch normalization, and activation that transforms the 119-plane input representation into 256-channel feature maps. This group contains the parameters that process raw board encodings into a learned feature space. The \textbf{early residual blocks} group includes residual blocks 1 through 6, which learn fundamental spatial patterns and piece relationships. The \textbf{middle residual blocks} group contains blocks 7 through 13, which learn tactical patterns and multi-piece coordination. The \textbf{late residual blocks} group encompasses blocks 14 through 19, which integrate strategic concepts and high-level position evaluation.
+
+The final two groups separate the output heads. The \textbf{policy head} group contains all parameters involved in move prediction, including the policy-specific convolution, fully connected layers, and softmax activation. The \textbf{value head} group contains all parameters for position evaluation, including the value-specific convolution, hidden layer, and final value output. This separation allows independent decisions about whether move selection patterns and position evaluation should be shared across playstyle clusters.
+
+This five-group partition provides sufficient granularity to test hypotheses about which network components benefit from cross-cluster knowledge transfer. Early layers that learn universal chess patterns might benefit from aggregation across all clients regardless of playstyle. Middle and later layers that encode tactical and strategic preferences might require cluster-specific aggregation to preserve distinct playing styles. The policy and value heads might show different sensitivity to cross-cluster aggregation, as move preferences may be more playstyle-dependent than outcome predictions. The grouping enables these hypotheses to be tested empirically through controlled experiments with different selective aggregation configurations.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    scale=1,
+    transform shape,
+    node distance=0.3cm,
+    layer/.style={rectangle, draw=black, fill=blue!10, minimum width=4cm, minimum height=0.7cm, font=\small},
+    blockgroup/.style={rectangle, draw=black, fill=orange!15, minimum width=4cm, minimum height=1.8cm, font=\small, align=center},
+    head/.style={rectangle, draw=black, fill=green!15, minimum width=1.8cm, minimum height=0.8cm, font=\small},
+    annotation/.style={font=\scriptsize, text width=3.5cm, align=left},
+    arrow/.style={->, >=stealth, thick}
+]
+
+% Input layer
+\node[layer, fill=gray!20] (input) at (0, 0) {Input: $8 \times 8 \times 119$};
+
+% Input block
+\node[layer, fill=purple!15, below=of input] (input-conv) {Input Conv Block};
+\node[annotation, right=0.8cm of input-conv] (input-ann) {3×3 conv, 256 channels\\BatchNorm, ReLU};
+
+% Early residual blocks
+\node[blockgroup, below=of input-conv] (early) {Early Residual Blocks\\(Blocks 1-6)};
+\node[annotation, right=0.8cm of early] (early-ann) {\textbf{Group 1}\\Spatial patterns\\Shared};
+
+% Middle residual blocks
+\node[blockgroup, below=of early] (middle) {Middle Residual Blocks\\(Blocks 7-13)};
+\node[annotation, right=0.8cm of middle] (middle-ann) {\textbf{Group 2}\\Tactical motifs\\Cluster-specific};
+
+% Late residual blocks
+\node[blockgroup, below=of middle] (late) {Late Residual Blocks\\(Blocks 14-19)};
+\node[annotation, right=0.8cm of late] (late-ann) {\textbf{Group 3}\\Strategic concepts\\Cluster-specific};
+
+% Branching point
+\node[below=0.5cm of late] (branch) {};
+
+% Policy head
+\node[head, below left=0.5cm and 1cm of branch] (policy) {Policy Head};
+\node[annotation, anchor=east, text width=2.2cm] at ([xshift=-0.2cm]policy.west) {\textbf{Group 4}\\$\pi$: move probs\\Cluster-specific};
+
+% Value head
+\node[head, below right=0.5cm and 1cm of branch] (value) {Value Head};
+\node[annotation, right=0.3cm of value] (value-ann) {\textbf{Group 5}\\$v \in [-1,1]$\\Cluster-specific};
+
+% Arrows
+\draw[arrow] (input) -- (input-conv);
+\draw[arrow] (input-conv) -- (early);
+\draw[arrow] (early) -- (middle);
+\draw[arrow] (middle) -- (late);
+\draw[arrow] (late) -- (branch.center);
+\draw[arrow] (branch.center) -| (policy);
+\draw[arrow] (branch.center) -| (value);
+
+% Legend for aggregation strategy
+\node[draw, dashed, thick, fill=yellow!10, text width=4cm, font=\scriptsize, below=1.2cm of policy, xshift=2cm] (legend) {
+\textbf{Aggregation Strategy:}\\
+\textcolor{blue}{Shared}: Cross-cluster\\
+\textcolor{red}{Cluster-specific}: Within-cluster
+};
+
+\end{tikzpicture}
+\caption{Neural network architecture showing the input layer, residual tower with 19 blocks grouped into early, middle, and late stages, and dual output heads for policy and value prediction. Annotations indicate the five layer groups used for selective aggregation, with example aggregation strategies shown (shared for early layers, cluster-specific for middle and late layers and output heads).}
+\label{fig:network-architecture}
+\end{figure}
+

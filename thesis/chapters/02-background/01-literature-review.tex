@@ -1,0 +1,137 @@
+\section{Literature Review Methodology}
+
+To ensure a comprehensive and systematic review of relevant literature, we conducted a multi-stage search process across academic databases, preprint repositories, and technical documentation. This section details our search strategy, inclusion criteria, and the tools used to identify and synthesize relevant work.
+
+\subsection{Search Strategy}
+
+We performed systematic searches across multiple academic databases and repositories between September 2024 and January 2025. The primary sources included:
+
+\begin{itemize}
+    \item \textbf{Google Scholar:} Broad coverage of computer science literature and citation tracking
+    \item \textbf{arXiv.org:} Recent preprints in machine learning (cs.LG, cs.AI, cs.MA)
+    \item \textbf{ACM Digital Library:} Conference proceedings (NeurIPS, ICML, ICLR, AAAI)
+    \item \textbf{IEEE Xplore:} Systems and distributed computing literature
+    \item \textbf{Semantic Scholar:} AI-powered search and paper recommendations
+\end{itemize}
+
+\subsection{Search Terms and Queries}
+
+Our literature search employed combinations of core terms, connected with Boolean operators. Table~\ref{tab:search-queries} shows the primary and secondary search queries used across different databases.
+
+\begin{table}[h]
+\centering
+\caption{Literature Search Queries}
+\label{tab:search-queries}
+\begin{tabular}{|p{3cm}|p{10cm}|}
+\hline
+\textbf{Category} & \textbf{Search Query} \\
+\hline
+\multicolumn{2}{|l|}{\textbf{Primary Queries}} \\
+\hline
+Federated RL & "federated learning" AND "reinforcement learning" \\
+\hline
+Clustered FL & "clustered federated learning" OR "personalized federated learning" \\
+\hline
+Distributed Chess AI & "AlphaZero" AND ("federated" OR "distributed") \\
+\hline
+Behavioral Diversity & "behavioral diversity" AND "multi-agent" \\
+\hline
+Chess Playstyle & "chess AI" AND ("playing style" OR "playstyle") \\
+\hline
+Selective Aggregation & "selective aggregation" AND "federated learning" \\
+\hline
+Distributed MCTS & "Monte Carlo Tree Search" AND "distributed" \\
+\hline
+\multicolumn{2}{|l|}{\textbf{Secondary Queries}} \\
+\hline
+Heterogeneous FL & "heterogeneous federated learning" \\
+\hline
+Non-IID Data & "non-IID federated learning" \\
+\hline
+Transfer Learning & "transfer learning" AND "deep reinforcement learning" \\
+\hline
+Distributed Self-Play & "self-play" AND ("distributed" OR "federated") \\
+\hline
+Quality Diversity & "quality diversity algorithms" \\
+\hline
+Model Divergence & "model divergence" AND "federated" \\
+\hline
+\end{tabular}
+\end{table}
+
+We also performed backward citation tracking (reviewing references of key papers) and forward citation tracking (identifying papers that cite foundational work) to ensure coverage of relevant literature.
+
+\subsection{Inclusion and Exclusion Criteria}
+
+Papers were included if they met the following criteria:
+
+\textbf{Inclusion criteria:}
+\begin{itemize}
+    \item Published between 2015 and 2025 (with exceptions for seminal earlier work)
+    \item Directly relevant to federated learning, reinforcement learning, or chess AI
+    \item Peer-reviewed or from reputable preprint repositories (arXiv)
+    \item Available in English
+    \item Sufficient technical detail to understand methodology
+\end{itemize}
+
+\textbf{Exclusion criteria:}
+\begin{itemize}
+    \item Purely theoretical work without implementation insights
+    \item Domain-specific applications unrelated to game-playing or multi-agent systems
+    \item Duplicate publications or superseded versions
+    \item Insufficient detail on methods or results
+\end{itemize}
+
+\subsection{AI-Assisted Literature Discovery}
+
+In addition to traditional database searches, we leveraged AI tools to assist with literature discovery and synthesis. Table~\ref{tab:ai-queries} shows the AI-assisted queries used for research assistance.
+
+\begin{table}[h]
+\centering
+\caption{AI-Assisted Literature Discovery Queries}
+\label{tab:ai-queries}
+\begin{tabular}{|p{4cm}|p{9cm}|}
+\hline
+\textbf{Tool} & \textbf{Query / Purpose} \\
+\hline
+\multicolumn{2}{|l|}{\textbf{Claude (Anthropic)}} \\
+\hline
+Federated RL Overview & "Summarize recent advances in federated reinforcement learning, focusing on methods that handle heterogeneous agents" \\
+\hline
+Behavioral Diversity & "What are the key challenges in maintaining behavioral diversity in multi-agent systems?" \\
+\hline
+Selective Aggregation & "Compare different approaches to selective aggregation in federated learning" \\
+\hline
+Distributed AlphaZero & "Find papers that combine AlphaZero-style training with distributed or federated approaches" \\
+\hline
+\multicolumn{2}{|l|}{\textbf{Semantic Scholar}} \\
+\hline
+Recommendations & AI-powered paper recommendations based on citation graphs and content similarity \\
+\hline
+\multicolumn{2}{|l|}{\textbf{Connected Papers}} \\
+\hline
+Citation Networks & Visualizing citation networks and identifying research clusters \\
+\hline
+\end{tabular}
+\end{table}
+
+These AI-assisted searches were particularly useful for:
+\begin{enumerate}
+    \item Quickly understanding the landscape of a new research area
+    \item Identifying terminology variations (e.g., "behavioral diversity" vs "policy diversity" vs "strategic heterogeneity")
+    \item Discovering connections between seemingly disparate research communities (e.g., federated learning and chess AI)
+    \item Generating additional search terms based on paper abstracts
+\end{enumerate}
+
+\subsection{Documentation and Synthesis}
+
+We maintained a structured database of reviewed papers using reference management software, tracking:
+\begin{itemize}
+    \item Paper metadata (authors, venue, year)
+    \item Key contributions and findings
+    \item Methodological approaches
+    \item Relevance to our research questions
+    \item Gaps or limitations identified
+\end{itemize}
+
+This systematic approach ensured comprehensive coverage of relevant literature while maintaining focus on our core research questions about clustered federated learning for reinforcement learning with behavioral diversity preservation.

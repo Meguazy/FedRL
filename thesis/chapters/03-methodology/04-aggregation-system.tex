@@ -1,0 +1,119 @@
+\section{Three-Tier Aggregation System}
+\label{sec:aggregation-system}
+
+Our federated learning framework employs a three-tier hierarchical aggregation mechanism that progressively combines knowledge from individual clients to cluster-specific models to cross-cluster shared representations. This hierarchical approach balances the benefits of distributed learning with the need to preserve playstyle-specific characteristics within each cluster. The three tiers operate at different frequencies and scopes: local training occurs continuously at each client, intra-cluster aggregation periodically combines updates within each playstyle cluster, and inter-cluster selective aggregation occasionally shares specific layer groups across clusters. Figure~\ref{fig:aggregation-flow} illustrates the complete aggregation pipeline and the flow of information through the three tiers.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    scale=1,
+    transform shape,
+    node distance=0.8cm,
+    tier/.style={rectangle, draw=black, thick, fill=blue!10, minimum width=9cm, minimum height=2cm, font=\small, align=center},
+    process/.style={rectangle, draw=black, fill=orange!20, minimum width=3cm, minimum height=0.8cm, font=\footnotesize},
+    client/.style={rectangle, draw=black, fill=green!15, minimum width=1.5cm, minimum height=0.6cm, font=\scriptsize},
+    arrow/.style={->, >=stealth, thick},
+    label/.style={font=\small\bfseries}
+]
+
+% Tier 3: Inter-cluster (top)
+\node[tier, fill=purple!10] (tier3) at (0, 0) {
+    \textbf{Tier 3: Inter-Cluster Selective Aggregation}\\[0.2cm]
+    Selective layer sharing across clusters\\
+    Frequency: Every $M$ intra-cluster rounds
+};
+
+% Tier 2: Intra-cluster (middle)
+\node[tier, fill=blue!10, below=1.2cm of tier3] (tier2) {
+    \textbf{Tier 2: Intra-Cluster Aggregation}\\[0.2cm]
+    FedAvg within each cluster\\
+    Frequency: Every $K_{\text{intra}}$ games
+};
+
+% Tier 1: Local training (bottom)
+\node[tier, fill=green!10, below=1.2cm of tier2] (tier1) {
+    \textbf{Tier 1: Local Training}\\[0.2cm]
+    Supervised bootstrapping + Self-play with MCTS\\
+    Frequency: Continuous
+};
+
+% Arrows between tiers - Tier 1 to Tier 2
+\draw[arrow, thick, ->] ([xshift=-2cm]tier1.north) -- node[left, font=\scriptsize, align=center] {Upload\\parameters} ([xshift=-2cm]tier2.south);
+\draw[arrow, thick, <-] ([xshift=2cm]tier1.north) -- node[right, font=\scriptsize, align=center] {Download\\aggregated} ([xshift=2cm]tier2.south);
+
+% Arrows between tiers - Tier 2 to Tier 3
+\draw[arrow, thick, ->] ([xshift=-2cm]tier2.north) -- node[left, font=\scriptsize, align=center] {Upload\\cluster models} ([xshift=-2cm]tier3.south);
+\draw[arrow, thick, <-] ([xshift=2cm]tier2.north) -- node[right, font=\scriptsize, align=center] {Download\\shared layers} ([xshift=2cm]tier3.south);
+
+% Client boxes below Tier 1 (centered)
+\node[below=0.8cm of tier1] (client-anchor) {};
+\node[client, fill=red!20, left=2.5cm of client-anchor] (t1) {\tiny T1};
+\node[client, fill=red!20, right=0.3cm of t1] (t2) {\tiny T2};
+\node[font=\scriptsize, right=0.3cm of t2] (tdots) {};
+\node[client, fill=blue!20, right=0.5cm of tdots] (p1) {\tiny P1};
+\node[client, fill=blue!20, right=0.3cm of p1] (p2) {\tiny P2};
+\node[font=\scriptsize, right=0.3cm of p2] {};
+
+% Cluster labels
+\node[font=\scriptsize, above=0.1cm of t1, xshift=0.75cm] {Tactical};
+\node[font=\scriptsize, above=0.1cm of p1, xshift=0.75cm] {Positional};
+
+\end{tikzpicture}
+\caption{Three-tier hierarchical aggregation system showing the flow of information from local client training through intra-cluster aggregation to inter-cluster selective sharing. Arrows indicate bidirectional communication between tiers, with clients uploading parameters and downloading aggregated models. The time scales reflect the hierarchical nature of the system, with local training running continuously and higher tiers executing progressively less frequently.}
+\label{fig:aggregation-flow}
+\end{figure}
+
+\subsection{Local Training Phase}
+
+At the base tier, each client independently trains its neural network through a two-phase approach: supervised bootstrapping followed by reinforcement learning through self-play. This local training phase generates the diverse experiences and parameter updates that will ultimately be aggregated across the federation.
+
+Training begins with a supervised bootstrapping phase where clients learn from historical games and tactical puzzles filtered according to their cluster's playstyle. Tactical cluster clients train on games featuring aggressive openings and tactical puzzles emphasizing combinations, while positional cluster clients train on strategic games and positional puzzles. This phase provides a foundation of chess knowledge and playstyle-specific patterns before transitioning to self-play. The bootstrapping phase and data filtering mechanisms are detailed in Sections~\ref{sec:playstyle-filtering} and~\ref{sec:training-procedures}.
+
+Once bootstrapped, clients transition to self-play reinforcement learning. Each client maintains a complete copy of the neural network and uses it to play games against itself. For each move, the client performs Monte Carlo Tree Search guided by the current network's policy and value predictions. The search explores promising move sequences by repeatedly selecting moves, expanding the search tree, evaluating positions with the neural network, and backpropagating values through visited nodes. After completing the search, the client selects a move based on the visit counts of root actions, which represents an improved policy over the raw network output.
+
+Training data is generated from these self-play games. Each position encountered during a game is stored along with the improved policy distribution derived from MCTS visit counts and the final game outcome. After accumulating a batch of training positions, the client trains its network by minimizing a combined loss function. The policy loss uses cross-entropy between the network's policy output and the MCTS-improved policy. The value loss uses mean squared error between the network's value prediction and the actual game outcome. The combined loss is $L = L_{\text{policy}} + \lambda L_{\text{value}}$, where $\lambda$ balances the two objectives.
+
+The local training phase continues for a fixed number of games or training steps before the client's updated parameters are transmitted to the aggregation server for intra-cluster aggregation. The complete training procedure, including MCTS parameters and experience replay mechanisms, is described in Section~\ref{sec:training-procedures}.
+\subsection{Intra-Cluster Aggregation}
+
+The second tier of aggregation combines parameter updates from clients within each playstyle cluster to create a cluster-specific global model. This intra-cluster aggregation preserves the specialized characteristics of each playstyle while leveraging the collective learning of multiple clients pursuing similar strategic goals.
+
+When clients complete a local training phase, they transmit their updated model parameters to the central aggregation server. The server maintains separate aggregation contexts for each cluster, ensuring that tactical and positional clients do not directly share parameters at this stage. For each cluster, the server applies federated averaging to compute a weighted mean of client parameters. Let $\theta_i^{(t)}$ denote the parameters of client $i$ in cluster $c$ at aggregation round $t$, and let $n_i$ represent the number of training examples processed by client $i$ since the last aggregation. The cluster-specific aggregated parameters are computed as:
+
+\begin{equation}
+\theta_c^{(t+1)} = \frac{\sum_{i \in c} n_i \theta_i^{(t)}}{\sum_{i \in c} n_i}
+\end{equation}
+
+This weighted averaging gives greater influence to clients that have processed more training data, under the assumption that more training leads to better parameter estimates. The aggregation is applied uniformly across all layer groups at this stage, creating a complete cluster-specific model that represents the collective knowledge of all clients in that cluster.
+
+After aggregation, the server distributes the updated cluster-specific model $\theta_c^{(t+1)}$ back to all clients in cluster $c$. Each client replaces its local parameters with the aggregated parameters and resumes local training from this synchronized state. This synchronization allows clients to benefit from the diverse experiences of other clients in their cluster while maintaining their specialized playstyle focus. The frequency of intra-cluster aggregation is determined by the aggregation scheduling policy described in Section~\ref{sec:aggregation-scheduling}.
+\subsection{Inter-Cluster Selective Aggregation}
+
+The third and highest tier of aggregation selectively shares knowledge across playstyle clusters. Unlike intra-cluster aggregation which combines all parameters, inter-cluster aggregation operates only on specific layer groups identified as benefiting from cross-cluster knowledge transfer. This selective approach enables the system to learn universal chess patterns while preserving cluster-specific strategic preferences.
+
+Inter-cluster aggregation is controlled by a layer group selection policy that specifies which of the five layer groups (input block, early residual blocks, middle residual blocks, late residual blocks, policy head, value head) should be aggregated across clusters. Based on the hypothesis that early layers learn universal patterns while later layers encode playstyle-specific strategies, a typical configuration might designate the input block and early residual blocks for cross-cluster sharing while keeping middle blocks, late blocks, and output heads cluster-specific.
+
+For each layer group designated for cross-cluster aggregation, the server computes a global average across all clusters. Let $\theta_{c,g}^{(t)}$ denote the parameters of layer group $g$ in cluster $c$ at inter-cluster aggregation round $t$. The cross-cluster aggregated parameters for group $g$ are:
+
+\begin{equation}
+\theta_g^{(t+1)} = \frac{\sum_{c} n_c \theta_{c,g}^{(t)}}{\sum_{c} n_c}
+\end{equation}
+
+where $n_c$ represents the total number of training examples processed by all clients in cluster $c$ since the last inter-cluster aggregation. This ensures that clusters contributing more training data have proportionally greater influence on the shared representation.
+
+After computing the cross-cluster averaged parameters for selected layer groups, the server distributes these shared parameters back to all clusters. Each cluster's model is updated by replacing the parameters of shared layer groups with the cross-cluster averaged values, while keeping cluster-specific layer groups unchanged. This selective replacement maintains the architectural integrity of the network while enabling knowledge transfer for designated components.
+
+Inter-cluster aggregation occurs less frequently than intra-cluster aggregation, as it represents a higher-level consolidation of knowledge. The reduced frequency also mitigates the risk of disrupting cluster-specific learning by limiting how often cross-cluster information is injected into specialized models. The specific timing and frequency are determined by the aggregation scheduling policy detailed in the next subsection.
+\subsection{Aggregation Scheduling}
+\label{sec:aggregation-scheduling}
+
+The three aggregation tiers operate on different time scales to balance learning efficiency with communication overhead and model stability. The scheduling policy determines when each tier executes and coordinates the flow of information through the hierarchical system.
+
+Local training at Tier 1 runs continuously, with each client playing self-play games and updating its neural network parameters through gradient descent. Clients operate asynchronously without waiting for other clients or the server. This continuous local training ensures that computation resources are fully utilized and that learning progresses without interruption.
+
+Intra-cluster aggregation at Tier 2 occurs periodically when clients have accumulated sufficient local training progress. In our implementation, clients perform intra-cluster aggregation after every $K_{\text{intra}}$ self-play games, where $K_{\text{intra}}$ is a hyperparameter controlling the aggregation frequency. After completing $K_{\text{intra}}$ games, a client uploads its current parameters to the server and waits for the server to perform aggregation and return the updated cluster model. The client then resumes training with the aggregated parameters. This periodic synchronization prevents clients from diverging too far from the cluster's collective knowledge while allowing substantial local progress between synchronizations.
+
+Inter-cluster aggregation at Tier 3 occurs less frequently, after every $M$ intra-cluster aggregation rounds, where $M > 1$. This reduced frequency reflects the fact that cross-cluster knowledge transfer involves higher-level patterns that evolve more slowly than cluster-specific learning. The ratio $M$ controls the balance between cluster specialization and cross-cluster knowledge sharing. Larger values of $M$ allow clusters to develop more distinct characteristics before sharing knowledge, while smaller values promote more frequent integration of universal patterns.
+
+The scheduling policy creates a natural hierarchy of time scales: local training operates on the scale of individual games (minutes), intra-cluster aggregation operates on the scale of training batches (tens of games), and inter-cluster aggregation operates on the scale of multiple aggregation rounds (hundreds of games). This hierarchical timing allows the system to efficiently combine rapid local learning with periodic consolidation at increasing levels of abstraction.
+

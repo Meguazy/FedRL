@@ -1,0 +1,51 @@
+\section{Storage System}
+
+% This section describes the persistence and experiment tracking implementation.
+
+\subsection{Experiment Tracker}
+
+% Describe the main experiment tracking coordinator.
+%
+% Cover:
+% - File: server/storage/experiment_tracker.py
+% - Class: FileExperimentTracker
+% - Coordinating MetricsStore and ModelRepository
+% - Experiment metadata management
+% - Configuration snapshot storage
+
+\subsection{Metrics Store}
+
+% Describe metrics logging implementation.
+%
+% Cover:
+% - File: server/storage/file_metrics_store.py
+% - Class: FileMetricsStore (implements MetricsStore interface)
+% - Per-round metric logging to JSON files
+% - Metrics categories: training, evaluation, divergence, weight_statistics, move_types
+% - File structure: experiments/{exp_id}/metrics/{round_num}_{metric_type}.json
+
+\subsection{Model Repository}
+
+% Describe model checkpoint management.
+%
+% Cover:
+% - File: server/storage/local_model_repository.py
+% - Class: LocalModelRepository (implements ModelRepository interface)
+% - Saving cluster models: torch.save(state_dict, path)
+% - Checkpoint interval configuration
+% - File structure: experiments/{exp_id}/models/round_{num}_cluster_{id}.pt
+% - Loading checkpoints for resume training
+
+\subsection{Plugin System}
+
+% Describe the metric plugin architecture.
+%
+% Cover:
+% - File: server/storage/plugins/metric_registry.py
+% - Class: MetricRegistry
+% - Plugin registration and execution
+% - Available plugins:
+%   * PlaystyleMetricPlugin (playstyle_metric_plugin.py)
+%   * DiversityMetrics (diversity_metrics.py)
+%   * SystemMetrics (system_metrics.py)
+% - Extensibility for custom metrics

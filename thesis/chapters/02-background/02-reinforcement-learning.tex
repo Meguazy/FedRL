@@ -1,0 +1,102 @@
+\section{Reinforcement Learning}
+
+Reinforcement learning (RL) is a machine learning paradigm where an agent learns to make decisions by interacting with an environment to maximize cumulative rewards. Unlike supervised learning, where correct answers are provided, RL agents must discover effective strategies through trial and error, receiving only sparse feedback about the quality of their actions.
+
+\subsection{Markov Decision Processes}
+
+Reinforcement learning problems are typically formalized as Markov Decision Processes (MDPs). An MDP is defined by a tuple $(S, A, P, R, \gamma)$ where:
+
+\begin{itemize}
+    \item $S$ is the set of possible states the environment can be in
+    \item $A$ is the set of actions the agent can take
+    \item $P(s'|s,a)$ is the transition probability of reaching state $s'$ after taking action $a$ in state $s$
+    \item $R(s,a,s')$ is the reward received when transitioning from state $s$ to $s'$ via action $a$
+    \item $\gamma \in [0,1]$ is the discount factor that determines how much future rewards are valued relative to immediate rewards
+\end{itemize}
+
+The agent's behavior is determined by a policy $\pi(a|s)$ that specifies the probability of taking action $a$ in state $s$. The goal of reinforcement learning is to find an optimal policy $\pi^*$ that maximizes the expected cumulative discounted reward, known as the return:
+
+\begin{equation}
+    G_t = R_{t+1} + \gamma R_{t+2} + \gamma^2 R_{t+3} + \ldots = \sum_{k=0}^{\infty} \gamma^k R_{t+k+1}
+\end{equation}
+
+The value function $V^\pi(s)$ represents the expected return when starting in state $s$ and following policy $\pi$:
+
+\begin{equation}
+    V^\pi(s) = \mathbb{E}_\pi[G_t | S_t = s]
+\end{equation}
+
+Similarly, the action-value function $Q^\pi(s,a)$ represents the expected return when taking action $a$ in state $s$ and then following policy $\pi$:
+
+\begin{equation}
+    Q^\pi(s,a) = \mathbb{E}_\pi[G_t | S_t = s, A_t = a]
+\end{equation}
+
+\subsection{Deep Reinforcement Learning}
+
+Traditional RL algorithms use tabular representations to store value functions, which becomes impractical for large state spaces. Deep reinforcement learning addresses this limitation by using neural networks as function approximators to estimate value functions and policies. This enables RL to scale to complex domains like video games, robotics, and board games.
+
+Deep Q-Networks (DQN) pioneered this approach by using convolutional neural networks to approximate the action-value function $Q(s,a)$ for Atari games. The key innovations included experience replay, where transitions are stored in a buffer and sampled randomly for training, and a separate target network that stabilizes learning.
+
+Policy gradient methods provide an alternative approach by directly parameterizing the policy $\pi_\theta(a|s)$ with neural network parameters $\theta$. The policy gradient theorem allows us to compute gradients of the expected return with respect to these parameters:
+
+\begin{equation}
+    \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}[\nabla_\theta \log \pi_\theta(a|s) Q^{\pi_\theta}(s,a)]
+\end{equation}
+
+Actor-critic methods combine these approaches by maintaining both a policy network (actor) and a value network (critic). The critic evaluates the quality of the actor's actions, providing lower-variance gradient estimates.
+
+\subsection{AlphaZero and Monte Carlo Tree Search}
+
+AlphaZero represents a breakthrough in deep reinforcement learning for board games, achieving superhuman performance in chess, Go, and shogi through pure self-play learning without human knowledge. The algorithm combines three key components: a deep neural network for position evaluation, Monte Carlo Tree Search for move planning, and reinforcement learning for continuous improvement.
+
+\subsubsection{Neural Network Architecture}
+
+The AlphaZero neural network takes the current board position as input and produces two outputs:
+\begin{itemize}
+    \item A \textbf{policy head} $p = f_\theta^p(s)$ that outputs a probability distribution over legal moves
+    \item A \textbf{value head} $v = f_\theta^v(s)$ that outputs a scalar value estimating the probability of winning from the current position
+\end{itemize}
+
+The network uses a deep residual architecture with convolutional layers to process spatial patterns on the board. This dual-headed design allows the network to both suggest promising moves and evaluate position quality, which are used together during search.
+
+\subsubsection{Monte Carlo Tree Search}
+
+Monte Carlo Tree Search (MCTS) is a best-first search algorithm that builds a search tree incrementally through random sampling. Unlike traditional minimax search used in classical chess engines, MCTS focuses computational effort on the most promising variations.
+
+Each node in the search tree represents a board position and stores statistics about visits and values. The search proceeds through four phases:
+
+\begin{enumerate}
+    \item \textbf{Selection:} Starting from the root, choose child nodes that balance exploration (trying less-visited moves) and exploitation (following moves with high estimated value) using the PUCT formula:
+    \begin{equation}
+        UCT(s,a) = Q(s,a) + c_{puct} P(s,a) \frac{\sqrt{\sum_b N(s,b)}}{1 + N(s,a)}
+    \end{equation}
+    where $Q(s,a)$ is the mean action value, $P(s,a)$ is the prior probability from the neural network, and $N(s,a)$ is the visit count.
+
+    \item \textbf{Expansion:} When a leaf node is reached, evaluate the position using the neural network to get policy priors and value estimate.
+
+    \item \textbf{Simulation:} In AlphaZero, this phase is replaced by direct neural network evaluation rather than random rollouts.
+
+    \item \textbf{Backpropagation:} Update statistics along the path from leaf to root, incrementing visit counts and updating action values.
+\end{enumerate}
+
+After running many MCTS simulations (typically 800 for AlphaZero), the final move is selected based on visit counts, which represent a refined estimate of move quality informed by deep search.
+
+\subsubsection{Self-Play Training}
+
+AlphaZero improves through iterative self-play. The current neural network generates training games by playing against itself using MCTS-guided move selection. Each position in these games provides training data:
+
+\begin{itemize}
+    \item The \textbf{policy target} is the distribution of MCTS visit counts $\pi$, which represents an improved policy compared to the raw network output
+    \item The \textbf{value target} is the final game outcome $z \in \{-1, 0, 1\}$ (loss, draw, win)
+\end{itemize}
+
+The network is trained to minimize a combined loss function:
+
+\begin{equation}
+    L = (z - v)^2 - \pi^T \log p + c||\theta||^2
+\end{equation}
+
+This loss function encourages the network to predict game outcomes accurately (value loss) and match the improved MCTS policy (policy loss), with L2 regularization to prevent overfitting.
+
+The key insight of AlphaZero is that MCTS can be viewed as a policy improvement operator. By repeatedly training the network on self-play games where moves are selected by MCTS, the network gradually improves, which in turn makes future MCTS searches more effective. This creates a positive feedback loop that leads to continuous improvement without requiring any domain knowledge beyond the game rules.

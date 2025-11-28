@@ -1,0 +1,174 @@
+\section{Training Procedures}
+\label{sec:training-procedures}
+
+The training pipeline combines supervised learning from human games with reinforcement learning through self-play, following the AlphaZero paradigm adapted for federated learning with playstyle preservation. Training proceeds in two phases: an initial supervised bootstrapping phase that provides the neural network with basic chess knowledge, followed by a self-play phase that refines playing strength through reinforcement learning with Monte Carlo Tree Search.
+
+\begin{figure}[h]
+\centering
+\begin{tikzpicture}[
+    scale=0.8,
+    transform shape,
+    phase/.style={rectangle, draw=black, fill=blue!20, minimum width=4.5cm, minimum height=1.2cm, font=\small, align=center},
+    process/.style={rectangle, draw=black, fill=green!15, minimum width=4cm, minimum height=1cm, font=\footnotesize, align=center},
+    data/.style={rectangle, draw=black, fill=yellow!15, minimum width=3.5cm, minimum height=0.8cm, font=\footnotesize, align=center},
+    arrow/.style={->, >=stealth, thick}
+]
+
+% Phase 1: Supervised Bootstrappingg
+\node[phase] (supervised) at (0, 0) {\textbf{Phase 1: Supervised Bootstrapping}};
+\node[data, below=0.5cm of supervised] (games) {Filtered Lichess Games\\+ Puzzle Positions};
+\node[process, below=0.5cm of games] (extract) {Extract Training Samples\\(board, move, outcome)};
+\node[process, below=0.5cm of extract] (train-sup) {Train Network\\Policy + Value Loss};
+
+% Transition
+\node[data, below=0.8cm of train-sup] (transition) {Transition Criterion\\(Training Rounds / Loss Threshold)};
+
+% Phase 2: Self-Play
+\node[phase, below=0.8cm of transition] (selfplay) {\textbf{Phase 2: Self-Play Training}};
+\node[process, below=0.5cm of selfplay] (mcts-play) {MCTS Self-Play\\Generate Games};
+\node[process, below=0.5cm of mcts-play] (replay) {Experience Replay Buffer\\Store (s, $\pi$, z)};
+\node[process, below=0.5cm of replay] (sample) {Sample Batches};
+\node[process, below=0.5cm of sample] (train-self) {Train Network\\Against MCTS Policy};
+
+% Feedback loop
+\node[process, right=4cm of mcts-play] (improved) {Improved Network\\$\theta_{t+1}$};
+
+% Arrows - Supervised phase
+\draw[arrow] (supervised) -- (games);
+\draw[arrow] (games) -- (extract);
+\draw[arrow] (extract) -- (train-sup);
+\draw[arrow] (train-sup) -- (transition);
+
+% Arrows - Transition
+\draw[arrow] (transition) -- (selfplay);
+
+% Arrows - Self-play phase
+\draw[arrow] (selfplay) -- (mcts-play);
+\draw[arrow] (mcts-play) -- (replay);
+\draw[arrow] (replay) -- (sample);
+\draw[arrow] (sample) -- (train-self);
+\draw[arrow] (train-self) -- (improved);
+
+% Feedback arrow
+\draw[arrow, blue!70, dashed] (improved.west) -- ([xshift=4cm]mcts-play.east) -- (mcts-play.east);
+\node[font=\tiny, align=center] at ([xshift=2cm, yshift=0.3cm]mcts-play.east) {Next\\iteration};
+
+% Federated aggregation annotationss
+\node[font=\tiny, text=red!70, right=0.1cm of train-sup] {Federated Aggregation};
+\node[font=\tiny, text=red!70, right=0.1cm of train-self] {Federated Aggregation};
+
+\end{tikzpicture}
+\caption{Training pipeline flowchart showing the transition from supervised bootstrapping to self-play reinforcement learning. The supervised phase trains on filtered human games and puzzles, while the self-play phase uses MCTS to generate training data. Both phases incorporate federated aggregation at tier boundaries.}
+\label{fig:training-pipeline}
+\end{figure}
+
+\subsection{Supervised Bootstrapping Phase}
+
+The supervised bootstrapping phase initializes the neural network with chess knowledge extracted from high-quality human games and tactical puzzles. This phase provides the network with a foundation in legal move generation, positional evaluation, and basic strategic principles before transitioning to self-play reinforcement learning.
+
+Training data consists of positions extracted from the filtered Lichess game database and puzzle database as described in Section~\ref{sec:playstyle-filtering}. Each training sample comprises a board position encoded as a $119 \times 8 \times 8$ tensor (Section~\ref{sec:network-architecture}), the move played in that position encoded as an action index from 0 to 4671, and the game outcome $z \in \{-1, 0, +1\}$ from the perspective of the player to move. For game positions, the outcome reflects the final result of the game. For puzzle positions, the outcome is set to $+1$ since puzzles represent winning positions by construction.
+
+The supervised training objective minimizes a combined loss function over the policy and value heads. Let $\mathbf{p}$ denote the policy network's output probability distribution over moves, and let $v$ denote the value network's scalar output. For a training sample with board state $s$, target move $a^*$, and target outcome $z$, the loss function is:
+
+\begin{equation}
+L_{\text{sup}}(s, a^*, z) = L_{\text{policy}}(\mathbf{p}(s), a^*) + L_{\text{value}}(v(s), z)
+\end{equation}
+
+where the policy loss uses cross-entropy to match the played move:
+
+\begin{equation}
+L_{\text{policy}}(\mathbf{p}, a^*) = -\log p_{a^*}
+\end{equation}
+
+and the value loss uses mean squared error to match the game outcome:
+
+\begin{equation}
+L_{\text{value}}(v, z) = (v - z)^2
+\end{equation}
+
+During supervised training, each client processes a disjoint segment of the filtered dataset determined by the offset-based sampling strategy (Section~\ref{sec:playstyle-filtering}). For training round $r$ with $N$ clients per cluster and $G$ games per round, client $i$ accesses samples at offset $(r \cdot N \cdot G) + (i \cdot G)$. This ensures that clients within a cluster train on different data each round, maximizing the diversity of experiences contributing to federated aggregation while maintaining playstyle consistency.
+
+The network is optimized using the Adam optimizer with an initial learning rate of 0.003. A learning rate scheduler monitors the training loss and reduces the learning rate by a factor of 0.5 if the loss plateaus for 15 consecutive rounds, with a minimum learning rate of $10^{-6}$. This adaptive scheduling allows the network to make rapid initial progress while fine-tuning as training stabilizes.
+
+After each local training round, clients send their updated model parameters to the cluster server for intra-cluster aggregation via Federated Averaging (Section~\ref{sec:aggregation-system}). Every tenth round, inter-cluster selective aggregation shares knowledge between tactical and positional clusters while preserving playstyle-specific representations in cluster-specific layers.
+
+The supervised bootstrapping phase continues for a predefined number of training rounds or until the training loss falls below a threshold indicating sufficient chess knowledge acquisition. Typical configurations run 100-200 supervised rounds before transitioning to self-play, though this can be adjusted based on loss convergence and preliminary playing strength evaluation.
+
+\subsection{Self-Play Training Phase}
+
+Following supervised bootstrapping, the training pipeline transitions to self-play reinforcement learning, where the neural network improves by playing games against itself with Monte Carlo Tree Search acting as a policy improvement operator. This phase follows the AlphaZero paradigm, generating training data through search-guided play rather than relying on external game databases.
+
+In each self-play iteration, the current neural network $f_\theta$ with parameters $\theta$ plays games against itself using MCTS to select moves. For each position $s$ encountered during self-play, MCTS runs a fixed number of simulations (typically 800-1600) to construct a search tree exploring possible continuations. The MCTS visit counts at the root node define an improved policy $\boldsymbol{\pi}$ that is typically stronger than the raw neural network policy $\mathbf{p}(s)$ due to explicit lookahead search.
+
+Move selection during self-play uses a temperature parameter $\tau$ to control exploration. After running MCTS at position $s$, the visit counts $N(s, a)$ for each legal action $a$ are converted to a probability distribution:
+
+\begin{equation}
+\pi(a|s) = \frac{N(s, a)^{1/\tau}}{\sum_{b} N(s, b)^{1/\tau}}
+\end{equation}
+
+where $\tau$ controls the degree of exploration. A temperature of $\tau = 1$ produces proportional sampling from visit counts, encouraging exploration of diverse continuations. A temperature of $\tau \to 0$ (in practice, $\tau = 0.01$) makes move selection deterministic, always choosing the most-visited action. Following AlphaZero, we set $\tau = 1$ for the first 30 moves of each game to explore opening diversity, then reduce to $\tau = 0.01$ for the remainder to exploit the network's strongest continuations.
+
+Each self-play game generates a sequence of training samples $(s_t, \boldsymbol{\pi}_t, z)$ where $s_t$ is the board position at move $t$, $\boldsymbol{\pi}_t$ is the MCTS-improved policy at that position, and $z \in \{-1, 0, +1\}$ is the final game outcome. All positions from a single game share the same outcome value, reflecting the Monte Carlo principle that every position along a trajectory leads to the same terminal result.
+
+The self-play training objective minimizes the loss between the neural network's predictions and the MCTS-derived targets. For a training sample $(s, \boldsymbol{\pi}, z)$ drawn from the replay buffer, the loss function is:
+
+\begin{equation}
+L_{\text{self}}(s, \boldsymbol{\pi}, z) = (z - v(s))^2 - \boldsymbol{\pi}^T \log \mathbf{p}(s) + \lambda \|\theta\|^2
+\end{equation}
+
+where the first term is the mean squared error between the value prediction $v(s)$ and the game outcome $z$, the second term is the cross-entropy loss between the policy prediction $\mathbf{p}(s)$ and the MCTS policy $\boldsymbol{\pi}$, and the third term is L2 regularization with coefficient $\lambda$ (typically $10^{-4}$) to prevent overfitting.
+
+This loss function trains the neural network to imitate the MCTS search results: the policy head learns to match MCTS visit distributions (which incorporate lookahead), and the value head learns to predict game outcomes observed through self-play. Over many iterations, the network internalizes patterns discovered by search, becoming stronger without explicit search and enabling MCTS to search more effectively in subsequent iterations.
+
+In the federated setting, self-play games are generated independently by each client using the current cluster-aggregated model. Clients within the same cluster produce diverse self-play trajectories due to stochastic move sampling (when $\tau = 1$) and different MCTS random seeds. After generating a batch of self-play games and training on the resulting positions, clients send updated parameters to the cluster server for aggregation, maintaining the same federated learning workflow as the supervised phase.
+
+The self-play phase continues indefinitely, with the network progressively strengthening through the iterative cycle of game generation, training, and aggregation. Periodic evaluation against fixed-strength opponents (Section~\ref{sec:evaluation}) monitors playing strength to assess training progress and compare selective aggregation configurations.
+
+\subsection{Monte Carlo Tree Search Integration}
+
+Monte Carlo Tree Search serves as the policy improvement operator during self-play, using explicit lookahead to find stronger moves than the neural network policy alone. MCTS constructs a search tree incrementally through simulated trajectories, each consisting of four phases: selection, expansion, simulation, and backpropagation.
+
+The selection phase traverses the tree from the root position using a variant of the Upper Confidence Bound for Trees (UCT) algorithm. At each internal node representing position $s$, the algorithm selects the child action $a$ that maximizes the PUCT (Polynomial Upper Confidence Trees) score:
+
+\begin{equation}
+\text{PUCT}(s, a) = Q(s, a) + c_{\text{puct}} \cdot P(s, a) \cdot \frac{\sqrt{N(s)}}{1 + N(s, a)}
+\end{equation}
+
+where $Q(s, a)$ is the mean action-value (average outcome from simulations that selected action $a$ in position $s$), $P(s, a)$ is the prior probability from the neural network policy, $N(s)$ is the total visit count of position $s$, $N(s, a)$ is the visit count of action $a$, and $c_{\text{puct}}$ is an exploration constant (typically 1.0 to 4.0) that balances exploitation of high-value moves against exploration of uncertain moves with high neural network prior.
+
+This formula combines the exploitation term $Q(s, a)$, which favors actions with high observed value, with the exploration term $c_{\text{puct}} \cdot P(s, a) \cdot \sqrt{N(s)} / (1 + N(s, a))$, which favors actions with high neural network prior $P(s, a)$ that have been visited infrequently relative to the parent node. The exploration bonus decreases as $N(s, a)$ grows, gradually shifting from prior-guided exploration to value-guided exploitation.
+
+Selection continues until reaching a leaf node: either a position not yet expanded in the search tree or a terminal position (checkmate, stalemate, or draw by repetition/insufficient material). For terminal positions, the exact game outcome is returned immediately. For non-terminal leaf positions, the expansion phase adds the position to the search tree and evaluates it using the neural network. The network's policy output $\mathbf{p}(s)$ initializes the prior probabilities $P(s, a)$ for all legal actions from $s$, and the value output $v(s)$ provides an estimated outcome without further search.
+
+AlphaZero eliminates the traditional rollout simulation phase, instead using the neural network's value prediction $v(s)$ as the leaf evaluation. This constitutes the simulation phase: rather than playing out the position to a terminal state, the network's learned value function estimates the expected outcome from $s$ under optimal play.
+
+The backpropagation phase propagates the evaluation $v(s)$ up the tree along the trajectory that reached the leaf. For each position-action pair $(s, a)$ along the path, the visit count $N(s, a)$ is incremented and the mean action-value $Q(s, a)$ is updated:
+
+\begin{equation}
+Q(s, a) \leftarrow \frac{N(s, a) \cdot Q(s, a) + v}{N(s, a) + 1}
+\end{equation}
+
+where $v$ is the evaluation (negated appropriately for alternating players). This running average incorporates the new evaluation into the action-value estimate, influencing future selection decisions.
+
+After completing the specified number of MCTS simulations (e.g., 800 simulations per move), the visit counts $N(s, a)$ at the root position define the improved policy $\boldsymbol{\pi}$ used for training and move selection. The repeated selection-expansion-backpropagation cycles concentrate search effort on promising continuations, with the neural network priors guiding initial exploration and the accumulated value estimates refining the search as simulations progress.
+
+Key MCTS hyperparameters include the number of simulations per move (balancing playing strength against computational cost), the exploration constant $c_{\text{puct}}$ (controlling the exploration-exploitation trade-off), Dirichlet noise parameters for root exploration (encouraging opening diversity), and virtual loss for parallelization (allowing multiple simulations to run concurrently without redundant exploration). These parameters are tuned based on playing strength evaluation and computational constraints.
+
+\subsection{Experience Replay and Batch Generation}
+
+Training samples generated during self-play are stored in an experience replay buffer, enabling efficient batch formation and decorrelating consecutive training updates. The replay buffer serves as a sliding window over recent self-play games, balancing the need to train on up-to-date positions (reflecting the current network strength) against the need for diverse training data (preventing overfitting to recent games).
+
+Each entry in the replay buffer consists of a tuple $(s, \boldsymbol{\pi}, z)$ where $s$ is a board position encoded as a $119 \times 8 \times 8$ tensor, $\boldsymbol{\pi}$ is the MCTS visit count distribution converted to a probability vector of length 4672, and $z$ is the final game outcome. When a self-play game completes, all positions from that game are added to the buffer with the shared outcome value. This differs from traditional reinforcement learning where each state-action pair might have a distinct bootstrapped value estimate.
+
+The replay buffer has a fixed maximum capacity, typically storing 500,000 to 1,000,000 positions. When the buffer reaches capacity, the oldest positions are evicted in FIFO order to make room for new self-play data. This ensures that training data remains representative of the current playing strength while retaining sufficient diversity to prevent catastrophic forgetting of previously learned patterns.
+
+During training, batches are sampled uniformly at random from the replay buffer. Each training iteration draws a batch of size 32 to 64 positions, computes the forward pass through the neural network to obtain policy and value predictions, calculates the loss against the stored MCTS targets, and performs a gradient descent step to update the network parameters. Uniform random sampling breaks the temporal correlation between consecutive positions in a game, reducing variance in gradient estimates and stabilizing training.
+
+Augmentation techniques can be applied during batch sampling to increase data efficiency. For chess, positions can be mirrored horizontally (flipping the board left-to-right) if the position is symmetric, effectively doubling the training data. However, care must be taken with castling rights and en passant squares, which break horizontal symmetry. Rotation and other geometric augmentations are not applicable to chess due to the asymmetric starting position and pawn movement rules.
+
+In the federated learning setting, each client maintains its own local replay buffer populated with self-play games generated using the current cluster-aggregated model. Clients do not share raw experience tuples (which would require transmitting large amounts of position data); instead, they share only the updated neural network parameters after training on their local replay buffers. This preserves privacy and reduces communication overhead while allowing knowledge transfer through model aggregation.
+
+The ratio of self-play games generated to training steps performed is a critical hyperparameter. AlphaZero generates many self-play games per network update to ensure the replay buffer is populated with diverse high-quality data. Typical configurations might generate 1,000 to 5,000 self-play games per training iteration, with each game contributing 80-120 positions on average, yielding hundreds of thousands of training samples per iteration. The network then trains on batches sampled from this pool for multiple epochs before generating new self-play games with the updated network.
+
+This iterative cycle of game generation, buffer population, batch sampling, and network training continues throughout the self-play phase, with federated aggregation occurring at regular intervals to incorporate knowledge from all clients within a cluster and selectively share knowledge across clusters. The experience replay mechanism ensures training stability and data efficiency while the federated aggregation mechanism ensures collaborative learning with playstyle preservation.
+

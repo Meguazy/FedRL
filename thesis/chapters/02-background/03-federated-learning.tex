@@ -1,0 +1,53 @@
+\section{Federated Learning}
+
+Federated learning is a distributed machine learning paradigm that enables multiple participants to collaboratively train a shared model while keeping their data decentralized. Unlike traditional centralized training where all data is aggregated in one location, federated learning brings the model to the data rather than the data to the model. This approach addresses privacy concerns, reduces communication costs, and enables learning from data that cannot be easily centralized due to legal, technical, or practical constraints.
+
+\subsection{Federated Averaging Algorithm}
+
+The foundational algorithm for federated learning is Federated Averaging (FedAvg), proposed by McMahan et al. FedAvg coordinates distributed training across multiple clients through a central server that aggregates local model updates.
+
+The basic FedAvg procedure consists of several rounds of communication between the server and clients:
+
+\begin{enumerate}
+    \item \textbf{Model Distribution:} The server sends the current global model parameters $w_t$ to a subset of clients
+
+    \item \textbf{Local Training:} Each selected client $k$ trains the model on their local dataset $D_k$ for $E$ epochs, producing updated parameters $w_t^k$
+
+    \item \textbf{Aggregation:} The server collects the updated models and computes a weighted average:
+    \begin{equation}
+        w_{t+1} = \sum_{k=1}^{K} \frac{n_k}{n} w_t^k
+    \end{equation}
+    where $n_k = |D_k|$ is the size of client $k$'s dataset and $n = \sum_k n_k$ is the total data size
+
+    \item \textbf{Iteration:} This process repeats for multiple rounds until convergence
+\end{enumerate}
+
+The key advantage of FedAvg is that it performs multiple local optimization steps before communication, significantly reducing the number of communication rounds needed compared to sending gradients after each batch. This is crucial since communication is often the bottleneck in distributed settings.
+
+\subsection{Challenges in Federated Learning}
+
+While federated learning offers many benefits, it also introduces several challenges compared to centralized training:
+
+\textbf{Non-IID Data:} In typical federated settings, data across clients is not independently and identically distributed. Different clients may have data from different distributions, different label distributions, or different amounts of data. This heterogeneity can slow convergence and lead to suboptimal models.
+
+\textbf{Communication Efficiency:} Since clients may have limited bandwidth or intermittent connectivity, minimizing communication rounds is essential. Techniques like gradient compression, quantization, and local optimization help reduce communication costs.
+
+\textbf{System Heterogeneity:} Clients may have varying computational capabilities, storage capacity, and availability. Some clients may be able to train quickly on powerful hardware while others are limited by mobile device constraints.
+
+\textbf{Privacy and Security:} While federated learning keeps raw data decentralized, model updates can still leak information about training data. Differential privacy and secure aggregation techniques can provide stronger privacy guarantees but add computational overhead.
+
+\subsection{Personalization in Federated Learning}
+
+A key limitation of vanilla FedAvg is its assumption that all clients should converge to a single global model. However, in many real-world scenarios, different clients or groups of clients may benefit from specialized models tailored to their specific data distributions or preferences.
+
+Personalized federated learning addresses this by allowing some degree of model customization per client or client group while still leveraging collaborative learning. Several approaches have been proposed:
+
+\textbf{Fine-tuning:} Clients start with a global model but continue training locally after federation completes, adapting the model to their specific data.
+
+\textbf{Multi-task Learning:} The model is split into shared and personalized layers. Shared layers learn common representations across all clients, while personalized layers adapt to individual client characteristics.
+
+\textbf{Clustered Federated Learning:} Clients are grouped into clusters based on data similarity or other criteria. Each cluster maintains its own model through federated averaging within the cluster, while potentially sharing knowledge across clusters.
+
+\textbf{Meta-Learning:} The global model is trained to be easily adaptable to new clients with minimal fine-tuning, using techniques like Model-Agnostic Meta-Learning (MAML).
+
+These personalization techniques recognize that a one-size-fits-all global model is not always optimal, especially when client data distributions are significantly different. Our work builds on the clustered federated learning approach, extending it to reinforcement learning settings where behavioral diversity is not just a result of data heterogeneity but a desired outcome.

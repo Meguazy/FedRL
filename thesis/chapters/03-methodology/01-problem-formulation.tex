@@ -1,0 +1,56 @@
+\section{Problem Formulation}
+
+This section establishes the formal mathematical framework for our clustered federated reinforcement learning approach to chess. We begin by formulating chess as a Markov Decision Process, then extend this formulation to incorporate the dual objectives of performance optimization and strategic diversity preservation within a federated learning setting.
+
+\subsection{Markov Decision Process Formulation}
+
+We formulate chess as a Markov Decision Process (MDP), defined by the tuple $\mathcal{M} = (S, A, P, R, \gamma)$. The state space $S$ represents all possible board configurations, including piece positions, castling rights, en passant opportunities, and move history. Each state $s \in S$ encodes a complete chess position along with the relevant game state information required to determine legal moves. The action space $A(s)$ contains all legal moves available from state $s$, varying in size depending on the position but typically containing between 20 and 80 possible moves in non-trivial positions.
+
+The transition function $P(s' | s, a)$ is deterministic in chess, as each legal move $a$ from state $s$ results in a unique next state $s'$. The reward function $R(s, a, s')$ provides feedback about the quality of moves and game outcomes. In our implementation, rewards are primarily assigned at terminal states, with $R = +1$ for winning positions, $R = -1$ for losing positions, and $R = 0$ for draws. The discount factor $\gamma \in [0, 1]$ determines the relative importance of immediate versus future rewards, though in chess with deterministic transitions to terminal states, this factor plays a less critical role than in many other RL domains.
+
+The objective in the single-agent setting is to learn a policy $\pi: S \rightarrow A$ that maximizes the expected cumulative reward. In chess, this corresponds to finding a policy that maximizes win probability while minimizing loss probability across all possible game trajectories. The policy is typically parameterized by a neural network with parameters $\theta$, yielding $\pi_\theta(a|s)$, which outputs a probability distribution over legal actions given the current state.
+
+\subsection{Strategic Diversity Objective}
+
+Traditional federated learning aims to train a single global model by aggregating knowledge from distributed clients. However, our framework introduces a fundamentally different objective: we seek to train multiple distinct models, each specialized for a different strategic approach to chess, while still enabling beneficial knowledge transfer between them. This dual objective creates a tension between convergence and divergence that standard federated learning algorithms are not designed to handle.
+
+Formally, we partition our set of $N$ clients into $K$ clusters $C_1, C_2, \ldots, C_K$, where each cluster $C_k$ is associated with a distinct playstyle characteristic. In our primary experiments, we focus on $K=2$ clusters representing tactical and positional playing styles. Each cluster maintains its own cluster-specific model with parameters $\theta_k$, rather than converging to a single shared model $\theta_{\text{global}}$ as in standard federated learning.
+
+The strategic diversity objective can be expressed as a bi-objective optimization problem. First, we seek to maximize the performance of each cluster-specific model on its designated playstyle:
+\begin{equation}
+\max_{\theta_k} \mathbb{E}_{s,a \sim \pi_{\theta_k}} [R(s,a)] \quad \forall k \in \{1, \ldots, K\}
+\end{equation}
+
+Second, we aim to maintain measurable divergence between cluster models, ensuring that strategic specialization is preserved:
+\begin{equation}
+\text{Divergence}(\theta_i, \theta_j) \geq \delta_{\min} \quad \forall i \neq j
+\end{equation}
+where $\delta_{\min}$ represents a minimum threshold for model differentiation, and the divergence metric can be quantified through various measures such as L2 distance between model parameters, distributional differences in move selection, or behavioral metrics like move type distributions.
+
+This formulation differs fundamentally from standard federated learning, where the objective is typically $\min_\theta \sum_{i=1}^N \mathcal{L}_i(\theta)$, seeking a single $\theta$ that minimizes the aggregate loss across all clients. Instead, we seek a set of parameters $\{\theta_1, \ldots, \theta_K\}$ that balance individual cluster performance with cross-cluster knowledge transfer while maintaining strategic differentiation.
+
+\subsection{Federated Learning Constraints}
+
+Our problem formulation must satisfy several constraints inherent to federated learning systems. The privacy preservation constraint requires that raw training data remains local to each client. Clients train on their own datasets $D_i$ and only share model parameters or gradients with the central server, never exposing individual game records or training examples. This constraint is particularly relevant in scenarios where training data might contain proprietary opening preparation or game analysis.
+
+The communication efficiency constraint limits the frequency and size of model updates transmitted between clients and the server. Let $T$ denote the total number of training rounds and $B$ the bandwidth available per round. Each communication round $t$ involves clients uploading local model parameters and downloading aggregated cluster models, with total communication cost proportional to the model size and number of participating clients. We denote the communication cost per round as $C_{\text{comm}}(t)$ and require $\sum_{t=1}^T C_{\text{comm}}(t) \leq B \cdot T$.
+
+The heterogeneity constraint acknowledges that clients may have different computational capabilities, data distributions, and training objectives. Unlike traditional federated learning settings that treat heterogeneity as an obstacle to convergence, our framework explicitly leverages this heterogeneity to maintain strategic diversity. Clients within cluster $C_k$ train on data that emphasizes playstyle $k$, creating non-IID data distributions across clusters by design.
+
+Finally, the asynchronous participation constraint allows clients to join and leave training rounds dynamically. Not all clients participate in every round, and we denote the set of participating clients in round $t$ as $S_t \subseteq \{1, \ldots, N\}$. The aggregation mechanism must be robust to varying participation rates while ensuring that each cluster maintains sufficient representation in each training round.
+
+\subsection{Performance Metrics}
+
+Evaluating our framework requires metrics that capture both playing strength and strategic diversity. We organize our metrics into three categories: performance metrics, model-level divergence metrics, and behavioral metrics.
+
+For playing strength evaluation, we employ ELO rating estimation through systematic matches against the Stockfish chess engine at multiple difficulty levels. Each cluster model is evaluated independently, producing separate ELO estimates $\text{ELO}_k$ for each cluster $k$, along with confidence intervals based on rating deviation. This allows us to assess whether selective layer sharing improves playing strength compared to fully independent training or complete parameter sharing, and whether both clusters maintain competitive performance despite their specialization.
+
+Strategic diversity at the model level is quantified through cluster divergence metrics that examine the internal representations learned by different cluster models. For each layer $\ell$ in the network, we compute the cosine similarity between corresponding weight tensors $\theta_k^\ell$ and $\theta_j^\ell$ from clusters $k$ and $j$, defined as $\cos(\theta_k^\ell, \theta_j^\ell) = \frac{\theta_k^\ell \cdot \theta_j^\ell}{\|\theta_k^\ell\|_2 \|\theta_j^\ell\|_2}$. We also compute the normalized L2 distance $d_\ell(\theta_k, \theta_j) = \frac{\|\theta_k^\ell - \theta_j^\ell\|_2}{\sqrt{\|\theta_k^\ell\|_2^2 + \|\theta_j^\ell\|_2^2}}$ to capture magnitude differences. These layer-wise metrics are aggregated into group-level divergence scores for the input block, early residual layers, middle residual layers, late residual layers, policy head, and value head. This hierarchical analysis reveals which network components remain shared across clusters and which become specialized.
+
+Weight statistics complement divergence metrics by tracking the evolution of model parameters during training. For each cluster and layer group, we monitor the mean, standard deviation, minimum, and maximum weight values, as well as the proportion of weights near zero. This helps identify potential training issues such as vanishing gradients, dead neurons, or unstable optimization. We also track the magnitude of weight changes between consecutive rounds, quantifying the learning rate and convergence behavior at different network depths.
+
+Behavioral diversity is assessed through playstyle evaluation and move type distribution analysis. The playstyle score $\psi(M)$ for a model $M$ combines multiple chess-specific metrics derived from self-play games. Following the methodology of Novachess.ai, we analyze attacked material, legal move counts, material captured, and center control during the critical middle-game phase. These metrics are normalized and combined through a weighted average to produce a tactical score ranging from 0 (very positional) to 1 (very tactical), with intermediate values indicating balanced play. The classification provides both a continuous score and discrete categories ranging from very positional through balanced to very tactical.
+
+Move type distribution metrics provide a complementary behavioral perspective by classifying each move in self-play games into categories: captures, checks, pawn advances, piece development, castling, quiet moves, and aggressive moves (captures plus checks). For each cluster, we compute the percentage of moves falling into each category, averaged across multiple games. Let $P_k(m)$ denote the empirical probability that cluster $k$ plays move type $m$. The difference in move type distributions between clusters, measured as $\Delta_{\text{aggressive}} = P_{\text{tactical}}(\text{captures}) + P_{\text{tactical}}(\text{checks}) - P_{\text{positional}}(\text{captures}) - P_{\text{positional}}(\text{checks})$, quantifies whether tactical clusters genuinely exhibit more forcing, aggressive play compared to positional clusters.
+
+These metrics collectively enable us to assess whether our selective aggregation strategy successfully balances the competing objectives of performance optimization through knowledge sharing and strategic diversity preservation through cluster-specific specialization. The empirical validation of our approach requires demonstrating that intermediate sharing strategies achieve superior performance and diversity compared to the baseline extremes of complete sharing or complete independence, while maintaining measurable divergence in both model parameters and behavioral characteristics.

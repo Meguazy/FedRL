@@ -1,0 +1,52 @@
+\section{Neural Network Implementation}
+
+% This section describes the PyTorch implementation of the AlphaZero network.
+% Note: Chapter 3.3 covered the architecture design; this focuses on implementation details.
+
+\subsection{AlphaZeroNet PyTorch Module}
+
+% Describe the PyTorch implementation details.
+%
+% Cover:
+% - File: client/trainer/models/alphazero_net.py
+% - Class: AlphaZeroNet (nn.Module)
+% - Input: 8×8×119 tensor
+% - Input convolution: Conv2d(119, 256, kernel_size=3, padding=1)
+% - Batch normalization and ReLU activation
+% - Sequential stacking of 19 ResidualBlocks
+% - Forward pass implementation
+% - Model variants: create_alphazero_net(size="tiny"|"small"|"medium"|"full"|"large")
+
+\subsection{Residual Block Implementation}
+
+% Describe the ResidualBlock PyTorch module.
+%
+% Cover:
+% - Class: ResidualBlock (lines 25-67)
+% - Two conv layers: Conv2d(256, 256, kernel_size=3, padding=1)
+% - Batch norm after each conv
+% - Skip connection: out = relu(residual + x)
+% - No dimension reduction (maintains 256 channels throughout)
+
+\subsection{Policy Head Implementation}
+
+% Describe the PolicyHead PyTorch module.
+%
+% Cover:
+% - Class: PolicyHead (lines 70-120)
+% - Architecture: Conv2d(256, 73, 1×1) → Reshape to 4672 logits
+% - Output: 8×8 squares × 73 move types = 4672 actions
+% - Move encoding: 56 queen moves + 8 knight moves + 9 underpromotions
+% - Illegal move masking during inference
+% - CrossEntropyLoss for training (not applied in forward())
+
+\subsection{Value Head Implementation}
+
+% Describe the ValueHead PyTorch module.
+%
+% Cover:
+% - Class: ValueHead (lines 122-171)
+% - Architecture: Conv2d(256, 1, 1×1) → Flatten → FC(256) → ReLU → FC(1) → Tanh
+% - Output range: [-1, +1]
+% - Represents win probability from current player's perspective
+% - MSE loss for training

@@ -1,0 +1,17 @@
+\section{Contributions}
+
+This thesis makes the following contributions:
+
+\begin{enumerate}
+    \item \textbf{A novel clustered federated learning architecture for reinforcement learning.} We introduce a three-tier hierarchical aggregation system that maintains multiple cluster-specific models rather than converging to a single global model. This architecture enables collaborative learning while preserving behavioral diversity.
+
+    \item \textbf{Selective inter-cluster aggregation mechanism.} We design and implement a selective weight-sharing strategy that aggregates only low-level feature extraction layers across clusters while maintaining separate policy and value heads for each playstyle. This mechanism enables knowledge transfer without homogenizing strategic characteristics.
+
+    \item \textbf{Playstyle-aware data filtering methodology.} We develop a systematic approach for establishing distinct strategic identities using ECO opening code classification and puzzle type filtering, demonstrating how domain-specific data curation can initialize and maintain behavioral diversity in federated settings.
+
+    \item \textbf{Complete federated AlphaZero implementation for chess.} We provide an end-to-end system integrating AlphaZero-style deep reinforcement learning with federated infrastructure, including cluster management, asynchronous communication, distributed aggregation, and both supervised bootstrapping and self-play training phases.
+
+    \item \textbf{Evaluation framework for strategic diversity.} We develop metrics to quantify and track the preservation of cluster-specific playing styles throughout federated training, providing tools for assessing whether models maintain distinct characteristics or undergo homogenization.
+
+    \item \textbf{Empirical analysis of collaboration-diversity tradeoffs.} Through systematic experiments, we provide insights into the benefits and limitations of clustered federated learning compared to isolated training and traditional federated averaging.
+\end{enumerate}

@@ -1,0 +1,112 @@
+\section{Clustered Federated Learning Framework}
+
+This section describes the overall architecture of our clustered federated learning system for chess. We present the high-level framework design, explain the rationale for our cluster organization, detail the client-server infrastructure, and specify the communication protocols that enable distributed training.
+
+\subsection{Framework Overview}
+
+Our clustered federated learning framework extends traditional federated learning by introducing multiple cluster-specific models rather than a single global model. The system consists of a central aggregation server and a distributed set of training clients organized into playstyle-based clusters. Unlike standard federated averaging, where all clients contribute to a unified global model, our framework maintains separate models for each cluster while enabling selective knowledge transfer between them.
+
+The framework operates through three hierarchical levels of aggregation. At the lowest level, individual clients perform local training through self-play reinforcement learning, generating training experiences and updating their local model parameters. At the intermediate level, clients within the same cluster periodically synchronize their models through standard federated averaging, creating a cluster-specific model that captures the shared knowledge of that playstyle group. At the highest level, selective inter-cluster aggregation shares specific layers across clusters while keeping others cluster-specific, enabling knowledge transfer of fundamental chess understanding without homogenizing strategic preferences.
+
+Figure~\ref{fig:system-architecture} illustrates the overall system architecture. The central server coordinates training across multiple distributed clients, which are organized into tactical and positional clusters. Each cluster maintains its own model, and the selective aggregation mechanism enables controlled knowledge sharing between clusters while preserving their distinct characteristics.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    scale=1,
+    transform shape,
+    node distance=1cm,
+    client/.style={rectangle, draw=black, fill=blue!20, minimum width=1cm, minimum height=0.6cm, font=\scriptsize},
+    server/.style={rectangle, draw=black, fill=green!20, minimum width=2.5cm, minimum height=1cm, font=\small},
+    cluster/.style={rectangle, draw=black, dashed, line width=0.8pt, minimum width=4.5cm, minimum height=3.2cm},
+    arrow/.style={->, >=stealth, thick}
+]
+
+% Server at top
+\node[server] (server) at (0, 0) {Aggregation Server};
+
+% Tactical Cluster (left)
+\node[cluster] (tactical-box) at (-4, -3.8) {};
+\node[font=\small] at (-5, -2.0) {\textbf{Tactical Cluster}};
+
+% Tactical clients centered in cluster
+\node[client, fill=red!20] (t1) at (-4.8, -3.2) {T1};
+\node[client, fill=red!20] (t2) at (-3.2, -3.2) {T2};
+\node[client, fill=red!20] (t3) at (-4.8, -4.2) {T3};
+\node[client, fill=red!20] (t4) at (-3.2, -4.2) {T4};
+\node[font=\footnotesize, below=0.1cm of tactical-box] {$\theta_{\text{tactical}}$};
+
+% Positional Cluster (right)
+\node[cluster] (positional-box) at (4, -3.8) {};
+\node[font=\small] at (5, -2.0) {\textbf{Positional Cluster}};
+
+% Positional clients centered in cluster
+\node[client, fill=blue!20] (p1) at (3.2, -3.2) {P1};
+\node[client, fill=blue!20] (p2) at (4.8, -3.2) {P2};
+\node[client, fill=blue!20] (p3) at (3.2, -4.2) {P3};
+\node[client, fill=blue!20] (p4) at (4.8, -4.2) {P4};
+\node[font=\footnotesize, below=0.1cm of positional-box] {$\theta_{\text{positional}}$};
+
+% Upload arrows (dashed, from clients to server)
+\draw[->, >=stealth, red!70, dashed, line width=1pt] (t1) -- (-1.5, -1.2) -- (server);
+\draw[->, >=stealth, red!70, dashed, line width=1pt] (t2) -- (-1.5, -1.2) -- (server);
+\draw[->, >=stealth, red!70, dashed, line width=1pt] (t3) -- (-1.5, -1.2) -- (server);
+\draw[->, >=stealth, red!70, dashed, line width=1pt] (t4) -- (-1.5, -1.2) -- (server);
+
+\draw[->, >=stealth, blue!70, dashed, line width=1pt] (p1) -- (1.5, -1.2) -- (server);
+\draw[->, >=stealth, blue!70, dashed, line width=1pt] (p2) -- (1.5, -1.2) -- (server);
+\draw[->, >=stealth, blue!70, dashed, line width=1pt] (p3) -- (1.5, -1.2) -- (server);
+\draw[->, >=stealth, blue!70, dashed, line width=1pt] (p4) -- (1.5, -1.2) -- (server);
+
+% Download arrows (solid, from server to clients)
+\draw[->, >=stealth, red!70, solid, line width=1pt] (server) -- (-1.5, -1.2) -- (t1);
+\draw[->, >=stealth, red!70, solid, line width=1pt] (server) -- (-1.5, -1.2) -- (t2);
+\draw[->, >=stealth, red!70, solid, line width=1pt] (server) -- (-1.5, -1.2) -- (t3);
+\draw[->, >=stealth, red!70, solid, line width=1pt] (server) -- (-1.5, -1.2) -- (t4);
+
+\draw[->, >=stealth, blue!70, solid, line width=1pt] (server) -- (1.5, -1.2) -- (p1);
+\draw[->, >=stealth, blue!70, solid, line width=1pt] (server) -- (1.5, -1.2) -- (p2);
+\draw[->, >=stealth, blue!70, solid, line width=1pt] (server) -- (1.5, -1.2) -- (p3);
+\draw[->, >=stealth, blue!70, solid, line width=1pt] (server) -- (1.5, -1.2) -- (p4);
+
+% Inter-cluster selective sharing arrow
+\draw[->, >=stealth, thick, purple, <->, line width=1.2pt] (-1.2, -5.2) -- node[above, font=\scriptsize] {Selective Sharing} (1.2, -5.2);
+
+\end{tikzpicture}
+\caption{System architecture showing the central aggregation server coordinating two clusters of distributed clients. Tactical cluster clients (red) and positional cluster clients (blue) upload model updates to the server and download cluster-specific models. Selective inter-cluster aggregation enables knowledge transfer between clusters.}
+\label{fig:system-architecture}
+\end{figure}
+
+This hierarchical design addresses the core challenge of balancing collaboration and specialization. By aggregating within clusters, we enable efficient knowledge sharing among clients with similar objectives. By selectively sharing across clusters, we transfer generalizable representations while maintaining cluster-specific strategic characteristics. The result is a system that leverages the full training data across all clients while producing multiple distinct models optimized for different playing styles.
+
+\subsection{Cluster Design}
+
+We organize clients into two primary clusters based on chess playstyle: tactical and positional. This binary clustering reflects a fundamental dichotomy in chess strategy that has persisted throughout the game's history. Tactical players prioritize concrete calculation, forcing moves, and immediate threats. Positional players emphasize long-term strategic planning, structural advantages, and prophylactic thinking. While these represent endpoints on a spectrum, they provide a clear organizational principle for cluster assignment and a testable hypothesis about strategic diversity preservation.
+
+The tactical cluster trains primarily on sharp, forcing positions with concrete tactical themes. Training data for this cluster is filtered to emphasize openings with early confrontation, games featuring high capture rates, and tactical puzzles requiring precise calculation. The positional cluster trains on strategic positions with long-term planning requirements. Filtered data includes solid openings with emphasis on structure, games with lower exchange rates, and positional puzzles focusing on prophylaxis and planning.
+
+Cluster assignment follows a semi-supervised approach. Initial assignment uses playstyle scores computed from each client's early training games, placing clients into clusters based on their observed tactical tendencies. However, cluster membership is not fixed. Every 20 training rounds, we recompute playstyle scores and allow clients to migrate between clusters if their playing style has shifted significantly. This dynamic reassignment handles the evolution of client behavior during training while maintaining sufficient stability for meaningful cluster-specific learning.
+
+The decision to use two clusters rather than a larger number balances several considerations. Two clusters provide clear interpretability and testability for our core hypotheses about diversity preservation. The tactical-positional dichotomy has well-established foundations in chess theory, making results easier to validate and interpret. Computational overhead scales with the number of clusters, and two clusters allow us to thoroughly evaluate the selective aggregation mechanism without excessive resource requirements. Future work could extend the framework to finer-grained clustering schemes, such as organizing clients by specific opening repertoires or endgame specializations.
+
+\subsection{Client-Server Architecture}
+
+The distributed system architecture follows a star topology with a central aggregation server coordinating multiple training clients. The server maintains authoritative copies of cluster-specific models, orchestrates training rounds, aggregates client updates, and distributes updated models. Clients perform local training through self-play, compute model updates, and communicate with the server to exchange parameters.
+
+Each training round proceeds through a well-defined protocol. The server first selects a subset of participating clients for the current round, ensuring balanced representation from each cluster. Selected clients download the current cluster-specific model corresponding to their assigned cluster. Clients then perform local training for a fixed number of epochs, generating self-play games, collecting training experiences, and updating model parameters through stochastic gradient descent. After completing local training, clients upload their updated model parameters to the server.
+
+The server collects updates from all participating clients and performs aggregation at two levels. First, intra-cluster aggregation computes the weighted average of model parameters within each cluster, where weights typically correspond to the number of training examples processed by each client. This produces updated cluster-specific models that incorporate the collective knowledge of all participating clients in each cluster. Second, selective inter-cluster aggregation shares specified layers across clusters through federated averaging while leaving other layers cluster-specific. The server then stores the updated models and metrics, and the process repeats for the next round.
+
+This architecture provides several advantages over fully peer-to-peer alternatives. Centralized aggregation simplifies coordination and ensures consistent model versions across clients. The server can implement sophisticated aggregation strategies that would be difficult to coordinate in a decentralized setting. Fault tolerance is enhanced, as individual client failures do not disrupt the overall training process. The architecture also facilitates monitoring and evaluation, with the server maintaining comprehensive logs of training metrics and model checkpoints.
+
+\subsection{Communication Protocol}
+
+Communication between clients and the server follows an asynchronous protocol that balances training efficiency with network constraints. The protocol is designed to minimize communication overhead while ensuring that aggregation occurs frequently enough to enable effective knowledge transfer.
+
+Model transmission uses parameter differencing to reduce bandwidth requirements. Rather than transmitting full model parameters each round, clients compute and transmit only the difference between their locally updated model and the initial model they downloaded. For a parameter vector $\theta_{\text{new}}$ after local training and initial parameters $\theta_{\text{old}}$, the client transmits $\Delta\theta = \theta_{\text{new}} - \theta_{\text{old}}$. The server reconstructs updated parameters as $\theta_{\text{new}} = \theta_{\text{old}} + \Delta\theta$. This significantly reduces transmission size, particularly in early training rounds when parameter changes are small.
+
+The protocol handles network unreliability through timeout mechanisms and retry logic. Clients set a maximum time limit for upload and download operations. If a client fails to receive an acknowledgment within the timeout period, it retries the transmission up to a maximum number of attempts. If all attempts fail, the client skips the current round and attempts to rejoin in the next round. The server similarly implements timeouts when waiting for client uploads, proceeding with aggregation using only the subset of clients that successfully transmitted their updates.
+
+Synchronization between training rounds follows a flexible schedule that accommodates varying client availability. The server does not require all clients to participate in every round. Instead, it waits for a minimum threshold of clients from each cluster before proceeding with aggregation. This minimum threshold ensures that cluster-specific models benefit from sufficient data diversity while allowing training to proceed even when some clients are offline. If the threshold is not met within a specified time window, the server proceeds with aggregation using available clients, though this situation is logged for monitoring purposes.
+
+Security and privacy considerations are addressed through parameter-level aggregation rather than data sharing. Clients never transmit raw training games or board positions to the server. All communication consists solely of model parameters or parameter differences, which do not directly reveal individual training examples. While sophisticated attacks could potentially extract some information from parameter updates, the aggregation of multiple client updates provides a degree of privacy protection similar to standard federated learning systems.

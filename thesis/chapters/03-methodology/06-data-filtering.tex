@@ -1,0 +1,110 @@
+\section{Playstyle-Aware Data Filtering}
+\label{sec:playstyle-filtering}
+
+Establishing distinct playstyle characteristics within each cluster requires careful curation of training data. Rather than allowing clients to train on arbitrary chess positions, we implement a data filtering pipeline that directs tactical training data to the tactical cluster and positional training data to the positional cluster. This filtering occurs at multiple stages: game selection based on opening classification, puzzle selection based on tactical themes, and client assignment within clusters. Figure~\ref{fig:data-filtering} illustrates the complete dual-pipeline architecture for data filtering and distribution..
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    scale=1,
+    transform shape,
+    node distance=0.6cm,
+    database/.style={cylinder, cylinder uses custom fill, cylinder body fill=blue!20, cylinder end fill=blue!30, draw=black, minimum height=1cm, minimum width=2.5cm, font=\scriptsize, align=center},
+    process/.style={rectangle, draw=black, fill=orange!20, minimum width=3cm, minimum height=0.7cm, font=\scriptsize, align=center},
+    cluster/.style={rectangle, draw=black, thick, dashed, minimum width=3cm, minimum height=2cm, font=\small},
+    client/.style={rectangle, draw=black, fill=green!15, minimum width=1.2cm, minimum height=0.5cm, font=\tiny},
+    arrow/.style={->, >=stealth, thick}
+]
+
+% Source database at top (centered)
+\node[database] (lichess) at (0, 0) {Lichess\\Database};
+
+% Split into two symmetric pipelines
+\node[process] (eco-tac) at (-3, -2.5) {ECO Filter\\Tactical};
+\node[process] (eco-pos) at (3, -2.5) {ECO Filter\\Positional};
+
+% Puzzle filtering (symmetric)a
+\node[process] (puzzle-tac) at (-3, -4.2) {Puzzle Filter\\Tactical Themes};
+\node[process] (puzzle-pos) at (3, -4.2) {Puzzle Filter\\Positional Themes};
+
+% Cluster assignment (symmetric)
+\node[cluster] (cluster-tac) at (-3, -6.8) {};
+\node[font=\small, above=0.1cm of cluster-tac] {Tactical Cluster};
+\node[client] (t1) at ([yshift=0.3cm, xshift=-0.7cm]cluster-tac.center) {T1};
+\node[client] (t2) at ([yshift=0.3cm, xshift=0.7cm]cluster-tac.center) {T2};
+\node[client] (t3) at ([yshift=-0.3cm, xshift=-0.7cm]cluster-tac.center) {T3};
+\node[client] (t4) at ([yshift=-0.3cm, xshift=0.7cm]cluster-tac.center) {T4};
+
+\node[cluster] (cluster-pos) at (3, -6.8) {};
+\node[font=\small, above=0.1cm of cluster-pos] {Positional Cluster};
+\node[client] (p1) at ([yshift=0.3cm, xshift=-0.7cm]cluster-pos.center) {P1};
+\node[client] (p2) at ([yshift=0.3cm, xshift=0.7cm]cluster-pos.center) {P2};
+\node[client] (p3) at ([yshift=-0.3cm, xshift=-0.7cm]cluster-pos.center) {P3};
+\node[client] (p4) at ([yshift=-0.3cm, xshift=0.7cm]cluster-pos.center) {P4};
+
+% Arrows - database to ECO filters (using south anchor for symmetry)
+\draw[arrow, red!70] (lichess.south) -- node[left, font=\tiny, align=right, xshift=-0.4cm] {B20-B99\\C30-C39} (eco-tac);
+\draw[arrow, blue!70] (lichess.south) -- node[right, font=\tiny, align=left, xshift=0.4cm] {D30-D69\\E20-E59} (eco-pos);
+
+% Arrows - ECO to puzzles
+\draw[arrow, red!70] (eco-tac) -- (puzzle-tac);
+\draw[arrow, blue!70] (eco-pos) -- (puzzle-pos);
+
+% Arrows - puzzles to clusters
+\draw[arrow, red!70] (puzzle-tac) -- node[left, font=\tiny, align=right] {} (cluster-tac);
+\draw[arrow, blue!70] (puzzle-pos) -- node[right, font=\tiny, align=left] {} (cluster-pos);
+
+% Labels for offset distribution
+\node[font=\tiny, below=0.1cm of cluster-tac] {Offset: 0, 200, 400, 600};
+\node[font=\tiny, below=0.1cm of cluster-pos] {Offset: 0, 200, 400, 600};
+
+\end{tikzpicture}
+\caption{Playstyle-aware data filtering pipeline showing dual pathways from the Lichess database to cluster-specific clients. Games are filtered by ECO opening codes (tactical openings like Sicilian Dragon vs positional openings like Queen's Gambit), combined with puzzle theme filtering (tactical combinations vs endgame positions), and distributed to clients within each cluster using offset-based sampling to ensure non-overlapping training data.}
+\label{fig:data-filtering}
+\end{figure}
+
+\subsection{ECO Opening Code Classification}
+
+Chess openings are classified using the Encyclopedia of Chess Openings (ECO) code system, which assigns alphanumeric codes from A00 to E99 to opening variations based on the initial moves. We leverage this classification to identify games with tactical versus positional characteristics, based on the strategic nature of the opening played.
+
+Our ECO classification divides openings into two categories. Tactical openings emphasize sharp positions, early attacks, and dynamic imbalances. These include the Sicilian Defence (B20-B99) with variations like the Dragon, Najdorf, and Sveshnikov that lead to opposite-side castling and racing attacks. The King's Gambit (C30-C39) sacrifices a pawn for rapid development and attacking chances. The Italian Game's aggressive lines (C50-C54) pursue early initiative. Alekhine's Defence (B02-B05) provokes central pawn advances to create tactical targets. The Vienna Game (C25-C29) aims for rapid piece activity and central control with tactical opportunities.
+
+Positional openings emphasize long-term structural advantages, piece coordination, and strategic maneuvering. The Queen's Gambit Declined (D30-D69) establishes a solid pawn structure and methodical development. The Slav Defence (D10-D19) maintains central solidity while preparing queenside expansion. The Nimzo-Indian Defence (E20-E59) controls the center with pieces rather than pawns, emphasizing strategic complexity. The Queen's Indian Defence (E12-E19) develops harmoniously while maintaining flexibility. The Catalan Opening (E00-E09) combines central control with fianchetto development. The English Opening (A10-A39) and Réti Opening (A04-A09) emphasize hypermodern principles of central control from a distance.
+
+During game loading, each game's ECO code is extracted from the PGN header and normalized to its base three-character form, ignoring suffix variations. Games without ECO codes or with unclassified openings are assigned to the positional category by default, as unclassified openings tend to be quieter systems. This classification ensures that tactical cluster clients train primarily on games featuring sharp, concrete positions, while positional cluster clients train on games emphasizing strategic planning and structural understanding.
+\subsection{Puzzle Type Filtering}
+
+In addition to game-based training, we incorporate tactical puzzle training to reinforce pattern recognition and concrete calculation skills. The Lichess puzzle database contains over 3 million positions tagged with thematic labels indicating the tactical or strategic patterns present. We filter these puzzles by theme to align with each cluster's playstyle focus.
+
+Tactical cluster puzzles emphasize concrete combinations and forcing sequences. Selected themes include fork (attacking two pieces simultaneously), pin (immobilizing a piece defending a more valuable piece), skewer (forcing a valuable piece to move and exposing a piece behind it), discovered attack (revealing an attack by moving a blocking piece), sacrifice (surrendering material for positional or attacking compensation), attacking f2/f7 (exploiting weak squares near the king), double check (checking with two pieces simultaneously preventing king moves), deflection (forcing a piece away from a critical defensive task), attraction (forcing a piece to an unfavorable square), and clearance (vacating a square for tactical purposes). These themes train pattern recognition for tactical opportunities that arise in sharp positions.
+
+Positional cluster puzzles emphasize strategic understanding and endgame technique. Selected themes include endgame (positions with few pieces requiring precise technique), advantage (converting a favorable position into a win), crushing (positions with overwhelming advantages), mate (checkmate sequences), mateIn2 and mateIn3 (checkmate puzzles with specified move counts), and specific endgame types such as queen-rook endgames, bishop endgames, pawn endgames, and rook endgames. These themes develop strategic pattern recognition for converting advantages and understanding fundamental endgame principles.
+
+Puzzle filtering operates on both theme and rating. Each puzzle in the database has a difficulty rating from approximately 1500 to 2500. We filter puzzles to match the target training difficulty, typically setting minimum rating at 1800 to ensure the puzzles contain meaningful patterns rather than simple one-move tactics. Theme filtering uses set intersection: a puzzle passes the filter if any of its assigned themes appears in the cluster's theme whitelist. This allows puzzles with mixed themes to be used as long as they contain at least one relevant pattern.
+
+\subsection{Cluster Assignment Strategy}
+
+After filtering games and puzzles by playstyle, the filtered data must be distributed to individual clients within each cluster. Our assignment strategy ensures that clients within the same cluster train on different data to maximize the diversity of experiences contributing to intra-cluster aggregation, while maintaining playstyle consistency within each cluster.
+
+We employ an offset-based sampling strategy to partition the filtered dataset among clients. Let $N$ denote the number of clients per cluster and $G$ denote the number of games (or puzzles) each client processes per training round. For training round $r$ and client index $i$ within a cluster, the data offset is computed as:
+
+\begin{equation}
+\text{offset}(r, i) = r \cdot (N \cdot G) + i \cdot G
+\end{equation}
+
+This formula ensures that in each round, the $N$ clients access disjoint sequential segments of the dataset. In round 0, client 0 accesses samples 0 through $G-1$, client 1 accesses samples $G$ through $2G-1$, and so on. In round 1, all clients advance by $N \cdot G$ positions to access fresh data. This deterministic offset calculation guarantees no overlap within a cluster across clients or rounds, while allowing clients in different clusters to access the same absolute offsets (since they draw from different filtered datasets).
+
+The offset strategy supports training resumption without data repetition. If training is interrupted and resumed from round $r_{\text{resume}}$, a round offset parameter $r_{\text{offset}}$ is added to the effective round number in the offset calculation. This shifts all clients forward in the dataset by $(r_{\text{resume}} + r_{\text{offset}}) \cdot (N \cdot G)$ positions, ensuring that resumed training uses entirely new data rather than repeating positions from earlier rounds.
+
+For our configuration with $N=4$ clients per cluster and $G=200$ games per round, round 0 distributes offsets 0, 200, 400, and 600 to the four clients. Round 1 distributes offsets 800, 1000, 1200, and 1400. Over training, each cluster collectively processes $4 \times 200 = 800$ unique games per round, with no client seeing the same position twice across the entire training trajectory.
+
+\subsection{Data Distribution Balance}
+
+Maintaining balanced data distribution across clusters is essential for fair comparison and effective learning. Imbalances could arise if one playstyle category contains significantly fewer games or puzzles in the database, potentially limiting that cluster's learning progress or biasing comparisons between clusters.
+
+The Lichess database contains millions of games spanning all ECO codes, providing ample data for both tactical and positional categories. Our ECO classification identifies approximately 150 tactical opening codes and 150 positional codes, ensuring roughly balanced representation. Empirical analysis of a sample Lichess database reveals that tactical openings (particularly Sicilian Defence variations) and positional openings (particularly Queen's Gambit and Indian Defence systems) appear with comparable frequency in high-rated play, mitigating concerns about severe category imbalance.
+
+The puzzle database similarly contains sufficient coverage across tactical and positional themes. Tactical combination puzzles are abundant due to their popularity and the ease of constructing forcing sequences. Endgame puzzles, while less numerous, still number in the hundreds of thousands, providing more than adequate training data for our purposes. Rating distribution is approximately uniform across the 1500-2500 range, ensuring both clusters can access puzzles at appropriate difficulty levels.
+
+To monitor balance during training, we track the number of games and puzzles processed by each cluster and verify that both clusters consume data at comparable rates. If imbalances emerge, we can adjust the games-per-round parameter differently for each cluster or modify filtering criteria to broaden the data pool for underrepresented categories. In practice, the large scale of available data and the balanced nature of ECO classification make such interventions unnecessary.
+

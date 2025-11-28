@@ -1,0 +1,73 @@
+\section{Evaluation Implementation}
+
+% This section describes the evaluation system implementation.
+% Note: Chapter 3.8 covered the metrics; this focuses on how they're computed in code.
+
+\subsection{Model Evaluator}
+
+% Describe the main evaluation orchestrator.
+%
+% Cover:
+% - File: server/evaluation/model_evaluator.py
+% - Class: ModelEvaluator
+% - Loading cluster models as AlphaZeroNet instances
+% - Playing games via python-chess with Stockfish opponents
+% - Stockfish configuration: skill levels, depth limits, UCI strength limiting
+% - Collecting PGN and metadata
+% - ClusterEvaluationMetrics dataclass
+% - Integration with playstyle metrics and move type analyzer
+
+\subsection{Playstyle Metrics Calculator}
+
+% Describe the playstyle metric computation.
+%
+% Cover:
+% - File: server/evaluation/playstyle_metrics.py
+% - Functions for each metric:
+%   * calculate_attacked_material()
+%   * calculate_legal_moves()
+%   * calculate_center_control()
+%   * calculate_tactical_score()
+%   * calculate_delta_metric() - eval difference using Stockfish
+%   * calculate_pawn_structure()
+%   * calculate_move_diversity()
+% - Game phase detection: opening (1-12 plies), middlegame (13-40), endgame (41+)
+% - Skipping positions in check for consistency
+% - Weighted combination into final tactical score [0, 1]
+
+\subsection{Move Type Analyzer}
+
+% Describe move classification implementation.
+%
+% Cover:
+% - File: server/evaluation/move_type_analyzer.py
+% - Class: MoveTypeAnalyzer
+% - Classifying moves: captures, checks, pawn advances, development, castling, quiet
+% - Aggressive moves = captures + checks
+% - Per-phase distribution analysis
+% - Integration with python-chess move attributes
+
+\subsection{Divergence Calculator}
+
+% Describe model divergence computation.
+%
+% Cover:
+% - File: server/evaluation/model_divergence.py
+% - Class: ModelDivergence
+% - Loading state_dicts from both cluster models
+% - Per-layer cosine similarity and L2 distance
+% - Layer grouping: input_block, early_residual, middle_residual, late_residual, policy_head, value_head
+% - Aggregating into group-level divergence scores
+% - Divergence index = (1 - cosine_sim) × (1 + L2_dist_normalized)
+
+\subsection{Weight Statistics Tracker}
+
+% Describe weight distribution analysis.
+%
+% Cover:
+% - File: server/evaluation/weight_statistics.py
+% - Class: WeightStatistics
+% - Per-layer statistics: mean, std, min, max, sparsity
+% - Dead neuron detection (weights always <0.01)
+% - Parameter change magnitude between rounds
+% - Detecting training issues (vanishing gradients, dead neurons)

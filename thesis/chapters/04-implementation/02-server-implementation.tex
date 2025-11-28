@@ -1,0 +1,41 @@
+\section{Server Implementation}
+
+% This section describes the server-side implementation of the federated learning coordinator.
+
+\subsection{Training Orchestrator}
+
+% Describe the TrainingOrchestrator class that manages the complete training workflow.
+%
+% Cover:
+% - File: chess-federated-learning/server/main.py
+% - Class: TrainingOrchestrator (lines 87-1099)
+% - Main loop: run_training() method
+% - Round execution: _execute_round() method
+% - Key workflow: broadcast → collect → aggregate → evaluate
+% - Configuration: RoundConfig dataclass (aggregation_threshold, timeout, weighting)
+% - EvaluationConfig dataclass (Stockfish levels, games per level)
+% - Integration with cluster manager, aggregation, and evaluation subsystems
+
+\subsection{Cluster Management}
+
+% Describe the cluster topology and node registration system.
+%
+% Cover:
+% - File: server/cluster_manager.py
+% - ClusterManager class responsibilities
+% - Node registration and health tracking
+% - Cluster topology configuration (cluster_topology.yaml)
+% - Readiness checking before round execution
+% - Handling node failures and disconnections
+
+\subsection{Server Communication}
+
+% Describe the WebSocket server implementation.
+%
+% Cover:
+% - File: server/communication/server_socket.py
+% - Async WebSocket server with Python asyncio
+% - Message protocol: server/communication/protocol.py
+% - Message types: REGISTER, START_TRAINING, MODEL_UPDATE, CLUSTER_MODEL, ERROR
+% - Timeout mechanisms for model collection
+% - Aggregation threshold enforcement (0.8 = 80% of nodes required)
