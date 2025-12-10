@@ -1,0 +1,69 @@
+# B1: Full Sharing Baseline Experiment Configuration
+# Standard federated averaging across all network layers
+# Provides a control configuration demonstrating the effects of complete knowledge transfer
+
+experiment_name: "B1_full_sharing"
+description: "Baseline experiment with full knowledge sharing - all layers aggregated between clusters"
+
+# Training parameters
+num_rounds: 500
+checkpoint_interval: 5
+
+# Server configuration
+server_config:
+  host: "localhost"
+  port: 8765
+
+# Orchestrator configuration - Full Sharing
+orchestrator_config:
+  aggregation_threshold: 0.8
+  timeout_seconds: 1200  # 20 minutes for supervised training
+
+  # B1: Share ALL layers (full aggregation)
+  # Input block + all residual blocks + policy head + value head
+  shared_layer_patterns:
+    - "input_conv.*"
+    - "input_bn.*"
+    - "res_blocks.*"       # All 19 residual blocks
+    - "policy_head.*"      # Policy head shared
+    - "value_head.*"       # Value head shared
+
+  # No cluster-specific patterns in B1
+  cluster_specific_patterns: []
+
+# Playstyle evaluation configuration
+evaluation_config:
+  enabled: true
+  interval_rounds: 10
+  games_per_elo_level: 10
+  stockfish_elo_levels: [1000, 1200, 1400]
+  time_per_move: 0.1
+  skip_check_positions: true
+  stockfish_path: null
+
+  # Enhanced metrics
+  enable_delta_analysis: true
+  delta_sampling_rate: 3
+  stockfish_depth: 12
+
+# Cluster topology (defined in cluster_topology.yaml but documented here for reference)
+# cluster_tactical:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "tactical"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#
+# cluster_positional:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "positional"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#
+# Total training data per round: 3200 games (1600 tactical + 1600 positional)
+# Total training data for 500 rounds: 1,600,000 games
+
+# Expected outcomes for B1:
+# - Near-zero global divergence (cosine similarity > 0.99)
+# - Minimal playstyle separation (tactical score difference < 0.1)
+# - Moderate ELO performance (1300-1500)
+# - All layers converge to identical representations

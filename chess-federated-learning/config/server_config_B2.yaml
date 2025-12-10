@@ -1,5 +1,5 @@
-# Server Configuration for B1: Full Sharing Baseline
-# All layers are aggregated between clusters
+# Server Configuration for B2: No Sharing Baseline
+# Clusters train independently - no inter-cluster aggregation
 
 server_config:
   host: "localhost"
@@ -9,17 +9,17 @@ orchestrator_config:
   aggregation_threshold: 0.8
   timeout_seconds: 1200              # 20 minutes - increased for supervised training with real data
 
-  # B1: Share ALL layers (full aggregation)
-  # Input block + all residual blocks + policy head + value head
-  shared_layer_patterns:
+  # B2: No inter-cluster sharing (everything is cluster-specific)
+  # Each cluster maintains completely independent parameters
+  shared_layer_patterns: []
+
+  # All layers are cluster-specific - no sharing between clusters
+  cluster_specific_patterns:
     - "input_conv.*"
     - "input_bn.*"
     - "res_blocks.*"       # All 19 residual blocks
-    - "policy_head.*"      # Policy head shared
-    - "value_head.*"       # Value head shared
-
-  # No cluster-specific patterns in B1 (everything is shared)
-  cluster_specific_patterns: []
+    - "policy_head.*"      # Policy head cluster-specific
+    - "value_head.*"       # Value head cluster-specific
 
 # Playstyle evaluation configuration
 evaluation_config:

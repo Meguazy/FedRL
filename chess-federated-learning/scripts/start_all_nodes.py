@@ -140,12 +140,12 @@ class NodeLauncher:
                     cluster_id=cluster_id,
                     server_host=self.server_host,
                     server_port=self.server_port,
-                    trainer_type="dummy",
+                    trainer_type="supervised",
                     auto_reconnect=True,
                     training={
                         "games_per_round": 100,
-                        "batch_size": 32,
-                        "learning_rate": 0.001,
+                        "batch_size": 64,
+                        "learning_rate": 0.003,
                         "exploration_factor": 1.0,
                         "max_game_length": 200,
                         "save_games": True,
@@ -161,6 +161,13 @@ class NodeLauncher:
                         "level": "INFO",
                         "file": f"./logs/{node_id}.log",
                         "format": "text",
+                    },
+                    config={
+                        "supervised": {
+                            "use_redis": True,
+                            "redis_host": "localhost",
+                            "redis_port": 6381,
+                        }
                     }
                 )
                 configs.append(config)

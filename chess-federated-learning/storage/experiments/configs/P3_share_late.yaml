@@ -1,0 +1,95 @@
+# P3: Share Late Layers and Heads - Selective Aggregation Experiment
+# Tests hypothesis that sharing high-level decision making (late blocks + heads)
+# while allowing independent low/mid-level features limits playstyle divergence
+
+experiment_name: "P3_share_late"
+description: "Share late residual blocks (13-18) and both heads, independent input/early/middle layers"
+
+# Training parameters
+num_rounds: 500
+checkpoint_interval: 5
+
+# Server configuration
+server_config:
+  host: "localhost"
+  port: 8765
+
+# Orchestrator configuration - Share Late Layers and Heads
+orchestrator_config:
+  aggregation_threshold: 0.8
+  timeout_seconds: 1200              # 20 minutes for supervised training
+
+  # P3: Share late residual blocks (13-18) + both heads
+  shared_layer_patterns:
+    - "res_blocks.13.*"        # Late layers (blocks 13-18)
+    - "res_blocks.14.*"
+    - "res_blocks.15.*"
+    - "res_blocks.16.*"
+    - "res_blocks.17.*"
+    - "res_blocks.18.*"
+    - "policy_head.*"          # Policy head SHARED
+    - "value_head.*"           # Value head SHARED
+
+  # Cluster-specific: Input, early blocks, and middle blocks
+  cluster_specific_patterns:
+    - "input_conv.*"           # Input layers independent
+    - "input_bn.*"
+    - "res_blocks.0.*"         # Early blocks (0-5) independent
+    - "res_blocks.1.*"
+    - "res_blocks.2.*"
+    - "res_blocks.3.*"
+    - "res_blocks.4.*"
+    - "res_blocks.5.*"
+    - "res_blocks.6.*"         # Middle blocks (6-12) independent
+    - "res_blocks.7.*"
+    - "res_blocks.8.*"
+    - "res_blocks.9.*"
+    - "res_blocks.10.*"
+    - "res_blocks.11.*"
+    - "res_blocks.12.*"
+
+# Playstyle evaluation configuration
+evaluation_config:
+  enabled: true
+  interval_rounds: 10
+  games_per_elo_level: 10
+  stockfish_elo_levels: [1000, 1200, 1400]
+  time_per_move: 0.1
+  skip_check_positions: true
+  stockfish_path: null
+
+  # Enhanced metrics
+  enable_delta_analysis: true
+  delta_sampling_rate: 3
+  stockfish_depth: 12
+
+# Cluster topology (defined in cluster_topology.yaml but documented here for reference)
+# cluster_tactical:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "tactical"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#   Shared layers: res_blocks 13-18 + both heads (6 blocks + 2 heads)
+#   Independent layers: input + res_blocks 0-12 (13 independent blocks)
+#
+# cluster_positional:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "positional"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#   Shared layers: res_blocks 13-18 + both heads (6 blocks + 2 heads)
+#   Independent layers: input + res_blocks 0-12 (13 independent blocks)
+#
+# Total training data per round: 3200 games (1600 tactical + 1600 positional)
+# Total training data for 500 rounds: 1,600,000 games
+
+# Expected outcomes for P3:
+# - LOW global divergence (cosine similarity > 0.85 for heads - they're shared!)
+# - Minimal playstyle separation (tactical score difference < 0.10)
+# - Potentially highest ELO (1350-1550) due to shared decision-making
+# - Tactical cluster: moderate tactical score (0.55-0.60), some aggression
+# - Positional cluster: moderate tactical score (0.50-0.55), some strategy
+# - Late layers and heads CONVERGE (shared), early/middle layers diverge
+# - Expected to behave closer to B1 (full sharing) than B2 (no sharing)
+# - Tests if sharing decision-making layers prevents playstyle divergence
+# - Critical experiment: shows heads must be separate for divergence

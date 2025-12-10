@@ -1,0 +1,94 @@
+# P2: Share Middle Layers Only - Selective Aggregation Experiment
+# Tests hypothesis that sharing mid-level abstractions while allowing independent
+# early feature extraction and late decision-making enables playstyle divergence
+
+experiment_name: "P2_share_middle"
+description: "Share middle residual blocks (6-12) only, independent input/early/late layers and heads"
+
+# Training parameters
+num_rounds: 500
+checkpoint_interval: 5
+
+# Server configuration
+server_config:
+  host: "localhost"
+  port: 8765
+
+# Orchestrator configuration - Share Middle Layers
+orchestrator_config:
+  aggregation_threshold: 0.8
+  timeout_seconds: 1200              # 20 minutes for supervised training
+
+  # P2: Share middle residual blocks (6-12) ONLY
+  shared_layer_patterns:
+    - "res_blocks.6.*"         # Middle layers (blocks 6-12)
+    - "res_blocks.7.*"
+    - "res_blocks.8.*"
+    - "res_blocks.9.*"
+    - "res_blocks.10.*"
+    - "res_blocks.11.*"
+    - "res_blocks.12.*"
+
+  # Cluster-specific: Input, early blocks, late blocks, and heads
+  cluster_specific_patterns:
+    - "input_conv.*"           # Input layers independent
+    - "input_bn.*"
+    - "res_blocks.0.*"         # Early blocks (0-5) independent
+    - "res_blocks.1.*"
+    - "res_blocks.2.*"
+    - "res_blocks.3.*"
+    - "res_blocks.4.*"
+    - "res_blocks.5.*"
+    - "res_blocks.13.*"        # Late blocks (13-18) independent
+    - "res_blocks.14.*"
+    - "res_blocks.15.*"
+    - "res_blocks.16.*"
+    - "res_blocks.17.*"
+    - "res_blocks.18.*"
+    - "policy_head.*"          # Heads remain cluster-specific
+    - "value_head.*"
+
+# Playstyle evaluation configuration
+evaluation_config:
+  enabled: true
+  interval_rounds: 10
+  games_per_elo_level: 10
+  stockfish_elo_levels: [1000, 1200, 1400]
+  time_per_move: 0.1
+  skip_check_positions: true
+  stockfish_path: null
+
+  # Enhanced metrics
+  enable_delta_analysis: true
+  delta_sampling_rate: 3
+  stockfish_depth: 12
+
+# Cluster topology (defined in cluster_topology.yaml but documented here for reference)
+# cluster_tactical:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "tactical"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#   Shared layers: res_blocks 6-12 (7 shared blocks)
+#   Independent layers: input + res_blocks 0-5, 13-18 + heads (12 independent blocks + 2 heads)
+#
+# cluster_positional:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "positional"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#   Shared layers: res_blocks 6-12 (7 shared blocks)
+#   Independent layers: input + res_blocks 0-5, 13-18 + heads (12 independent blocks + 2 heads)
+#
+# Total training data per round: 3200 games (1600 tactical + 1600 positional)
+# Total training data for 500 rounds: 1,600,000 games
+
+# Expected outcomes for P2:
+# - High global divergence (cosine similarity 0.65-0.75 for heads)
+# - Strong playstyle separation (tactical score difference 0.15-0.20)
+# - Moderate ELO (1250-1450) with shared mid-level patterns
+# - Tactical cluster: high tactical score (> 0.62), forcing play
+# - Positional cluster: low tactical score (< 0.52), positional maneuvering
+# - Middle layers converge (shared), early/late layers and heads diverge
+# - Tests if mid-level tactical pattern sharing benefits both styles
+# - Most experimental of P1-P4: independent input and output with shared middle

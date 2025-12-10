@@ -1,0 +1,76 @@
+# B2: No Sharing Baseline Experiment Configuration
+# Clusters train completely independently with no inter-cluster communication
+# Establishes maximum possible divergence when clusters optimize independently
+
+experiment_name: "B2_no_sharing"
+description: "Baseline experiment with no knowledge sharing - complete cluster independence"
+
+# Training parameters
+num_rounds: 500
+checkpoint_interval: 5
+
+# Server configuration
+server_config:
+  host: "localhost"
+  port: 8765
+
+# Orchestrator configuration - No Sharing
+orchestrator_config:
+  aggregation_threshold: 0.8
+  timeout_seconds: 1200              # 20 minutes for supervised training
+
+  # B2: No sharing between clusters (all layers cluster-specific)
+  shared_layer_patterns: []
+
+  # All layers remain cluster-specific
+  cluster_specific_patterns:
+    - "input_conv.*"
+    - "input_bn.*"
+    - "res_blocks.*"       # All 19 residual blocks
+    - "policy_head.*"      # Policy head cluster-specific
+    - "value_head.*"       # Value head cluster-specific
+
+# Playstyle evaluation configuration
+evaluation_config:
+  enabled: true
+  interval_rounds: 10
+  games_per_elo_level: 10
+  stockfish_elo_levels: [1000, 1200, 1400]
+  time_per_move: 0.1
+  skip_check_positions: true
+  stockfish_path: null
+
+  # Enhanced metrics
+  enable_delta_analysis: true
+  delta_sampling_rate: 3
+  stockfish_depth: 12
+
+# Cluster topology (defined in cluster_topology.yaml but documented here for reference)
+# cluster_tactical:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "tactical"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#   Intra-cluster aggregation: YES (among tactical nodes only)
+#   Inter-cluster aggregation: NO (tactical never shares with positional)
+#
+# cluster_positional:
+#   node_count: 4
+#   games_per_round: 400 (per node)
+#   playstyle: "positional"
+#   Total games per round: 4 nodes × 400 games = 1600 games
+#   Intra-cluster aggregation: YES (among positional nodes only)
+#   Inter-cluster aggregation: NO (positional never shares with tactical)
+#
+# Total training data per round: 3200 games (1600 tactical + 1600 positional)
+# Total training data for 500 rounds: 1,600,000 games
+#
+# Note: Each cluster effectively runs as an independent federated learning system
+
+# Expected outcomes for B2:
+# - Maximum global divergence (cosine similarity < 0.7 for heads)
+# - Strong playstyle separation (tactical score difference > 0.20)
+# - Potentially lower individual ELO (1200-1400) due to reduced effective training data
+# - Tactical cluster: high tactical score (> 0.65), aggressive move patterns
+# - Positional cluster: low tactical score (< 0.50), quiet/strategic moves
+# - All layers diverge independently between clusters

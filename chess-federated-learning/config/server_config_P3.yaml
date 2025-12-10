@@ -1,0 +1,56 @@
+# Server Configuration for P3: Share Late Layers and Heads
+# Tests high-level decision sharing while allowing independent early/mid-level specialization
+
+server_config:
+  host: "localhost"
+  port: 8765
+
+orchestrator_config:
+  aggregation_threshold: 0.8
+  timeout_seconds: 1200              # 20 minutes - increased for supervised training with real data
+
+  # P3: Share late residual blocks (13-18) + both heads
+  # Late layers + heads capture high-level decision patterns - test strategic convergence
+  shared_layer_patterns:
+    - "res_blocks.13.*"        # Residual blocks 13-18 (late/high-level layers)
+    - "res_blocks.14.*"
+    - "res_blocks.15.*"
+    - "res_blocks.16.*"
+    - "res_blocks.17.*"
+    - "res_blocks.18.*"
+    - "policy_head.*"          # Policy head SHARED in P3
+    - "value_head.*"           # Value head SHARED in P3
+
+  # Cluster-specific: Input, early, and middle blocks
+  # Low and mid-level feature extraction remains independent
+  cluster_specific_patterns:
+    - "input_conv.*"           # Input layers cluster-specific
+    - "input_bn.*"
+    - "res_blocks.0.*"         # Early residual blocks 0-5 (cluster-specific)
+    - "res_blocks.1.*"
+    - "res_blocks.2.*"
+    - "res_blocks.3.*"
+    - "res_blocks.4.*"
+    - "res_blocks.5.*"
+    - "res_blocks.6.*"         # Middle residual blocks 6-12 (cluster-specific)
+    - "res_blocks.7.*"
+    - "res_blocks.8.*"
+    - "res_blocks.9.*"
+    - "res_blocks.10.*"
+    - "res_blocks.11.*"
+    - "res_blocks.12.*"
+
+# Playstyle evaluation configuration
+evaluation_config:
+  enabled: true                      # Enable playstyle evaluation
+  interval_rounds: 10                # Run evaluation every N rounds
+  games_per_elo_level: 10            # Number of games per Stockfish ELO level
+  stockfish_elo_levels: [1000, 1200, 1400]  # Stockfish ELO levels to test against
+  time_per_move: 0.1                 # Time per move in seconds
+  skip_check_positions: true         # Skip positions in check for playstyle analysis
+  stockfish_path: null               # Path to Stockfish (null = auto-detect)
+
+  # Enhanced metrics configuration
+  enable_delta_analysis: true        # Enable delta (tipping point) metric analysis
+  delta_sampling_rate: 3             # Analyze every Nth middlegame position (3 = every 3rd)
+  stockfish_depth: 12                # Stockfish search depth for delta analysis (12-15 recommended)
