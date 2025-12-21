@@ -1,5 +1,6 @@
-# Server Configuration for B1: Full Sharing Baseline
-# All layers are aggregated between clusters
+# Server Configuration for P4: Share Backbone, Separate Heads
+# Tests sharing all feature extraction (input + all residual blocks)
+# while maintaining independent decision-making heads for playstyle divergence
 
 server_config:
   host: "localhost"
@@ -9,17 +10,36 @@ orchestrator_config:
   aggregation_threshold: 0.8
   timeout_seconds: 1200              # 20 minutes - increased for supervised training with real data
 
-  # B1: Share ALL layers (full aggregation)
-  # Input block + all residual blocks + policy head + value head
+  # P4: Share input + ALL residual blocks (0-18), keep heads separate
+  # Entire backbone shared - only final decision heads are cluster-specific
   shared_layer_patterns:
-    - "input_conv.*"
+    - "input_conv.*"           # Input layers shared
     - "input_bn.*"
-    - "res_blocks.*"       # All 19 residual blocks
-    - "policy_head.*"      # Policy head shared
-    - "value_head.*"       # Value head shared
+    - "res_blocks.0.*"         # ALL 19 residual blocks shared (0-18)
+    - "res_blocks.1.*"
+    - "res_blocks.2.*"
+    - "res_blocks.3.*"
+    - "res_blocks.4.*"
+    - "res_blocks.5.*"
+    - "res_blocks.6.*"
+    - "res_blocks.7.*"
+    - "res_blocks.8.*"
+    - "res_blocks.9.*"
+    - "res_blocks.10.*"
+    - "res_blocks.11.*"
+    - "res_blocks.12.*"
+    - "res_blocks.13.*"
+    - "res_blocks.14.*"
+    - "res_blocks.15.*"
+    - "res_blocks.16.*"
+    - "res_blocks.17.*"
+    - "res_blocks.18.*"
 
-  # No cluster-specific patterns in B1 (everything is shared)
-  cluster_specific_patterns: []
+  # Cluster-specific: ONLY the heads
+  # Minimal divergence point - only final decision layers differ
+  cluster_specific_patterns:
+    - "policy_head.*"          # Policy head cluster-specific
+    - "value_head.*"           # Value head cluster-specific
 
 # Playstyle evaluation configuration
 evaluation_config:

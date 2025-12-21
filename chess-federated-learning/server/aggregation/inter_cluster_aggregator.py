@@ -220,6 +220,21 @@ class InterClusterAggregator(BaseAggregator):
                 all_layers_name, shared_layers, cluster_specific_layers
             )
 
+            # Early exit if no shared layers (no-sharing mode)
+            if not shared_layers:
+                log.info("No shared layers - skipping aggregation and returning original models")
+                aggregation_time = time.time() - start_time
+                metrics = self._collect_metrics(
+                    models=models,
+                    weights=weights,
+                    shared_layer_count=0,
+                    cluster_specific_count=len(cluster_specific_layers) + len(all_layers_name - cluster_specific_layers - shared_layers),
+                    aggregation_time=aggregation_time,
+                    round_num=round_num
+                )
+                # Return original models unchanged
+                return models, metrics
+
             # Step 3: Normalize weights
             log.debug("Step 3: Normalizing weights...")
             normalized_weights = normalize_weights(weights)
@@ -409,8 +424,9 @@ class InterClusterAggregator(BaseAggregator):
         
         # Check that we have shared layers
         if not shared_layers:
-            log.error("No shared layers identified - inter-cluster aggregation has no effect")
-            raise ValueError("No shared layers identified for aggregation")
+            log.warning("No shared layers identified - inter-cluster aggregation disabled (no sharing mode)")
+            # This is valid for experiments with no inter-cluster sharing
+            # Don't raise an error, just log a warning
         
         # Check that we have cluster-specific layers
         if not cluster_specific_layers and not unidentified_layers:
