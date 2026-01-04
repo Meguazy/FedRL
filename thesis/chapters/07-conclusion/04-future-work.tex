@@ -1,0 +1,45 @@
+\section{Future Work}
+
+The findings and limitations of this research suggest several promising directions for future investigation.
+
+\subsection{Multi-Cluster Extensions}
+
+Extending the framework to support three or more clusters would test whether the observed patterns generalize beyond binary playstyle distinctions. A three-cluster configuration could include tactical, positional, and endgame specialists, each training on different puzzle subsets. This would reveal whether the optimal sharing percentage (30-35\%) holds with more clusters or requires adjustment based on cluster count. Multi-cluster experiments could also investigate cluster interaction patterns, determining whether pairwise aggregation (tactical with positional, tactical with endgame) produces different outcomes than global aggregation across all clusters simultaneously.
+
+Additional playstyle dimensions beyond tactical-positional could be explored. Aggressive versus defensive playing styles, opening preference specialists (King's Indian versus Queen's Gambit), or time management strategies (blitz versus classical) represent alternative cluster definitions. Testing diverse cluster definitions would validate whether architectural findings (policy head criticality, middle-layer sweet spot) reflect universal principles or task-specific properties.
+
+\subsection{Cross-Domain Validation}
+
+Applying the framework to other strategic games would test the generalizability of findings. Go represents a natural next domain, with similar board-based state representation and AlphaZero-style architectures. Cluster definitions could focus on territorial versus influential playing styles or local tactical versus global strategic thinking. Poker introduces partial observability and stochastic outcomes, requiring different neural network architectures and training approaches. Real-time strategy games like StarCraft combine strategic planning with tactical micro-management, providing rich opportunities for playstyle specialization.
+
+Cross-domain experiments would validate the hierarchical knowledge transfer hypothesis. If middle layers consistently provide optimal sharing opportunities across diverse games, this would suggest fundamental architectural principles. Domain-specific results would indicate that optimal sharing strategies depend on game characteristics like state representation complexity, action space size, or strategic time horizon.
+
+\subsection{Adaptive Sharing Strategies}
+
+Static sharing policies defined before training may be suboptimal compared to adaptive approaches that adjust sharing based on observed divergence or performance. Dynamic sharing could start with extensive sharing for rapid knowledge transfer during early training, then gradually reduce sharing as specialization emerges. Divergence-based adaptation could monitor parameter divergence and reduce sharing when gradient conflicts are detected, or increase sharing when clusters stagnate independently.
+
+Meta-learning could optimize sharing policies automatically. An outer optimization loop could search over sharing configurations, using validation performance and behavioral separation as objectives. Reinforcement learning could treat sharing policy selection as a multi-objective optimization problem, learning which layers to share at which training stages to maximize the performance-diversity Pareto frontier.
+
+\subsection{Gradient Conflict Analysis}
+
+P4's failure suggests gradient conflicts between tactical and positional training objectives, but this hypothesis lacks direct empirical validation. Future work should measure gradient alignment in shared layers, computing cosine similarity between tactical and positional gradients to quantify conflict magnitude. Identifying which specific residual blocks experience the strongest conflicts would refine understanding of where specialization is most critical.
+
+Gradient conflict mitigation techniques could improve extensive sharing configurations. Gradient projection methods that remove conflicting gradient components before aggregation might allow P4-style architectures to succeed. Alternating optimization updating tactical and positional clusters in separate phases could reduce interference. Multi-objective optimization techniques balancing multiple cluster objectives simultaneously might find better compromises than simple averaging.
+
+\subsection{Generalization and Transfer Testing}
+
+Cross-domain generalization testing would validate whether models learn reusable chess knowledge. Evaluating tactical specialists on positional puzzles and vice versa would measure specialization costs in terms of reduced versatility. Transfer learning experiments could initialize new specialists using weights from existing clusters, measuring whether shared layers provide better initialization than random weights.
+
+Human evaluation could provide complementary behavioral validation. Having chess experts play against specialized models and provide qualitative assessments of playing style would validate that behavioral metrics capture human-interpretable strategic differences. Turing test-style experiments asking humans to distinguish tactical versus positional models based on game traces would confirm that specialization is meaningful beyond quantitative metrics.
+
+\subsection{Scalability and Efficiency}
+
+The current implementation uses centralized aggregation with a coordinator node. Investigating decentralized aggregation approaches (peer-to-peer, gossip protocols, blockchain-based consensus) would improve scalability and fault tolerance. Hierarchical aggregation with sub-coordinators for cluster groups could reduce communication overhead in large-scale deployments.
+
+Communication efficiency optimizations like gradient compression, quantization, or sparse updates could reduce network costs. Asynchronous aggregation with stale gradients might improve training speed while maintaining convergence. Investigating the trade-offs between communication frequency, staleness tolerance, and final performance would optimize practical deployments.
+
+\subsection{Theoretical Foundations}
+
+Developing theoretical analysis of convergence guarantees for selective layer aggregation would provide formal foundations. Existing federated learning theory assumes full parameter sharing, while selective sharing introduces partial coupling between clusters. Convergence rate analysis, optimality bounds, and sample complexity characterization for selective aggregation remain open theoretical questions.
+
+Formalizing the performance-diversity trade-off through multi-objective optimization theory could yield principled design methods. Characterizing the Pareto frontier analytically rather than empirically would enable prediction of optimal configurations without exhaustive experimentation. Understanding when shared layers help versus hurt in terms of loss landscape geometry would inform architectural design beyond trial and error.

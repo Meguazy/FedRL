@@ -1,89 +1,55 @@
 \section{Statistical Analysis}
 
-Statistical validation ensures that observed differences between experiments are meaningful rather than artifacts of random variation. This section defines the hypothesis tests, effect size metrics, and reporting standards applied to validate the ten research hypotheses.
+Statistical validation ensures that observed differences between experiments are meaningful rather than artifacts of random variation. This section defines the hypothesis tests, effect size metrics, and reporting standards applied to validate the seven research hypotheses.
 
 \subsection{Hypothesis Testing Procedures}
 
-Different comparisons require different statistical tests based on the data structure and hypotheses:
+Different comparisons require different statistical tests based on the data structure and hypotheses. For within-configuration comparisons, we use paired t-tests to compare partial sharing configurations (P1-P4) against baselines (B1, B2) using matched pairs from the same training rounds. The null hypothesis states no difference in ELO between configurations, while the alternative proposes that partial sharing achieves higher ELO than the baseline. This validates H1 (comparing against B1) and H3 (comparing against B2).
 
-\textbf{Paired t-test} (for within-configuration comparisons):
-\begin{itemize}
-\item Use: Comparing partial sharing (P1-P4) against baselines (B1, B2) using matched pairs from the same training rounds
-\item Null hypothesis: No difference in ELO between configurations
-\item Alternative: Partial sharing ELO $>$ baseline ELO
-\item Validates: H1 (vs. B1) and H5 (vs. B2)
-\end{itemize}
+For cluster comparisons, independent samples t-tests compare tactical cluster versus positional cluster playstyle metrics. The null hypothesis states no difference in tactical scores between clusters, while the alternative allows for any significant difference. These tests validate H4 (playstyle emergence) and H5 (distinct strategies).
 
-\textbf{Independent samples t-test} (for cluster comparisons):
-\begin{itemize}
-\item Use: Comparing tactical cluster vs. positional cluster playstyle metrics
-\item Null hypothesis: No difference in tactical scores between clusters
-\item Alternative: Tactical cluster score $\neq$ Positional cluster score
-\item Validates: H3 (playstyle emergence) and H4 (distinct strategies)
-\end{itemize}
+Multi-configuration comparison uses one-way ANOVA with Tukey HSD post-hoc tests to simultaneously compare all P1-P4 configurations. The null hypothesis states no difference in ELO across the four partial sharing experiments, while the alternative suggests at least one configuration differs significantly. The Tukey HSD post-hoc test identifies which specific pairs differ, helping identify the optimal layer sharing strategy.
 
-\textbf{One-way ANOVA with Tukey HSD post-hoc} (for multi-configuration comparison):
-\begin{itemize}
-\item Use: Comparing all P1-P4 configurations simultaneously
-\item Null hypothesis: No difference in ELO across P1, P2, P3, P4
-\item Alternative: At least one configuration differs significantly
-\item Post-hoc: Tukey HSD identifies which pairs differ
-\item Identifies: Optimal layer sharing strategy
-\end{itemize}
-
-\textbf{Multiple comparison correction:}
-When testing multiple hypotheses on the same dataset, we apply Bonferroni correction to control family-wise error rate. The corrected significance level is $\alpha_{\text{corrected}} = 0.05 / n_{\text{tests}}$. For example, comparing 4 partial sharing configs requires 6 pairwise comparisons, so $\alpha = 0.05/6 \approx 0.008$.
+When testing multiple hypotheses on the same dataset, we apply Bonferroni correction to control family-wise error rate. The corrected significance level is $\alpha_{\text{corrected}} = 0.05 / n_{\text{tests}}$. For example, comparing four partial sharing configurations requires six pairwise comparisons, yielding $\alpha = 0.05/6 \approx 0.008$.
 
 \subsection{Effect Size Metrics}
 
-Statistical significance only indicates an effect exists; effect size quantifies its practical importance:
-
-\textbf{Cohen's d} (for t-tests):
+Statistical significance only indicates an effect exists; effect size quantifies its practical importance. For t-tests, we compute Cohen's d as:
 \begin{equation}
 d = \frac{\mu_1 - \mu_2}{\sigma_{\text{pooled}}}, \quad \sigma_{\text{pooled}} = \sqrt{\frac{\sigma_1^2 + \sigma_2^2}{2}}
 \end{equation}
 
-Interpretation: $|d| = 0.2$ (small), $|d| = 0.5$ (medium), $|d| = 0.8$ (large). Applied to cluster playstyle differences and baseline comparisons.
+Interpretation follows standard conventions: $|d| = 0.2$ represents a small effect, $|d| = 0.5$ a medium effect, and $|d| = 0.8$ a large effect. We apply Cohen's d to cluster playstyle differences and baseline comparisons.
 
-\textbf{$\eta^2$ (eta-squared, for ANOVA):}
+For ANOVA, we calculate eta-squared ($\eta^2$) to represent the proportion of variance explained:
 \begin{equation}
 \eta^2 = \frac{SS_{\text{between}}}{SS_{\text{total}}}
 \end{equation}
 
-Represents proportion of variance explained. Interpretation: $\eta^2 = 0.01$ (small), $\eta^2 = 0.06$ (medium), $\eta^2 = 0.14$ (large). Applied to P1-P4 configuration comparison.
+Interpretation: $\eta^2 = 0.01$ indicates a small effect, $\eta^2 = 0.06$ a medium effect, and $\eta^2 = 0.14$ a large effect. This metric applies to P1-P4 configuration comparisons.
 
-\textbf{95\% Confidence intervals:}
-Reported for all effect sizes and mean differences. If CI includes zero, the effect may not be reliable.
+All effect sizes include 95\% confidence intervals. If the confidence interval includes zero, the effect may not be reliable despite achieving statistical significance.
 
 \subsection{Hypothesis Validation Criteria}
 
-Each hypothesis has specific success criteria based on the tests above:
+Each hypothesis has specific success criteria:
 
 \begin{itemize}
 \item \textbf{H1}: Best partial sharing ELO $>$ B1 ELO, paired t-test $p < 0.05$, Cohen's $d > 0.5$
 \item \textbf{H2}: $0 < \text{divergence}(P_i) < \text{divergence}(B2)$ for all partial sharing configs
-\item \textbf{H3}: Cluster tactical scores significantly different, independent t-test $p < 0.001$, Cohen's $d > 0.8$
-\item \textbf{H4}: Move type distributions differ, independent t-test on aggressive move \%, $p < 0.05$, $d > 0.5$
-\item \textbf{H5}: Partial sharing ELO $>$ B2 ELO, paired t-test $p < 0.05$
+\item \textbf{H3}: Partial sharing ELO $>$ B2 ELO, paired t-test $p < 0.05$
+\item \textbf{H4}: Cluster tactical scores significantly different, independent t-test $p < 0.001$, Cohen's $d > 0.8$
+\item \textbf{H5}: Move type distributions differ, independent t-test on aggressive move \%, $p < 0.05$, $d > 0.5$
+\item \textbf{H6}: Effect sizes for behavioral metrics $> 0.5$ (Cohen's d for move type comparisons)
 \item \textbf{H7}: Plateau detected (divergence stabilizes) and no reconvergence in final 50 rounds
-\item \textbf{H9}: Cross-domain accuracy $> 60\%$ for both tactical-on-positional and positional-on-tactical
-\item \textbf{H10}: Effect sizes for behavioral metrics $> 0.5$ (Cohen's d for move type comparisons)
 \end{itemize}
 
 \subsection{Reporting Standards}
 
-For each statistical test, we report:
+For transparency and reproducibility, we report comprehensive statistics for each test. Sample sizes ($n$) are provided for each group or condition. Descriptive statistics include mean ($M$), standard deviation ($SD$), and median when distributions are skewed. Test statistics specify the $t$-value with degrees of freedom for t-tests or $F$-statistic with $df_{\text{between}}$ and $df_{\text{within}}$ for ANOVA.
 
-\begin{enumerate}
-\item Sample sizes ($n$) for each group/condition
-\item Descriptive statistics: mean (M), standard deviation (SD), median if skewed
-\item Test statistic and degrees of freedom: $t$-statistic with df, $F$-statistic with $df_{\text{between}}, df_{\text{within}}$
-\item Exact $p$-value (not just "$p < 0.05$")
-\item Effect size with interpretation (small/medium/large)
-\item 95\% confidence intervals for differences and effect sizes
-\item Conclusion linking to specific hypothesis
-\end{enumerate}
+Exact $p$-values are reported rather than inequality statements like "$p < 0.05$". Effect sizes include interpretation labels (small, medium, or large) based on conventional thresholds. Confidence intervals are provided at 95\% level for both mean differences and effect sizes. Each result concludes with a clear statement linking findings to the relevant hypothesis.
 
-Example: "Tactical cluster ($M = 0.68$, $SD = 0.12$, $n = 500$) showed significantly higher tactical scores than positional cluster ($M = 0.45$, $SD = 0.11$, $n = 500$), $t(998) = 28.5$, $p < 0.001$, $d = 1.92$, 95\% CI [0.21, 0.25]. This large effect supports H3."
+For example: "Tactical cluster ($M = 0.68$, $SD = 0.12$, $n = 500$) showed significantly higher tactical scores than positional cluster ($M = 0.45$, $SD = 0.11$, $n = 500$), $t(998) = 28.5$, $p < 0.001$, $d = 1.92$, 95\% CI [0.21, 0.25]. This large effect supports H4."
 
 All statistical analyses are performed using Python (scipy.stats, statsmodels) and results are included in the results chapter with supporting visualizations.

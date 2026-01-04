@@ -4,74 +4,26 @@ The evaluation methodology uses the metrics described in Section~\ref{sec:evalua
 
 \subsection{Metric Collection Schedule}
 
-Metrics are collected at two different frequencies to balance evaluation thoroughness with computational cost:
+Metrics are collected at two different frequencies to balance evaluation thoroughness with computational cost. Every training round from 1 to 200, we collect playstyle evaluations by generating 100 self-play games per cluster and analyzing tactical scores. Weight statistics provide a complete parameter analysis including mean, standard deviation, sparsity, and dead neuron counts. Cluster divergence is measured through pairwise L2 distance comparisons between cluster models, and training loss is averaged across local client updates.
 
-\textbf{Every round (rounds 1-200):}
-\begin{itemize}
-\item Playstyle evaluation: 100 self-play games per cluster analyzed for tactical scores
-\item Weight statistics: Full model parameter analysis (mean, std, sparsity, dead neurons)
-\item Cluster divergence: Pairwise L2 distance comparison between cluster models
-\item Training loss: Averaged across local client updates
-\end{itemize}
+Every 10 rounds (at rounds 10, 20, 30, through 200), we perform more computationally expensive evaluations. Move type distribution analysis classifies all moves from recent games into categories like captures, checks, quiet moves, and pawn advances. ELO estimation runs 30 games against Stockfish opponents at three difficulty levels (1000, 1200, and 1400 ELO) to approximate playing strength. This schedule ensures fine-grained tracking of playstyle and divergence evolution while limiting the computational overhead of detailed analysis.
 
-\textbf{Every 10 rounds (rounds 10, 20, 30, ..., 200):}
-\begin{itemize}
-\item Move type distribution: Classification of all moves in recent games (captures, checks, quiet moves, etc.)
-\item ELO estimation: 30 games against Stockfish at three difficulty levels (1000, 1200, 1400 ELO)
-\end{itemize}
+\subsection{Expected Metric Patterns}
 
-This schedule ensures fine-grained tracking of playstyle and divergence evolution while limiting the computational overhead of ELO estimation and detailed move analysis.
+Different experimental configurations should produce characteristic metric patterns that validate our hypotheses. The full sharing baseline (B1) should exhibit near-zero cluster divergence (below 0.01) across all layer groups due to complete parameter synchronization. Tactical score differences between clusters should be minimal (under 0.05) despite different training data, and ELO ratings should reach moderate strength levels due to access to all eight nodes' combined data.
 
-\subsection{Expected Metric Values by Experiment}
+The no sharing baseline (B2) represents the opposite extreme. Cluster divergence should be high (above 0.3) across all layer groups due to completely independent training. Tactical score differences should be maximal (exceeding 0.15), indicating strong behavioral separation. ELO may be potentially lower since each cluster only accesses four nodes' worth of data. The divergence pattern should show high values uniformly across input layers, residual blocks, and policy/value heads.
 
-Different experimental configurations should produce characteristic metric patterns that validate hypotheses:
+The early sharing configuration (P1) should display low divergence (below 0.05) in input and early residual blocks, while late residual and heads show high divergence (above 0.2). Tactical score differences should fall in the moderate to high range (0.10 to 0.15). ELO performance should be strong due to shared low-level features combined with specialized high-level reasoning.
 
-\textbf{B1 (Full Sharing):}
-\begin{itemize}
-\item Cluster divergence: Near zero ($< 0.01$) across all layer groups due to complete synchronization
-\item Tactical score difference: Minimal ($< 0.05$) between clusters despite different training data
-\item ELO: Moderate strength due to access to all 8 nodes' data
-\end{itemize}
+The backbone sharing configuration (P4) was hypothesized to achieve optimal performance. It should show low divergence (under 0.05) in all residual blocks while policy and value heads exhibit very high divergence (exceeding 0.4). If heads alone can encode playstyle, tactical score differences should be high (above 0.15). The predicted optimal ELO stems from maximal knowledge sharing across 86\% of parameters. The divergence pattern should show clear separation with near-zero divergence in the backbone and concentrated divergence in the 14\% of parameters comprising the heads.
 
-\textbf{B2 (No Sharing):}
-\begin{itemize}
-\item Cluster divergence: High ($> 0.3$) across all layer groups due to independent training
-\item Tactical score difference: Maximum ($> 0.15$) indicating strong behavioral separation
-\item ELO: Potentially lower due to only 4 nodes' data per cluster
-\item Divergence pattern: High in all layers (input, residual, heads)
-\end{itemize}
+The middle and late sharing configurations (P2 and P3) serve as exploratory experiments. P2 shares only middle layers and should demonstrate moderate divergence in both input/early layers and policy/value heads. P3 shares late layers plus heads and is expected to fail at playstyle separation since shared policy heads cannot maintain distinct move preferences---this configuration tests whether forcing convergence in decision-making layers prevents behavioral specialization regardless of earlier layer independence.
 
-\textbf{P1 (Share Early):}
-\begin{itemize}
-\item Divergence: Low in input/early residual ($< 0.05$), high in late residual and heads ($> 0.2$)
-\item Tactical score difference: Moderate to high ($0.10$-$0.15$)
-\item ELO: Good performance due to shared low-level features plus specialized high-level reasoning
-\end{itemize}
+\subsection{Hypothesis-Metric Mapping}
 
-\textbf{P4 (Share Backbone):}
-\begin{itemize}
-\item Divergence: Low in all residual blocks ($< 0.05$), very high in heads ($> 0.4$)
-\item Tactical score difference: High ($> 0.15$) if heads alone can encode playstyle
-\item ELO: Predicted optimal performance due to maximal knowledge sharing
-\item Divergence pattern: Clear separation with near-zero divergence in 86\% of parameters, concentrated divergence in 14\% (heads)
-\end{itemize}
+Each research hypothesis maps to specific metrics and validation criteria. H1 tests whether clustered federated learning outperforms centralized training by comparing P4 ELO against B1 ELO. H2 validates controlled specialization by verifying that partial sharing configurations achieve divergence values strictly between B1's near-zero and B2's maximum divergence. H4 examines playstyle emergence through statistical tests on tactical score differences between clusters, expecting highly significant results with $p < 0.001$ and large effect sizes with Cohen's $d > 0.8$.
 
-\textbf{P2 and P3:}
-These exploratory configurations test whether mid-level or late-level sharing is effective. P2 (share middle only) should show moderate divergence in input/early layers and heads. P3 (share late + heads) is expected to fail at playstyle separation since shared heads cannot maintain distinct move preferences.
+H5 investigates distinct strategic preferences by comparing move type distributions, particularly aggressive move percentages, between tactical and positional clusters. H3 tests cross-cluster learning benefits by comparing P4 ELO against B2 ELO to validate whether knowledge transfer through shared layers provides performance advantages. H7 assesses training stability by applying plateau detection algorithms to divergence and tactical score trajectories, verifying that specialization maintains without reconvergence. H6 validates measurability by requiring effect sizes exceeding 0.5 for all behavioral metric comparisons, ensuring practical significance accompanies statistical significance.
 
-\subsection{Hypothesis Validation Metrics}
-
-Each hypothesis maps to specific metrics:
-
-\begin{itemize}
-\item \textbf{H1} (Clustered FL outperforms centralized): Compare P4 ELO vs. B1 ELO
-\item \textbf{H2} (Selective aggregation enables specialization): Verify $0 < \text{divergence}(P_i) < \text{divergence}(B2)$
-\item \textbf{H3} (Playstyle clusters emerge): Test tactical score difference between clusters, expect $p < 0.001$, $d > 0.8$
-\item \textbf{H4} (Distinct strategies): Compare move type distributions, expect significant differences in aggressive move percentage
-\item \textbf{H5} (Cross-cluster learning): Compare P4 ELO vs. B2 ELO, validate knowledge transfer benefit
-\item \textbf{H7} (Stability): Apply plateau detection to divergence and tactical score trajectories
-\item \textbf{H9} (Generalization): Cross-domain accuracy on held-out puzzles $> 60\%$
-\item \textbf{H10} (Measurable behavioral differences): Effect sizes for move type comparisons $> 0.5$
-\end{itemize}
-
-The complete statistical validation procedures are described in Section 5.7.
+The complete statistical validation procedures, including hypothesis tests and effect size calculations, are described in Section 5.7.

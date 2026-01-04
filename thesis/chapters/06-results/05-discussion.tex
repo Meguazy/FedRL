@@ -1,0 +1,83 @@
+\section{Discussion}
+
+% This section interprets the results, discusses their implications for federated
+% reinforcement learning, and acknowledges limitations and anomalies discovered
+% during experimentation.
+
+\subsection{The Performance-Diversity Trade-off}
+
+% Core finding: fundamental tension between performance and specialization
+% Performance ranking: B2 > P2 > P1 > P3 > B1 > P4
+% Diversity ranking: P4 > P2 > P1 > B2 ≈ B1 ≈ P3
+% Optimal balance: P2 achieves 98.9% of B2's performance with strong separation (1.51)
+% Overspecialization: P4 maximizes diversity (1.95) but sacrifices 18.5% performance
+% Reference: RESULTS.md Section 5.1
+
+\subsection{Critical Role of Policy Heads}
+
+% P3's complete failure proves policy heads encode strategic "personality"
+% Shared policy heads → forced behavioral convergence
+% Makes distinct playstyles impossible regardless of data distribution
+% Reference: RESULTS.md Section 5.2
+
+\subsection{Why Extensive Sharing Fails}
+
+% P4 analysis: worst performance despite highest separation
+% Gradient conflict hypothesis:
+%   - Tactical data pushes toward sharp tactics
+%   - Positional data pushes toward strategic calculation
+%   - Backbone stuck in suboptimal compromise
+% Evidence: P4 shows lowest legal moves (686.3) - constrained positions
+% Heads alone (14% parameters) insufficient for effective learning
+% Reference: RESULTS.md Section 5.3
+
+\subsection{Middle-Layer Sharing Sweet Spot}
+
+% P2's success suggests hierarchical knowledge transfer:
+%   - Input layers: cluster-specific pattern recognition
+%   - Middle residual: shared general board representation
+%   - Late residual + heads: cluster-specific strategy
+% Optimal sharing percentage: ~30-35% (P2), not 85%+ (P4)
+% Reference: RESULTS.md Section 5.4
+
+\subsection{Why Complete Independence Shows Minimal Specialization}
+
+% B2 paradox: no sharing but minimal behavioral separation (0.20)
+% Hypothesis: Without architectural constraints:
+%   - Both clusters converge to "general chess competence"
+%   - Optimize for puzzle success rather than playstyle consistency
+%   - Lack pressure to maintain strategic identity
+% Selective sharing may force specialization by constraining divergence
+% Reference: RESULTS.md Section 5.5
+
+\subsection{Limitations and Anomalies}
+
+\subsubsection{Late Residual Divergence Anomaly}
+
+% Critical issue: ALL experiments show 0.00 late residual divergence
+% Potential causes:
+%   1. Implementation bug in aggregation server
+%   2. Measurement error in divergence calculation
+%   3. Layer group definition mismatch
+% Impact: If always shared, actual sharing percentages are:
+%   - P1: 43% (not 23%)
+%   - P2: 52% (not 32%)
+%   - P4: 100% backbone (not 86%)
+% Would strengthen P2 optimality conclusion
+% Reference: RESULTS.md Section 6
+
+\subsubsection{Training Duration}
+
+% 350 rounds may be insufficient
+% Extended training (500-1000 rounds) could reveal additional patterns
+% P4 might benefit from adaptive learning rate scheduling
+
+
+\subsection{Implications for Federated Reinforcement Learning}
+
+% Challenge to conventional wisdom: "more sharing ≠ better performance"
+% Strategic game domains may resist beneficial cross-task transfer
+% Specialization pressure must be architecturally enforced
+% Optimal strategy: moderate selective sharing with independent heads
+% Value proposition: controlled diversity while preserving competitive strength
+% Reference: RESULTS.md Sections 8, 9

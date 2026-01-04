@@ -4,14 +4,7 @@ All experiments use identical training configurations to ensure fair comparison,
 
 \subsection{Model Architecture}
 
-All experiments use the AlphaZero-style convolutional residual network described in Section~\ref{sec:network-architecture}. The architecture consists of:
-
-\begin{itemize}
-\item Input block: Single convolutional layer with batch normalization processing the 119-plane board representation
-\item 19 residual blocks: Each with two $3 \times 3$ convolutional layers, 256 filters, batch normalization, and skip connections
-\item Policy head: Convolutional layer and fully connected layer outputting 4,672 move logits
-\item Value head: Convolutional layer and fully connected layers outputting a scalar position evaluation in [-1, 1]
-\end{itemize}
+All experiments use the AlphaZero-style convolutional residual network described in Section~\ref{sec:network-architecture}. The architecture consists of an input block (single convolutional layer with batch normalization processing the 119-plane board representation), 19 residual blocks (each with two $3 \times 3$ convolutional layers, 256 filters, batch normalization, and skip connections), a policy head (convolutional layer and fully connected layer outputting 4,672 move logits), and a value head (convolutional layer and fully connected layers outputting a scalar position evaluation in [-1, 1]).
 
 The model contains approximately 11 million parameters: 20K in the input block, 9.5M in residual blocks, and 2M in the heads. This configuration provides sufficient capacity for learning chess at advanced amateur level while remaining computationally feasible for federated training. The architecture is identical across all experiments—only the aggregation strategy differs.
 
@@ -46,27 +39,16 @@ The training objective combines policy loss and value loss with equal weights:
 \mathcal{L} = \mathcal{L}_{\text{policy}} + \mathcal{L}_{\text{value}}
 \end{equation}
 
-where $\mathcal{L}_{\text{policy}}$ is the cross-entropy loss between the predicted move distribution and the target move, and $\mathcal{L}_{\text{value}}$ is the mean squared error between the predicted position value and the puzzle outcome (1.0 for correct solutions).
+where $\mathcal{L}_{\text{policy}}$ is the cross-entropy loss between the predicted move distribution and the target move, and $\mathcal{L}_{\text{value}}$ is the mean squared error between the predicted position value and the game outcome (1.0 for wins, 0.0 for losses, 0.5 for draws).
 
 \subsection{Data Configuration}
 
-Training data comes from the Lichess puzzle database, a public collection of over 2 million chess puzzles with verified solutions and thematic tags. Puzzles are pre-filtered into disjoint tactical and positional sets as described in Section~\ref{sec:data-filtering}.
+Training data comes from the Lichess game database, a collection of millions of rated chess games. Games are filtered by ECO opening codes into disjoint tactical and positional sets as described in Section~\ref{sec:playstyle-filtering}.
 
-\textbf{Tactical cluster puzzle themes:} fork, pin, skewer, discovered attack, double attack, sacrifice, deflection, attraction, removal of defender, interference, clearance, x-ray, zwischenzug. These puzzles emphasize sharp tactical calculations and concrete forcing variations.
+The tactical cluster trains on games from sharp tactical openings emphasizing dynamic imbalances and concrete calculations, including the Sicilian Defence (B20-B99) with variations like the Dragon and Najdorf, the King's Gambit (C30-C39), Italian Game aggressive lines (C50-C54), Alekhine's Defence (B02-B05), and Vienna Game (C25-C29). The positional cluster trains on games from strategic positional openings emphasizing structural advantages and piece coordination, including Queen's Gambit Declined (D30-D69), Slav Defence (D10-D19), Nimzo-Indian Defence (E20-E59), Queen's Indian Defence (E12-E19), Catalan Opening (E00-E09), English Opening (A10-A39), and Réti Opening (A04-A09).
 
-\textbf{Positional cluster puzzle themes:} endgame techniques (rook endgames, pawn endgames, minor piece endgames), positional advantage, pawn structure, space advantage, weak squares, outpost, piece activity. These puzzles emphasize long-term planning and strategic understanding.
+The game sets are completely disjoint by ECO code—no opening classification appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than from shared games.
 
-The puzzle sets are completely disjoint—no puzzle appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than from shared examples.
+Each node samples 400 games per round from its cluster's filtered game set using deterministic offset-based sampling. Over 200 rounds, each node trains on 80,000 game positions, providing sufficient data for convergence. Data augmentation is applied through board flips (horizontal reflection with move translation) and color swaps (playing from black's perspective), effectively doubling the training data size and improving generalization to symmetrically equivalent positions.
 
-\textbf{Data sampling and augmentation:}
-Each node randomly samples 400 puzzles per round from its cluster's puzzle set (sampling with replacement). Over 200 rounds, each node trains on 80,000 puzzle positions, providing sufficient data for convergence. Data augmentation is applied through board flips (horizontal reflection with move translation) and color swaps (playing from black's perspective), effectively doubling the training data size and improving generalization to symmetrically equivalent positions.
-
-\textbf{Puzzle preprocessing:}
-Each puzzle is converted into a training example consisting of:
-\begin{itemize}
-\item Input: 119-plane tensor representation of the puzzle position (Section~\ref{sec:network-architecture})
-\item Policy target: One-hot encoding of the correct move (all probability mass on the solution move)
-\item Value target: 1.0 (assuming the puzzle solution leads to a winning outcome)
-\end{itemize}
-
-This supervised learning approach trains the network to predict expert-level moves in tactical and positional situations, providing a foundation for subsequent self-play reinforcement learning if desired.
+Each game is converted into training examples by extracting positions and moves from the game record, creating a 119-plane tensor representation of each position (Section~\ref{sec:network-architecture}) as input, the actual move played as the policy target, and the game outcome as the value target. This supervised learning approach trains the network to predict expert-level moves in games exhibiting tactical versus positional characteristics, providing a foundation for subsequent self-play reinforcement learning if desired.

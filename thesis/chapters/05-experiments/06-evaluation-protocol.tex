@@ -4,45 +4,19 @@ This section describes when and how evaluations are conducted throughout the exp
 
 \subsection{During-Training Evaluation}
 
-Real-time evaluation occurs automatically during training at the frequencies specified in Section 5.5. The \texttt{ExperimentTracker} (Chapter 4.8) coordinates evaluation by:
-
-\begin{enumerate}
-\item Triggering evaluation at configured intervals (every round for core metrics, every 10 rounds for expensive metrics)
-\item Saving current model checkpoints for each cluster
-\item Calling evaluation modules (playstyle calculator, divergence calculator, move analyzer, ELO estimator)
-\item Persisting results to the metrics store in JSON format
-\item Resuming training for the next round
-\end{enumerate}
+Real-time evaluation occurs automatically during training at the frequencies specified in Section 5.5. The \texttt{ExperimentTracker} (Chapter 4.8) coordinates evaluation by triggering assessment at configured intervals (every round for core metrics, every 10 rounds for expensive metrics), saving current model checkpoints for each cluster, calling evaluation modules (playstyle calculator, divergence calculator, move analyzer, ELO estimator), persisting results to the metrics store in JSON format, and then resuming training for the next round.
 
 Metrics are stored in \texttt{storage/metrics/\{run\_id\}/} with separate subdirectories for each cluster and metric type. This enables real-time monitoring of training progress and early detection of issues like divergence collapse or playstyle convergence.
 
 \subsection{Post-Training Analysis}
 
-After all 200 training rounds complete, post-hoc analysis is performed on the saved metrics and final models:
+After all 200 training rounds complete, post-hoc analysis is performed on the saved metrics and final models. Trajectory analysis uses time-series plots to visualize metric evolution across training rounds. Key trajectories include ELO progression to validate learning and convergence, tactical score evolution to track playstyle development, divergence by layer group to reveal when specialization occurs, and move type percentages to show behavioral trend shifts.
 
-\textbf{Trajectory Analysis:}
-Time-series plots visualize metric evolution across training rounds. Key trajectories include:
-\begin{itemize}
-\item ELO progression: Validates learning and convergence
-\item Tactical score evolution: Tracks playstyle development
-\item Divergence by layer group: Reveals when specialization occurs
-\item Move type percentages: Shows behavioral trend shifts
-\end{itemize}
+Plateau detection employs a rolling window algorithm with window size of 20 rounds to identify when metrics stabilize. A plateau is detected when the standard deviation within the window falls below a threshold of 0.01 for normalized metrics. This determines convergence rounds for hypothesis H7.
 
-\textbf{Plateau Detection:}
-A rolling window algorithm (window size = 20 rounds) detects when metrics stabilize. A plateau is identified when the standard deviation within the window falls below a threshold (0.01 for normalized metrics). This determines convergence rounds for hypothesis H7.
+Correlation analysis examines pairwise relationships between metrics to reveal underlying patterns. We expect positive correlation between tactical score and aggressive move percentage, positive correlation between policy head divergence and playstyle separation, positive correlation between ELO and training round in early phases with plateau later, and increasing divergence that stabilizes as training progresses.
 
-\textbf{Correlation Analysis:}
-Pairwise correlations between metrics reveal relationships:
-\begin{itemize}
-\item Tactical score vs. aggressive move percentage (expected: positive correlation)
-\item Policy head divergence vs. playstyle separation (expected: positive correlation)
-\item ELO vs. training round (expected: positive early, plateau later)
-\item Divergence vs. training round (expected: increase then stabilize)
-\end{itemize}
-
-\textbf{Cross-Experiment Comparison:}
-Final-round metrics from all six experiments (B1, B2, P1-P4) are aggregated into comparison tables and visualizations. This enables identification of the optimal configuration and validation of hypotheses H1, H2, and H5.
+Cross-experiment comparison aggregates final-round metrics from all six experiments (B1, B2, P1-P4) into comparison tables and visualizations. This enables identification of the optimal configuration and validation of hypotheses H1, H2, and H3.
 
 \subsection{Generalization Testing}
 
@@ -56,6 +30,4 @@ Generalization is assessed using held-out puzzle sets not seen during training. 
 \item Cross-test: Evaluate tactical models on positional puzzles and vice versa
 \end{enumerate}
 
-Success criterion for H9: Cross-domain accuracy $> 60\%$ (e.g., tactical model achieves $> 60\%$ on positional puzzles).
-
-All analysis procedures are automated through Python scripts that load metrics from the structured JSON storage, perform statistical tests, and generate visualizations for inclusion in the results chapter.
+The success criterion requires cross-domain accuracy exceeding 60\%, meaning tactical models must achieve above 60\% accuracy on positional puzzles and vice versa. All analysis procedures are automated through Python scripts that load metrics from the structured JSON storage, perform statistical tests, and generate visualizations for inclusion in the results chapter.

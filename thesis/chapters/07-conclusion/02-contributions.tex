@@ -1,0 +1,45 @@
+\section{Contributions}
+
+This research makes several key contributions to federated learning, reinforcement learning, and their intersection in strategic game domains.
+
+\subsection{Framework Design}
+
+We designed and implemented a novel clustered federated learning framework with selective layer aggregation specifically tailored for reinforcement learning in strategic domains. Unlike traditional federated averaging that homogenizes all model parameters, our framework enables fine-grained control over which neural network components are shared across clusters versus maintained independently. The architecture supports flexible sharing policies definable at layer group granularity (input blocks, residual blocks by position, policy heads, value heads), enabling systematic exploration of the performance-diversity trade-off.
+
+The framework introduces coordinator-based aggregation with configurable thresholds, asynchronous training allowing nodes to progress independently, and comprehensive checkpointing enabling temporal analysis of divergence evolution. This design addresses practical challenges in distributed reinforcement learning while maintaining experimental rigor necessary for scientific investigation.
+
+\subsection{Complete Implementation}
+
+We developed a production-quality implementation of the framework comprising over 15,000 lines of Python code. The system includes a distributed training infrastructure with coordinator and node processes communicating via network protocols, AlphaZero-style neural network architecture with 19 residual blocks and dual policy-value heads, game-based training from the Lichess database with ECO opening code filtering to separate tactical and positional playstyles, and automated evaluation pipeline measuring ELO ratings, playstyle metrics, parameter divergence, and move type distributions.
+
+The implementation demonstrates that clustered federated reinforcement learning is not merely theoretically interesting but practically feasible. The codebase provides a foundation for future research in federated game playing and distributed strategy learning.
+
+\subsection{Evaluation Methodology}
+
+We developed a comprehensive multi-metric evaluation framework that captures both performance and behavioral dimensions. Traditional reinforcement learning evaluation focuses exclusively on task performance (win rates, ELO ratings), but strategic diversity requires measuring behavioral characteristics. Our methodology combines quantitative performance metrics (ELO ratings via games against Stockfish at various skill levels), behavioral separation metrics (tactical score differences measuring playstyle divergence), move type analysis (aggressive moves, captures, checks, quiet moves), positional metrics (center control, material metrics, legal moves, move diversity), and parameter divergence (L2 distance between cluster models by layer group).
+
+This multi-dimensional approach enables detection of subtle behavioral differences that would be invisible to performance metrics alone, validating that observed specialization represents genuine strategic diversity rather than statistical noise.
+
+\subsection{Empirical Findings}
+
+The experimental campaign produced several empirically validated findings that advance understanding of federated learning in strategic domains.
+
+The performance-diversity trade-off is fundamental and quantifiable. Configurations exist on a Pareto frontier where improved behavioral diversity generally reduces playing strength. P2 represents the optimal balance point, achieving 98.9\% of maximum performance while maintaining 77.4\% of maximum diversity (1.51 vs 1.95 behavioral separation).
+
+Policy heads encode strategic identity in AlphaZero-style architectures. Our experiments conclusively demonstrate that sharing policy heads enforces behavioral homogeneity regardless of training data differences or backbone architecture. This finding has implications for transfer learning and multi-task learning in reinforcement learning beyond federated settings.
+
+The optimal sharing percentage for chess reinforcement learning is approximately 30-35\% of parameters, concentrated in middle residual layers. This contradicts the intuition that extensive sharing maximizes knowledge transfer—instead, sharing 86\% of parameters (P4) creates catastrophic optimization conflicts. The hierarchical knowledge transfer hypothesis suggests that low-level features require cluster-specific pattern recognition, mid-level features can share general tactical motifs, and high-level features must specialize for strategic evaluation.
+
+Complete independence shows minimal behavioral separation, suggesting that architectural constraints from selective sharing actively drive specialization beyond what emerges naturally from data distribution differences. This challenges assumptions about how diversity arises in multi-agent systems.
+
+\subsection{Architectural Insights}
+
+We identified specific architectural properties that determine specialization success in federated reinforcement learning. Independent policy heads are necessary for behavioral specialization—no configuration with shared policy heads developed distinct strategies. Moderate backbone sharing (30-35\%) enables knowledge transfer without creating optimization conflicts. Layer position matters, with middle layers providing the best sharing opportunities while early input processing and late strategic reasoning benefit from independence. Value function specialization exceeds policy specialization, with value head divergence (1.18-1.57) substantially higher than policy head divergence (0.21-0.23), suggesting position evaluation differentiates more strongly than move selection across playstyles.
+
+These insights provide concrete design guidance for practitioners building federated reinforcement learning systems where maintaining behavioral diversity is important.
+
+\subsection{Methodological Contributions}
+
+Beyond specific findings, this work contributes methodological innovations applicable to broader federated learning research. The systematic ablation study across six configurations with controlled experimental conditions enables causal attribution of performance differences to specific architectural choices. The temporal divergence analysis tracking specialization evolution validates stability claims rather than relying solely on final metrics. The multi-metric validation using convergent evidence from behavioral separation, parameter divergence, and move type analysis provides robust confirmation that observed differences represent genuine phenomena. The hypothesis-driven experimental design with pre-registered success criteria ensures scientific rigor and prevents post-hoc rationalization.
+
+These methodological practices establish standards for empirical evaluation in federated reinforcement learning research.

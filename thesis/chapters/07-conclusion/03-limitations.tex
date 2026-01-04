@@ -1,0 +1,25 @@
+\section{Limitations}
+
+While this research provides valuable insights into clustered federated learning with selective aggregation, several limitations constrain the generalizability and completeness of the findings.
+
+\subsection{Cluster Scope}
+
+The experiments evaluated only two clusters representing tactical and positional playing styles. Real-world applications might require supporting more diverse behavioral categories. Scaling to three or more clusters introduces additional complexity in cluster assignment, aggregation scheduling, and behavioral metric validation. Whether the observed patterns (optimal sharing percentage, policy head criticality) generalize to multi-cluster scenarios remains an open question. The binary cluster design simplified experimental analysis but may not capture the full complexity of playstyle diversity in human chess players or the potential for more nuanced specialization strategies.
+
+\subsection{Domain Specificity}
+
+All experiments focused exclusively on chess games filtered by ECO opening classifications from the Lichess database. The findings may not transfer to other strategic game domains such as Go, poker, or real-time strategy games, which have different state representations, action spaces, and strategic characteristics. Even within chess, game-based supervised learning from filtered positions differs from self-play reinforcement learning used in AlphaZero. Training on games from specific opening categories provides strategic patterns representative of tactical versus positional play, but self-play develops understanding through exploratory gameplay across all opening types. The framework's effectiveness for full AlphaZero-style self-play training remains unvalidated.
+
+Furthermore, the tactical-positional distinction may be specific to chess strategy. Other games might require different cluster definitions based on aggression levels, risk tolerance, or strategic time horizons. The hierarchical knowledge transfer hypothesis (input-specific, middle-shared, late-specific) may reflect chess board representation properties rather than universal principles applicable across strategic domains.
+
+\subsection{Training Duration}
+
+The experimental campaign used 350 training rounds with 400 games per node per round, totaling 80,000 game positions per node. While sufficient to observe convergence and plateau behavior, extended training might reveal additional patterns. P4's poor performance might improve with adaptive learning rate scheduling or extended optimization allowing the constrained architecture to escape suboptimal basins. The plateau after round 200 suggests 350 rounds provides adequate training, but longer runs (500-1000 rounds) could validate whether specialization remains stable or eventually reconverges at longer timescales.
+
+Additionally, all configurations used identical hyperparameters (learning rate, batch size, optimizer settings). Configuration-specific tuning might improve relative performance, particularly for P4 where gradient conflicts suggest different learning rates for shared versus independent layers could reduce optimization interference.
+
+\subsection{Baseline Comparisons}
+
+The experiments compared configurations within the proposed framework but did not evaluate against alternative federated learning approaches. Personalized federated learning methods like FedProx, FedPer, or meta-learning approaches might achieve different performance-diversity trade-offs. Federated distillation transferring knowledge through predictions rather than parameters could avoid gradient conflicts while enabling cross-cluster learning. Multi-task learning with hard parameter sharing or soft parameter sharing via cross-stitch networks represents alternative architectures for balancing shared and specialized knowledge.
+
+Without these comparisons, we cannot definitively claim that selective layer aggregation represents the optimal approach for federated reinforcement learning in strategic domains. The framework's effectiveness relative to the broader landscape of federated and multi-task learning methods remains uncertain.
