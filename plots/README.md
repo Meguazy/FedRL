@@ -1,6 +1,6 @@
 # Federated Chess Learning - Metrics Visualization Summary
 
-**Analysis Period:** Rounds 10-250
+**Analysis Period:** Rounds 10-350
 **Experiments Analyzed:** B1_full_sharing, B2_no_sharing, P1_share_early, P2_share_middle, P3_share_late, P4_share_backbone
 **Total Plots Generated:** 104
 
@@ -14,11 +14,11 @@ These plots compare all 6 experiments side-by-side:
 1. **divergence_trajectories_all.png** - All layer groups' divergence evolution across experiments
 2. **global_divergence_comparison.png** - Global mean divergence over training
 3. **elo_comparison_all.png** - ELO progression for all experiments (tactical vs positional)
-4. **final_divergence_comparison.png** - Layer-wise divergence at round 250
+4. **final_divergence_comparison.png** - Layer-wise divergence at round 350
 5. **elo_vs_divergence.png** - Scatter plot: ELO vs divergence relationship
 
 ### Behavioral Metrics
-6. **move_type_differences_final.png** - Move type comparison (aggressive, captures, checks, quiet) at round 250
+6. **move_type_differences_final.png** - Move type comparison (aggressive, captures, checks, quiet) at round 350
 7. **behavioral_separation_all.png** - Cluster behavioral difference (aggressive move %) over time
 
 ### Cluster Averages (Average of Tactical + Positional)

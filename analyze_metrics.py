@@ -16,6 +16,7 @@ import os
 from pathlib import Path
 from typing import Dict, List, Any, Tuple
 import numpy as np
+import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 from matplotlib.gridspec import GridSpec
@@ -42,7 +43,7 @@ CLUSTERS = ['tactical', 'positional']
 
 # Round range
 MIN_ROUND = 10
-MAX_ROUND = 250
+MAX_ROUND = 350
 
 # Layer groups for analysis
 LAYER_GROUPS = ['input_block', 'early_residual', 'middle_residual', 'late_residual', 'policy_head', 'value_head']
@@ -112,6 +113,12 @@ class MetricsAnalyzer:
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
 
+    def save_csv(self, filename: str, data: pd.DataFrame):
+        """Save data to CSV file."""
+        csv_path = self.output_dir / f"{filename}.csv"
+        data.to_csv(csv_path, index=False)
+        print(f"  ✓ Saved CSV: {filename}.csv")
+
     def plot_divergence_heatmap(self, experiment: str):
         """Plot layer-wise divergence heatmap over time."""
         rounds = self.loader.get_available_rounds(experiment, 'tactical')
@@ -137,6 +144,12 @@ class MetricsAnalyzer:
 
         if not valid_rounds:
             return
+
+        # Save CSV
+        csv_data = {'round': valid_rounds}
+        csv_data.update(divergence_data)
+        df = pd.DataFrame(csv_data)
+        self.save_csv(f'divergence_heatmap_{experiment}', df)
 
         # Create heatmap
         fig, ax = plt.subplots(figsize=(14, 6))
@@ -170,6 +183,9 @@ class MetricsAnalyzer:
 
     def plot_divergence_trajectories(self):
         """Plot divergence trajectories for all experiments."""
+        # Collect all data for CSV
+        all_data = []
+
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
         axes = axes.flatten()
 
@@ -190,8 +206,10 @@ class MetricsAnalyzer:
                 for round_num in rounds:
                     div_data = self.loader.load_divergence(experiment, round_num)
                     if div_data and 'per_group' in div_data and group in div_data['per_group']:
-                        group_divs.append(div_data['per_group'][group].get('mean_divergence_index', 0))
+                        div_val = div_data['per_group'][group].get('mean_divergence_index', 0)
+                        group_divs.append(div_val)
                         valid_rounds.append(round_num)
+                        all_data.append({'experiment': experiment, 'layer_group': group, 'round': round_num, 'divergence': div_val})
 
                 if group_divs:
                     ax.plot(valid_rounds, group_divs, label=group, linewidth=2, alpha=0.8)
@@ -202,12 +220,18 @@ class MetricsAnalyzer:
             ax.legend(fontsize=8, loc='best')
             ax.grid(True, alpha=0.3)
 
+        # Save CSV
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('divergence_trajectories_all', df)
+
         plt.tight_layout()
         plt.savefig(self.output_dir / 'divergence_trajectories_all.png', dpi=150)
         plt.close()
 
     def plot_global_divergence_comparison(self):
         """Compare global divergence across all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(12, 6))
 
         for experiment in EXPERIMENTS:
@@ -221,12 +245,19 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 div_data = self.loader.load_divergence(experiment, round_num)
                 if div_data and 'global' in div_data:
-                    global_divs.append(div_data['global'].get('mean_divergence', 0))
+                    div_val = div_data['global'].get('mean_divergence', 0)
+                    global_divs.append(div_val)
                     valid_rounds.append(round_num)
+                    all_data.append({'experiment': experiment, 'round': round_num, 'global_divergence': div_val})
 
             if global_divs:
                 ax.plot(valid_rounds, global_divs, label=experiment, linewidth=2.5, marker='o',
                        markersize=3, alpha=0.8)
+
+        # Save CSV
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('global_divergence_comparison', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Global Mean Divergence', fontsize=12)
@@ -240,6 +271,7 @@ class MetricsAnalyzer:
 
     def plot_elo_progression(self, experiment: str):
         """Plot ELO progression for both clusters."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(12, 6))
 
         for cluster in CLUSTERS:
@@ -253,12 +285,19 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data and 'estimated_elo' in eval_data:
-                    elos.append(eval_data['estimated_elo'])
+                    elo = eval_data['estimated_elo']
+                    elos.append(elo)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'elo': elo})
 
             if elos:
                 ax.plot(valid_rounds, elos, label=f'{cluster.capitalize()} Cluster',
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        # Save CSV
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'elo_progression_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Estimated ELO', fontsize=12)
@@ -272,6 +311,7 @@ class MetricsAnalyzer:
 
     def plot_elo_comparison_all(self):
         """Plot ELO progression for all experiments."""
+        all_data = []
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
         axes = axes.flatten()
 
@@ -289,8 +329,10 @@ class MetricsAnalyzer:
                 for round_num in rounds:
                     eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                     if eval_data and 'estimated_elo' in eval_data:
-                        elos.append(eval_data['estimated_elo'])
+                        elo = eval_data['estimated_elo']
+                        elos.append(elo)
                         valid_rounds.append(round_num)
+                        all_data.append({'experiment': experiment, 'cluster': cluster, 'round': round_num, 'elo': elo})
 
                 if elos:
                     ax.plot(valid_rounds, elos, label=cluster.capitalize(),
@@ -302,12 +344,18 @@ class MetricsAnalyzer:
             ax.legend(fontsize=9)
             ax.grid(True, alpha=0.3)
 
+        # Save CSV
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('elo_comparison_all', df)
+
         plt.tight_layout()
         plt.savefig(self.output_dir / 'elo_comparison_all.png', dpi=150)
         plt.close()
 
     def plot_win_rates(self, experiment: str):
         """Plot win rates against different Stockfish levels."""
+        all_data = []
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
         for cluster_idx, cluster in enumerate(CLUSTERS):
@@ -328,6 +376,7 @@ class MetricsAnalyzer:
                         win_rate = match.get('win_rate', 0)
                         opponent_win_rates[opponent]['rounds'].append(round_num)
                         opponent_win_rates[opponent]['win_rates'].append(win_rate)
+                        all_data.append({'cluster': cluster, 'opponent': opponent, 'round': round_num, 'win_rate': win_rate})
 
             # Plot each opponent
             for opponent, data in sorted(opponent_win_rates.items()):
@@ -341,6 +390,10 @@ class MetricsAnalyzer:
             ax.grid(True, alpha=0.3)
             ax.set_ylim(-5, 105)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'win_rates_{experiment}', df)
+
         fig.suptitle(f'Win Rates vs Stockfish: {experiment}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / f'win_rates_{experiment}.png', dpi=150)
@@ -348,6 +401,7 @@ class MetricsAnalyzer:
 
     def plot_win_draw_loss_rates(self, experiment: str):
         """Plot win/draw/loss rates evolution."""
+        all_data = []
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
         for cluster_idx, cluster in enumerate(CLUSTERS):
@@ -365,10 +419,14 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data:
-                    win_rates.append(eval_data.get('win_rate', 0) * 100)
-                    draw_rates.append(eval_data.get('draw_rate', 0) * 100)
-                    loss_rates.append(eval_data.get('loss_rate', 0) * 100)
+                    wr = eval_data.get('win_rate', 0) * 100
+                    dr = eval_data.get('draw_rate', 0) * 100
+                    lr = eval_data.get('loss_rate', 0) * 100
+                    win_rates.append(wr)
+                    draw_rates.append(dr)
+                    loss_rates.append(lr)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'win_rate': wr, 'draw_rate': dr, 'loss_rate': lr})
 
             if valid_rounds:
                 ax.fill_between(valid_rounds, 0, win_rates, label='Win', alpha=0.7, color='green')
@@ -386,6 +444,10 @@ class MetricsAnalyzer:
             ax.grid(True, alpha=0.3, axis='x')
             ax.set_ylim(0, 100)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'win_draw_loss_{experiment}', df)
+
         fig.suptitle(f'Win/Draw/Loss Distribution: {experiment}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / f'win_draw_loss_{experiment}.png', dpi=150)
@@ -393,6 +455,7 @@ class MetricsAnalyzer:
 
     def plot_move_types_evolution(self, experiment: str):
         """Plot move type percentages over time."""
+        all_data = []
         fig, axes = plt.subplots(2, 2, figsize=(16, 12))
 
         move_type_keys = [
@@ -416,8 +479,10 @@ class MetricsAnalyzer:
                 for round_num in rounds:
                     move_data = self.loader.load_move_types(experiment, cluster, round_num)
                     if move_data and 'percentages' in move_data and key in move_data['percentages']:
-                        values.append(move_data['percentages'][key])
+                        val = move_data['percentages'][key]
+                        values.append(val)
                         valid_rounds.append(round_num)
+                        all_data.append({'cluster': cluster, 'move_type': key, 'round': round_num, 'percentage': val})
 
                 if values:
                     ax.plot(valid_rounds, values, label=cluster.capitalize(),
@@ -429,6 +494,10 @@ class MetricsAnalyzer:
             ax.legend(fontsize=10)
             ax.grid(True, alpha=0.3)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'move_types_evolution_{experiment}', df)
+
         fig.suptitle(f'Move Type Evolution: {experiment}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / f'move_types_evolution_{experiment}.png', dpi=150)
@@ -436,6 +505,7 @@ class MetricsAnalyzer:
 
     def plot_move_diversity(self, experiment: str):
         """Plot move diversity ratio over time."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(12, 6))
 
         for cluster in CLUSTERS:
@@ -449,12 +519,18 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data and 'avg_move_diversity_ratio' in eval_data:
-                    diversity.append(eval_data['avg_move_diversity_ratio'])
+                    div = eval_data['avg_move_diversity_ratio']
+                    diversity.append(div)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'diversity_ratio': div})
 
             if diversity:
                 ax.plot(valid_rounds, diversity, label=cluster.capitalize(),
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'move_diversity_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Move Diversity Ratio', fontsize=12)
@@ -468,6 +544,7 @@ class MetricsAnalyzer:
 
     def plot_weight_change_magnitude(self, experiment: str):
         """Plot weight change magnitude per layer group."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 6))
 
         # We'll average across both clusters
@@ -486,12 +563,18 @@ class MetricsAnalyzer:
                 weight_data = self.loader.load_weight_stats(experiment, cluster, round_num)
                 if weight_data and 'per_group' in weight_data and group in weight_data['per_group']:
                     if 'mean_relative_change' in weight_data['per_group'][group]:
-                        changes.append(weight_data['per_group'][group]['mean_relative_change'])
+                        change = weight_data['per_group'][group]['mean_relative_change']
+                        changes.append(change)
                         valid_rounds.append(round_num)
+                        all_data.append({'layer_group': group, 'round': round_num, 'mean_relative_change': change})
 
             if changes:
                 ax.plot(valid_rounds, changes, label=group, linewidth=2, marker='o',
                        markersize=3, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'weight_change_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Mean Relative Weight Change', fontsize=12)
@@ -507,6 +590,7 @@ class MetricsAnalyzer:
 
     def plot_sparsity_evolution(self, experiment: str):
         """Plot model sparsity evolution."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(12, 6))
 
         for cluster in CLUSTERS:
@@ -520,12 +604,18 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 weight_data = self.loader.load_weight_stats(experiment, cluster, round_num)
                 if weight_data and 'summary' in weight_data and 'global_sparsity' in weight_data['summary']:
-                    sparsity.append(weight_data['summary']['global_sparsity'] * 100)
+                    sp = weight_data['summary']['global_sparsity'] * 100
+                    sparsity.append(sp)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'sparsity': sp})
 
             if sparsity:
                 ax.plot(valid_rounds, sparsity, label=cluster.capitalize(),
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'sparsity_evolution_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Global Sparsity (%)', fontsize=12)
@@ -544,6 +634,7 @@ class MetricsAnalyzer:
         experiments = []
         global_divs = []
         layer_divs = {group: [] for group in LAYER_GROUPS}
+        all_data = []
 
         for experiment in EXPERIMENTS:
             div_data = self.loader.load_divergence(experiment, final_round)
@@ -553,14 +644,19 @@ class MetricsAnalyzer:
 
                 for group in LAYER_GROUPS:
                     if 'per_group' in div_data and group in div_data['per_group']:
-                        layer_divs[group].append(
-                            div_data['per_group'][group].get('mean_divergence_index', 0)
-                        )
+                        div_val = div_data['per_group'][group].get('mean_divergence_index', 0)
+                        layer_divs[group].append(div_val)
+                        all_data.append({'experiment': experiment, 'layer_group': group, 'divergence_index': div_val})
                     else:
                         layer_divs[group].append(0)
+                        all_data.append({'experiment': experiment, 'layer_group': group, 'divergence_index': 0})
 
         if not experiments:
             return
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('final_divergence_comparison', df)
 
         # Create grouped bar chart
         fig, ax = plt.subplots(figsize=(14, 7))
@@ -614,6 +710,10 @@ class MetricsAnalyzer:
         if not data_points:
             return
 
+        # Save CSV
+        df = pd.DataFrame(data_points)
+        self.save_csv('elo_vs_divergence', df)
+
         # Create scatter plot
         fig, ax = plt.subplots(figsize=(12, 8))
 
@@ -657,6 +757,7 @@ class MetricsAnalyzer:
 
     def plot_opening_diversity(self, experiment: str):
         """Plot opening diversity over time."""
+        all_data = []
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
         for cluster_idx, cluster in enumerate(CLUSTERS):
@@ -672,8 +773,10 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data and 'opening_frequency' in eval_data:
-                    num_openings.append(len(eval_data['opening_frequency']))
+                    num_open = len(eval_data['opening_frequency'])
+                    num_openings.append(num_open)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'num_openings': num_open})
 
             if num_openings:
                 ax.plot(valid_rounds, num_openings, linewidth=2.5, marker='o',
@@ -684,6 +787,10 @@ class MetricsAnalyzer:
             ax.set_title(f'{cluster.capitalize()} Cluster', fontsize=12, fontweight='bold')
             ax.grid(True, alpha=0.3)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'opening_diversity_{experiment}', df)
+
         fig.suptitle(f'Opening Diversity: {experiment}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / f'opening_diversity_{experiment}.png', dpi=150)
@@ -691,6 +798,7 @@ class MetricsAnalyzer:
 
     def plot_legal_moves_by_phase(self, experiment: str):
         """Plot legal moves by game phase (opening/middlegame/endgame)."""
+        all_data = []
         fig, axes = plt.subplots(1, 3, figsize=(18, 6))
 
         phases = [
@@ -711,8 +819,10 @@ class MetricsAnalyzer:
                 for round_num in rounds:
                     eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                     if eval_data and metric_key in eval_data:
-                        values.append(eval_data[metric_key])
+                        val = eval_data[metric_key]
+                        values.append(val)
                         valid_rounds.append(round_num)
+                        all_data.append({'cluster': cluster, 'phase': phase_name, 'round': round_num, 'avg_legal_moves': val})
 
                 if values:
                     ax.plot(valid_rounds, values, label=cluster.capitalize(),
@@ -724,6 +834,10 @@ class MetricsAnalyzer:
             ax.legend(fontsize=10)
             ax.grid(True, alpha=0.3)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'legal_moves_by_phase_{experiment}', df)
+
         fig.suptitle(f'Legal Moves by Game Phase: {experiment}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / f'legal_moves_by_phase_{experiment}.png', dpi=150)
@@ -731,6 +845,7 @@ class MetricsAnalyzer:
 
     def plot_attacked_material_and_captures(self, experiment: str):
         """Plot attacked material and actual captures over time."""
+        all_data = []
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
         for cluster in CLUSTERS:
@@ -745,11 +860,14 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data:
+                    atk_mat = eval_data.get('avg_attacked_material', 0)
+                    cap = eval_data.get('avg_captures', 0)
                     if 'avg_attacked_material' in eval_data:
-                        attacked_mat.append(eval_data['avg_attacked_material'])
+                        attacked_mat.append(atk_mat)
                     if 'avg_captures' in eval_data:
-                        captures.append(eval_data['avg_captures'])
+                        captures.append(cap)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'attacked_material': atk_mat, 'captures': cap})
 
             if attacked_mat:
                 ax1.plot(valid_rounds, attacked_mat, label=cluster.capitalize(),
@@ -757,6 +875,10 @@ class MetricsAnalyzer:
             if captures:
                 ax2.plot(valid_rounds, captures, label=cluster.capitalize(),
                         linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'material_metrics_{experiment}', df)
 
         ax1.set_xlabel('Training Round', fontsize=11)
         ax1.set_ylabel('Avg Attacked Material', fontsize=11)
@@ -777,6 +899,7 @@ class MetricsAnalyzer:
 
     def plot_center_control(self, experiment: str):
         """Plot center control evolution."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(12, 6))
 
         for cluster in CLUSTERS:
@@ -790,12 +913,18 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data and 'avg_center_control' in eval_data:
-                    center_control.append(eval_data['avg_center_control'])
+                    cc = eval_data['avg_center_control']
+                    center_control.append(cc)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'center_control': cc})
 
             if center_control:
                 ax.plot(valid_rounds, center_control, label=cluster.capitalize(),
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'center_control_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Avg Center Control', fontsize=12)
@@ -809,6 +938,7 @@ class MetricsAnalyzer:
 
     def plot_unique_move_destinations(self, experiment: str):
         """Plot unique move destinations (targeting variety)."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(12, 6))
 
         for cluster in CLUSTERS:
@@ -822,12 +952,18 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 eval_data = self.loader.load_evaluation_metrics(experiment, cluster, round_num)
                 if eval_data and 'avg_unique_move_destinations' in eval_data:
-                    unique_dests.append(eval_data['avg_unique_move_destinations'])
+                    ud = eval_data['avg_unique_move_destinations']
+                    unique_dests.append(ud)
                     valid_rounds.append(round_num)
+                    all_data.append({'cluster': cluster, 'round': round_num, 'unique_destinations': ud})
 
             if unique_dests:
                 ax.plot(valid_rounds, unique_dests, label=cluster.capitalize(),
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'unique_move_destinations_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Avg Unique Move Destinations', fontsize=12)
@@ -841,6 +977,7 @@ class MetricsAnalyzer:
 
     def plot_l2_norm_by_layer(self, experiment: str):
         """Plot L2 norm evolution by layer group."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 6))
 
         cluster = CLUSTERS[0]  # Use tactical as representative
@@ -857,12 +994,18 @@ class MetricsAnalyzer:
                 weight_data = self.loader.load_weight_stats(experiment, cluster, round_num)
                 if weight_data and 'per_group' in weight_data and group in weight_data['per_group']:
                     if 'mean_l2_norm' in weight_data['per_group'][group]:
-                        norms.append(weight_data['per_group'][group]['mean_l2_norm'])
+                        l2 = weight_data['per_group'][group]['mean_l2_norm']
+                        norms.append(l2)
                         valid_rounds.append(round_num)
+                        all_data.append({'layer_group': group, 'round': round_num, 'l2_norm': l2})
 
             if norms:
                 ax.plot(valid_rounds, norms, label=group, linewidth=2, marker='o',
                        markersize=3, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv(f'l2_norm_by_layer_{experiment}', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Mean L2 Norm', fontsize=12)
@@ -878,6 +1021,7 @@ class MetricsAnalyzer:
     def plot_move_type_differences(self):
         """Plot move type differences between clusters at round 250."""
         final_round = MAX_ROUND
+        all_data = []
 
         move_types = ['aggressive_pct', 'captures_pct', 'checks_pct', 'quiet_moves_pct']
 
@@ -905,6 +1049,7 @@ class MetricsAnalyzer:
                             tactical_vals.append(tac_val)
                             positional_vals.append(pos_val)
                             differences.append(tac_val - pos_val)
+                            all_data.append({'experiment': experiment, 'move_type': move_type, 'tactical': tac_val, 'positional': pos_val, 'difference': tac_val - pos_val})
 
             if experiments:
                 x = np.arange(len(experiments))
@@ -921,6 +1066,10 @@ class MetricsAnalyzer:
                 ax.legend(fontsize=10)
                 ax.grid(True, alpha=0.3, axis='y')
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('move_type_differences_final', df)
+
         fig.suptitle(f'Move Type Comparison at Round {final_round}', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / 'move_type_differences_final.png', dpi=150)
@@ -928,6 +1077,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_behavioral_difference(self):
         """Plot behavioral difference between clusters over time for all experiments."""
+        all_data = []
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
         axes = axes.flatten()
 
@@ -949,8 +1099,10 @@ class MetricsAnalyzer:
                     if 'percentages' in tac_data and 'percentages' in pos_data:
                         tac_agg = tac_data['percentages'].get('aggressive_pct', 0)
                         pos_agg = pos_data['percentages'].get('aggressive_pct', 0)
-                        aggressive_diff.append(abs(tac_agg - pos_agg))
+                        diff = abs(tac_agg - pos_agg)
+                        aggressive_diff.append(diff)
                         valid_rounds.append(round_num)
+                        all_data.append({'experiment': experiment, 'round': round_num, 'difference': diff})
 
             if aggressive_diff:
                 ax.plot(valid_rounds, aggressive_diff, linewidth=2.5, marker='o',
@@ -963,6 +1115,10 @@ class MetricsAnalyzer:
             ax.grid(True, alpha=0.3)
             ax.legend(fontsize=8)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('behavioral_separation_all', df)
+
         fig.suptitle('Behavioral Separation: Aggressive Move % Difference', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / 'behavioral_separation_all.png', dpi=150)
@@ -970,6 +1126,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_averages_legal_moves(self):
         """Plot average legal moves per cluster across all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -997,8 +1154,15 @@ class MetricsAnalyzer:
                 rounds_sorted = sorted(round_to_moves.keys())
                 avg_moves = [np.mean(round_to_moves[r]) for r in rounds_sorted]
 
+                for r, avg in zip(rounds_sorted, avg_moves):
+                    all_data.append({'experiment': experiment, 'round': r, 'avg_legal_moves': avg})
+
                 ax.plot(rounds_sorted, avg_moves, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('cluster_avg_legal_moves_all', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Average Legal Moves (Both Clusters)', fontsize=12)
@@ -1012,6 +1176,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_averages_material_metrics(self):
         """Plot average material metrics per cluster across all experiments."""
+        all_data = []
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
 
         for experiment in EXPERIMENTS:
@@ -1038,6 +1203,8 @@ class MetricsAnalyzer:
                 avg_attacked = [np.mean(attacked_data[r]) for r in rounds_sorted]
                 ax1.plot(rounds_sorted, avg_attacked, label=experiment,
                         linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+                for r, avg in zip(rounds_sorted, avg_attacked):
+                    all_data.append({'experiment': experiment, 'round': r, 'avg_attacked_material': avg, 'avg_captures': np.mean(captures_data[r]) if r in captures_data else 0})
 
             # Plot captures
             if captures_data:
@@ -1045,6 +1212,10 @@ class MetricsAnalyzer:
                 avg_captures = [np.mean(captures_data[r]) for r in rounds_sorted]
                 ax2.plot(rounds_sorted, avg_captures, label=experiment,
                         linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('cluster_avg_material_metrics_all', df)
 
         ax1.set_xlabel('Training Round', fontsize=11)
         ax1.set_ylabel('Avg Attacked Material', fontsize=11)
@@ -1065,6 +1236,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_averages_center_control(self):
         """Plot average center control per cluster across all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1083,8 +1255,14 @@ class MetricsAnalyzer:
             if center_data:
                 rounds_sorted = sorted(center_data.keys())
                 avg_center = [np.mean(center_data[r]) for r in rounds_sorted]
+                for r, avg in zip(rounds_sorted, avg_center):
+                    all_data.append({'experiment': experiment, 'round': r, 'avg_center_control': avg})
                 ax.plot(rounds_sorted, avg_center, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('cluster_avg_center_control_all', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Average Center Control', fontsize=12)
@@ -1098,6 +1276,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_averages_move_diversity(self):
         """Plot average move diversity per cluster across all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1116,8 +1295,14 @@ class MetricsAnalyzer:
             if diversity_data:
                 rounds_sorted = sorted(diversity_data.keys())
                 avg_diversity = [np.mean(diversity_data[r]) for r in rounds_sorted]
+                for r, avg in zip(rounds_sorted, avg_diversity):
+                    all_data.append({'experiment': experiment, 'round': r, 'avg_move_diversity': avg})
                 ax.plot(rounds_sorted, avg_diversity, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('cluster_avg_move_diversity_all', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Average Move Diversity Ratio', fontsize=12)
@@ -1131,6 +1316,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_averages_elo(self):
         """Plot average ELO per cluster across all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1149,8 +1335,14 @@ class MetricsAnalyzer:
             if elo_data:
                 rounds_sorted = sorted(elo_data.keys())
                 avg_elo = [np.mean(elo_data[r]) for r in rounds_sorted]
+                for r, avg in zip(rounds_sorted, avg_elo):
+                    all_data.append({'experiment': experiment, 'round': r, 'avg_elo': avg})
                 ax.plot(rounds_sorted, avg_elo, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('cluster_avg_elo_all', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Average ELO (Both Clusters)', fontsize=12)
@@ -1164,6 +1356,7 @@ class MetricsAnalyzer:
 
     def plot_cluster_averages_win_rate(self):
         """Plot average win rate per cluster across all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1182,8 +1375,14 @@ class MetricsAnalyzer:
             if winrate_data:
                 rounds_sorted = sorted(winrate_data.keys())
                 avg_winrate = [np.mean(winrate_data[r]) for r in rounds_sorted]
+                for r, avg in zip(rounds_sorted, avg_winrate):
+                    all_data.append({'experiment': experiment, 'round': r, 'avg_win_rate': avg})
                 ax.plot(rounds_sorted, avg_winrate, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('cluster_avg_win_rate_all', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Average Win Rate (%)', fontsize=12)
@@ -1197,6 +1396,7 @@ class MetricsAnalyzer:
 
     def plot_divergence_per_cluster(self):
         """Plot divergence metrics per cluster (tactical vs positional) across all experiments."""
+        all_data = []
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
         axes = axes.flatten()
 
@@ -1214,8 +1414,10 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 div_data = self.loader.load_divergence(experiment, round_num)
                 if div_data and 'global' in div_data:
-                    divergences.append(div_data['global'].get('mean_divergence', 0))
+                    div = div_data['global'].get('mean_divergence', 0)
+                    divergences.append(div)
                     valid_rounds.append(round_num)
+                    all_data.append({'experiment': experiment, 'round': round_num, 'global_divergence': div})
 
             if divergences:
                 ax.plot(valid_rounds, divergences, linewidth=2.5, marker='o',
@@ -1226,6 +1428,10 @@ class MetricsAnalyzer:
             ax.set_title(experiment, fontsize=11, fontweight='bold')
             ax.grid(True, alpha=0.3)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('divergence_per_round_all', df)
+
         fig.suptitle('Global Divergence Evolution: All Experiments', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / 'divergence_per_round_all.png', dpi=150)
@@ -1233,6 +1439,7 @@ class MetricsAnalyzer:
 
     def plot_divergence_by_layer_group_per_cluster(self):
         """Plot divergence by layer group, one subplot per experiment."""
+        all_data = []
         fig, axes = plt.subplots(2, 3, figsize=(18, 10))
         axes = axes.flatten()
 
@@ -1251,8 +1458,10 @@ class MetricsAnalyzer:
                 for round_num in rounds:
                     div_data = self.loader.load_divergence(experiment, round_num)
                     if div_data and 'per_group' in div_data and group in div_data['per_group']:
-                        group_divs.append(div_data['per_group'][group].get('mean_divergence_index', 0))
+                        div = div_data['per_group'][group].get('mean_divergence_index', 0)
+                        group_divs.append(div)
                         valid_rounds.append(round_num)
+                        all_data.append({'experiment': experiment, 'layer_group': group, 'round': round_num, 'divergence': div})
 
                 if group_divs:
                     ax.plot(valid_rounds, group_divs, label=group, linewidth=2, alpha=0.8)
@@ -1263,6 +1472,10 @@ class MetricsAnalyzer:
             ax.legend(fontsize=7, loc='best', ncol=2)
             ax.grid(True, alpha=0.3)
 
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('divergence_by_layer_group_all', df)
+
         fig.suptitle('Layer Group Divergence: All Experiments', fontsize=14, fontweight='bold')
         plt.tight_layout()
         plt.savefig(self.output_dir / 'divergence_by_layer_group_all.png', dpi=150)
@@ -1270,6 +1483,7 @@ class MetricsAnalyzer:
 
     def plot_policy_vs_value_divergence(self):
         """Compare policy head vs value head divergence across experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1285,15 +1499,22 @@ class MetricsAnalyzer:
                 div_data = self.loader.load_divergence(experiment, round_num)
                 if div_data and 'per_group' in div_data:
                     if 'policy_head' in div_data['per_group'] and 'value_head' in div_data['per_group']:
-                        policy_divs.append(div_data['per_group']['policy_head'].get('mean_divergence_index', 0))
-                        value_divs.append(div_data['per_group']['value_head'].get('mean_divergence_index', 0))
+                        pol = div_data['per_group']['policy_head'].get('mean_divergence_index', 0)
+                        val = div_data['per_group']['value_head'].get('mean_divergence_index', 0)
+                        policy_divs.append(pol)
+                        value_divs.append(val)
                         valid_rounds.append(round_num)
+                        all_data.append({'experiment': experiment, 'round': round_num, 'policy_divergence': pol, 'value_divergence': val, 'difference': pol - val})
 
             if policy_divs:
                 # Plot difference between policy and value head divergence
                 diff = [p - v for p, v in zip(policy_divs, value_divs)]
                 ax.plot(valid_rounds, diff, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('policy_vs_value_divergence_all', df)
 
         ax.axhline(y=0, color='red', linestyle='--', alpha=0.5, label='No difference')
         ax.set_xlabel('Training Round', fontsize=12)
@@ -1308,6 +1529,7 @@ class MetricsAnalyzer:
 
     def plot_early_vs_late_divergence(self):
         """Compare early vs late residual block divergence."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1323,15 +1545,22 @@ class MetricsAnalyzer:
                 div_data = self.loader.load_divergence(experiment, round_num)
                 if div_data and 'per_group' in div_data:
                     if 'early_residual' in div_data['per_group'] and 'late_residual' in div_data['per_group']:
-                        early_divs.append(div_data['per_group']['early_residual'].get('mean_divergence_index', 0))
-                        late_divs.append(div_data['per_group']['late_residual'].get('mean_divergence_index', 0))
+                        early = div_data['per_group']['early_residual'].get('mean_divergence_index', 0)
+                        late = div_data['per_group']['late_residual'].get('mean_divergence_index', 0)
+                        early_divs.append(early)
+                        late_divs.append(late)
                         valid_rounds.append(round_num)
+                        all_data.append({'experiment': experiment, 'round': round_num, 'early_divergence': early, 'late_divergence': late, 'difference': late - early})
 
             if early_divs:
                 # Plot difference between late and early
                 diff = [l - e for l, e in zip(late_divs, early_divs)]
                 ax.plot(valid_rounds, diff, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('early_vs_late_divergence_all', df)
 
         ax.axhline(y=0, color='red', linestyle='--', alpha=0.5, label='No difference')
         ax.set_xlabel('Training Round', fontsize=12)
@@ -1346,6 +1575,7 @@ class MetricsAnalyzer:
 
     def plot_policy_head_divergence_over_rounds(self):
         """Plot policy head divergence evolution over rounds for all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1359,12 +1589,18 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 div_data = self.loader.load_divergence(experiment, round_num)
                 if div_data and 'per_group' in div_data and 'policy_head' in div_data['per_group']:
-                    policy_divs.append(div_data['per_group']['policy_head'].get('mean_divergence_index', 0))
+                    policy_div = div_data['per_group']['policy_head'].get('mean_divergence_index', 0)
+                    policy_divs.append(policy_div)
                     valid_rounds.append(round_num)
+                    all_data.append({'experiment': experiment, 'round': round_num, 'policy_head_divergence': policy_div})
 
             if policy_divs:
                 ax.plot(valid_rounds, policy_divs, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('policy_head_divergence_over_rounds', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Policy Head Divergence Index', fontsize=12)
@@ -1378,6 +1614,7 @@ class MetricsAnalyzer:
 
     def plot_value_head_divergence_over_rounds(self):
         """Plot value head divergence evolution over rounds for all experiments."""
+        all_data = []
         fig, ax = plt.subplots(figsize=(14, 8))
 
         for experiment in EXPERIMENTS:
@@ -1391,12 +1628,18 @@ class MetricsAnalyzer:
             for round_num in rounds:
                 div_data = self.loader.load_divergence(experiment, round_num)
                 if div_data and 'per_group' in div_data and 'value_head' in div_data['per_group']:
-                    value_divs.append(div_data['per_group']['value_head'].get('mean_divergence_index', 0))
+                    value_div = div_data['per_group']['value_head'].get('mean_divergence_index', 0)
+                    value_divs.append(value_div)
                     valid_rounds.append(round_num)
+                    all_data.append({'experiment': experiment, 'round': round_num, 'value_head_divergence': value_div})
 
             if value_divs:
                 ax.plot(valid_rounds, value_divs, label=experiment,
                        linewidth=2.5, marker='o', markersize=4, alpha=0.8)
+
+        if all_data:
+            df = pd.DataFrame(all_data)
+            self.save_csv('value_head_divergence_over_rounds', df)
 
         ax.set_xlabel('Training Round', fontsize=12)
         ax.set_ylabel('Value Head Divergence Index', fontsize=12)

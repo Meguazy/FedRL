@@ -1,0 +1,13 @@
+experiment,cluster,divergence,elo
+B1_full_sharing,tactical,0.527896,1025
+B1_full_sharing,positional,0.527896,1000
+B2_no_sharing,tactical,0.755438,1225
+B2_no_sharing,positional,0.755438,1075
+P1_share_early,tactical,0.752816,1075
+P1_share_early,positional,0.752816,1125
+P2_share_middle,tactical,0.764829,1150
+P2_share_middle,positional,0.764829,1125
+P3_share_late,tactical,0.600418,1050
+P3_share_late,positional,0.600418,1050
+P4_share_backbone,tactical,0.70879,925
+P4_share_backbone,positional,0.70879,950
