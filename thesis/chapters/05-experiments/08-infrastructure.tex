@@ -1,0 +1,61 @@
+\section{Experimental Infrastructure}
+
+This section describes the computational resources, software environment, and reproducibility measures used to conduct the experimental evaluation.
+
+\subsection{Computational Resources}
+
+All experiments are conducted on a single machine with the following specifications:
+
+\textbf{GPU:} NVIDIA RTX 3090 with 24 GB VRAM. GPU utilization during training is 80-95\%, primarily for neural network forward/backward passes during local training epochs. The 24 GB VRAM is sufficient to hold the 11M parameter model plus gradients and optimizer states.
+
+\textbf{CPU:} AMD Ryzen 9 5900X (12 cores, 24 threads). Used for data loading, puzzle preprocessing, metric computation, and Stockfish evaluation. CPU utilization varies by training phase, peaking during evaluation rounds when multiple Stockfish games run in parallel.
+
+\textbf{RAM:} 64 GB DDR4. Required for in-memory storage of puzzle data during training (each node loads 400 puzzles per round), MCTS tree storage during game play, and metric aggregation across clusters.
+
+\textbf{Storage:} 1 TB NVMe SSD. Fast I/O is critical for loading model checkpoints and saving metrics at every round. Total storage requirements for all experiments is approximately 40-60 GB (see Section 5.8.4).
+
+\subsection{Software Environment}
+
+The software stack consists of:
+
+\begin{itemize}
+\item Operating system: Ubuntu 22.04 LTS
+\item Python: 3.12
+\item PyTorch: 2.0.1 with CUDA 11.8
+\item python-chess: 1.9.4 (chess logic, move generation, PGN parsing)
+\item Stockfish: 16.1 (evaluation opponent)
+\item Additional libraries: numpy, scipy, pandas, loguru (detailed in Chapter 4.1)
+\end{itemize}
+
+Dependencies are managed via pip and recorded in \texttt{requirements.txt} with exact versions to ensure reproducibility.
+
+\subsection{Storage Requirements}
+
+Per-experiment storage breakdown:
+
+\begin{itemize}
+\item Model checkpoints: 50 MB per checkpoint × 200 rounds × 2 clusters = 20 GB
+\item Metrics JSON files: Approximately 500 MB per experiment (playstyle, divergence, weights, move types stored every round)
+\item With checkpoint cleanup (keeping every 10th round): 5-10 GB per experiment
+\end{itemize}
+
+Total storage for all experiments: 30-60 GB (6 experiments × 5-10 GB each). Training data (Lichess puzzle database) requires an additional 10-20 GB.
+
+\subsection{Reproducibility Measures}
+
+To ensure reproducible results:
+
+\textbf{Random seeds:} Fixed seeds for PyTorch (\texttt{torch.manual\_seed(42)}), NumPy (\texttt{np.random.seed(42)}), and Python random (\texttt{random.seed(42)}). Enables deterministic initialization and data sampling.
+
+\textbf{Deterministic operations:} PyTorch configured with \texttt{torch.backends.cudnn.deterministic = True} and \texttt{torch.backends.cudnn.benchmark = False} to ensure reproducible GPU operations. This may slightly reduce performance but guarantees identical results across runs.
+
+\textbf{Configuration snapshots:} Complete YAML configuration saved for each experiment run in \texttt{storage/.metadata/\{run\_id\}.json}, including model architecture, hyperparameters, layer sharing patterns, and Git commit hash.
+
+\textbf{Data versioning:} Puzzle database version tracked. Train/validation/test splits are fixed and stored with the experiment metadata.
+
+\textbf{Experiment tracking:} Each run receives a unique ID (format: \texttt{run\_YYYYMMDD\_HHMMSS\_uuid}). All metrics are timestamped and linked to the run ID, enabling precise reconstruction of experiment conditions.
+
+\textbf{Code versioning:} Git repository tracks all source code. Tagged releases mark major experiment milestones. The exact commit hash is recorded in experiment metadata.
+
+These measures ensure that another researcher with similar hardware and the specified software versions can reproduce the experiments by following the protocol in this chapter and using the saved configurations.
+%

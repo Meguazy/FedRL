@@ -1,73 +1,51 @@
 \section{Evaluation Implementation}
 
-% This section describes the evaluation system implementation.
-% Note: Chapter 3.8 covered the metrics; this focuses on how they're computed in code.
+The evaluation system implements the metrics framework described in Section~\ref{sec:evaluation}. The implementation spans multiple modules in \texttt{server/evaluation/} that orchestrate game play, analyze positions, classify moves, and compute model divergence.
 
 \subsection{Model Evaluator}
 
-% Describe the main evaluation orchestrator.
-%
-% Cover:
-% - File: server/evaluation/model_evaluator.py
-% - Class: ModelEvaluator
-% - Loading cluster models as AlphaZeroNet instances
-% - Playing games via python-chess with Stockfish opponents
-% - Stockfish configuration: skill levels, depth limits, UCI strength limiting
-% - Collecting PGN and metadata
-% - ClusterEvaluationMetrics dataclass
-% - Integration with playstyle metrics and move type analyzer
+The \texttt{ModelEvaluator} class in \texttt{server/evaluation/model\_evaluator.py} orchestrates cluster evaluation by managing game play against Stockfish opponents and collecting metrics. The evaluator:
+
+\begin{enumerate}
+\item Loads PyTorch models from the repository and sets them to evaluation mode
+\item Uses \texttt{python-chess} for board state management and legal move generation
+\item Configures Stockfish strength levels: for targets below 1320 ELO, sets \texttt{Skill Level} using $\max(0, \min(20, \lfloor (R_{\text{target}} - 800) / 100 \rfloor))$ and limits search depth; for higher ratings, enables \texttt{UCI\_LimitStrength} and sets \texttt{UCI\_Elo} directly
+\item Aggregates results in \texttt{ClusterEvaluationMetrics} dataclass containing outcome statistics, playstyle metrics, and ELO estimates
+\end{enumerate}
+
+Integration with playstyle analysis occurs through \texttt{GameAnalyzer} and \texttt{PlaystyleMetricsCalculator}, which process completed games to extract per-position metrics.
 
 \subsection{Playstyle Metrics Calculator}
 
-% Describe the playstyle metric computation.
-%
-% Cover:
-% - File: server/evaluation/playstyle_metrics.py
-% - Functions for each metric:
-%   * calculate_attacked_material()
-%   * calculate_legal_moves()
-%   * calculate_center_control()
-%   * calculate_tactical_score()
-%   * calculate_delta_metric() - eval difference using Stockfish
-%   * calculate_pawn_structure()
-%   * calculate_move_diversity()
-% - Game phase detection: opening (1-12 plies), middlegame (13-40), endgame (41+)
-% - Skipping positions in check for consistency
-% - Weighted combination into final tactical score [0, 1]
+The \texttt{PlaystyleMetricsCalculator} in \texttt{server/evaluation/playstyle\_metrics.py} implements the tactical score computation from Section~\ref{sec:evaluation}. The \texttt{GameAnalyzer} parses PGN strings, replays move sequences, and extracts features at each position using \texttt{python-chess} methods:
+
+\begin{itemize}
+\item \texttt{calculate\_attacked\_material()}: Uses \texttt{board.is\_attacked\_by()} to identify attacked pieces, sums values from \texttt{PIECE\_VALUES} dictionary
+\item \texttt{calculate\_legal\_moves()}: Calls \texttt{len(list(board.legal\_moves))} and records by game phase
+\item \texttt{calculate\_center\_control()}: Counts attackers for d4, d5, e4, e5 using \texttt{board.attackers()}
+\item \texttt{calculate\_pawn\_structure()}: Detects isolated pawns, doubled pawns, and computes average rank
+\item \texttt{calculate\_tactical\_score()}: Combines normalized components through weighted averaging
+\end{itemize}
 
 \subsection{Move Type Analyzer}
 
-% Describe move classification implementation.
-%
-% Cover:
-% - File: server/evaluation/move_type_analyzer.py
-% - Class: MoveTypeAnalyzer
-% - Classifying moves: captures, checks, pawn advances, development, castling, quiet
-% - Aggressive moves = captures + checks
-% - Per-phase distribution analysis
-% - Integration with python-chess move attributes
+The \texttt{MoveTypeAnalyzer} in \texttt{server/evaluation/move\_type\_analyzer.py} categorizes moves using \texttt{python-chess} predicates: \texttt{board.is\_capture()}, \texttt{board.gives\_check()}, \texttt{board.is\_castling()}, plus custom logic for pawn advances, piece development, and quiet moves. Per-phase tracking maintains separate counters for opening (plies 1-12), middlegame (13-40), and endgame (41+). The \texttt{ClusterMoveTypeMetrics} dataclass aggregates counts, percentages, and per-game averages.
 
 \subsection{Divergence Calculator}
 
-% Describe model divergence computation.
-%
-% Cover:
-% - File: server/evaluation/model_divergence.py
-% - Class: ModelDivergence
-% - Loading state_dicts from both cluster models
-% - Per-layer cosine similarity and L2 distance
-% - Layer grouping: input_block, early_residual, middle_residual, late_residual, policy_head, value_head
-% - Aggregating into group-level divergence scores
-% - Divergence index = (1 - cosine_sim) × (1 + L2_dist_normalized)
+The \texttt{ModelDivergence} class in \texttt{server/evaluation/model\_analyzer.py} computes parameter-level divergence between cluster models. For each layer group:
+
+\begin{enumerate}
+\item Loads weight tensors from both cluster models using PyTorch state dictionaries
+\item Flattens multi-dimensional tensors to 1D vectors
+\item Computes L2 distance and normalizes by parameter count: $\text{divergence} = \|W_A - W_B\|_2 / \sqrt{|\text{params}|}$
+\item Aggregates into group-level scores (input block, early/middle/late residual, policy head, value head)
+\end{enumerate}
 
 \subsection{Weight Statistics Tracker}
 
-% Describe weight distribution analysis.
-%
-% Cover:
-% - File: server/evaluation/weight_statistics.py
-% - Class: WeightStatistics
-% - Per-layer statistics: mean, std, min, max, sparsity
-% - Dead neuron detection (weights always <0.01)
-% - Parameter change magnitude between rounds
-% - Detecting training issues (vanishing gradients, dead neurons)
+The \texttt{WeightStatistics} class in \texttt{server/evaluation/weight\_statistics.py} monitors training health by computing per-layer statistics: mean, standard deviation, min/max values, sparsity (fraction of near-zero weights), and dead neuron ratio. Parameter change magnitude between rounds indicates learning dynamics. The tracker integrates with the experiment logging system to record statistics at regular intervals, enabling longitudinal analysis of weight evolution and detection of training issues.
+
+\subsection{Integration and Orchestration}
+
+The \texttt{ExperimentTracker} coordinates evaluation scheduling during training. At configurable intervals (default every 10 rounds), it triggers evaluation by calling \texttt{ModelEvaluator.evaluate\_cluster()} for each cluster, collecting metrics, computing inter-cluster divergence, and persisting results to JSON files in the metrics store (Section~\ref{sec:storage-system}).

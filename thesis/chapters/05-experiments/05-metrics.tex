@@ -1,0 +1,77 @@
+\section{Evaluation Metrics}
+
+The evaluation methodology uses the metrics described in Section~\ref{sec:evaluation} and implemented in Chapter 4.7. This section specifies which metrics are collected, at what frequency, and what values are expected across the different experimental configurations.
+
+\subsection{Metric Collection Schedule}
+
+Metrics are collected at two different frequencies to balance evaluation thoroughness with computational cost:
+
+\textbf{Every round (rounds 1-200):}
+\begin{itemize}
+\item Playstyle evaluation: 100 self-play games per cluster analyzed for tactical scores
+\item Weight statistics: Full model parameter analysis (mean, std, sparsity, dead neurons)
+\item Cluster divergence: Pairwise L2 distance comparison between cluster models
+\item Training loss: Averaged across local client updates
+\end{itemize}
+
+\textbf{Every 10 rounds (rounds 10, 20, 30, ..., 200):}
+\begin{itemize}
+\item Move type distribution: Classification of all moves in recent games (captures, checks, quiet moves, etc.)
+\item ELO estimation: 30 games against Stockfish at three difficulty levels (1000, 1200, 1400 ELO)
+\end{itemize}
+
+This schedule ensures fine-grained tracking of playstyle and divergence evolution while limiting the computational overhead of ELO estimation and detailed move analysis.
+
+\subsection{Expected Metric Values by Experiment}
+
+Different experimental configurations should produce characteristic metric patterns that validate hypotheses:
+
+\textbf{B1 (Full Sharing):}
+\begin{itemize}
+\item Cluster divergence: Near zero ($< 0.01$) across all layer groups due to complete synchronization
+\item Tactical score difference: Minimal ($< 0.05$) between clusters despite different training data
+\item ELO: Moderate strength due to access to all 8 nodes' data
+\end{itemize}
+
+\textbf{B2 (No Sharing):}
+\begin{itemize}
+\item Cluster divergence: High ($> 0.3$) across all layer groups due to independent training
+\item Tactical score difference: Maximum ($> 0.15$) indicating strong behavioral separation
+\item ELO: Potentially lower due to only 4 nodes' data per cluster
+\item Divergence pattern: High in all layers (input, residual, heads)
+\end{itemize}
+
+\textbf{P1 (Share Early):}
+\begin{itemize}
+\item Divergence: Low in input/early residual ($< 0.05$), high in late residual and heads ($> 0.2$)
+\item Tactical score difference: Moderate to high ($0.10$-$0.15$)
+\item ELO: Good performance due to shared low-level features plus specialized high-level reasoning
+\end{itemize}
+
+\textbf{P4 (Share Backbone):}
+\begin{itemize}
+\item Divergence: Low in all residual blocks ($< 0.05$), very high in heads ($> 0.4$)
+\item Tactical score difference: High ($> 0.15$) if heads alone can encode playstyle
+\item ELO: Predicted optimal performance due to maximal knowledge sharing
+\item Divergence pattern: Clear separation with near-zero divergence in 86\% of parameters, concentrated divergence in 14\% (heads)
+\end{itemize}
+
+\textbf{P2 and P3:}
+These exploratory configurations test whether mid-level or late-level sharing is effective. P2 (share middle only) should show moderate divergence in input/early layers and heads. P3 (share late + heads) is expected to fail at playstyle separation since shared heads cannot maintain distinct move preferences.
+
+\subsection{Hypothesis Validation Metrics}
+
+Each hypothesis maps to specific metrics:
+
+\begin{itemize}
+\item \textbf{H1} (Clustered FL outperforms centralized): Compare P4 ELO vs. B1 ELO
+\item \textbf{H2} (Selective aggregation enables specialization): Verify $0 < \text{divergence}(P_i) < \text{divergence}(B2)$
+\item \textbf{H3} (Playstyle clusters emerge): Test tactical score difference between clusters, expect $p < 0.001$, $d > 0.8$
+\item \textbf{H4} (Distinct strategies): Compare move type distributions, expect significant differences in aggressive move percentage
+\item \textbf{H5} (Cross-cluster learning): Compare P4 ELO vs. B2 ELO, validate knowledge transfer benefit
+\item \textbf{H7} (Stability): Apply plateau detection to divergence and tactical score trajectories
+\item \textbf{H9} (Generalization): Cross-domain accuracy on held-out puzzles $> 60\%$
+\item \textbf{H10} (Measurable behavioral differences): Effect sizes for move type comparisons $> 0.5$
+\end{itemize}
+
+The complete statistical validation procedures are described in Section 5.7.

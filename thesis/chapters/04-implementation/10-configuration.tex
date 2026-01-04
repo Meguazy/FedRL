@@ -1,25 +1,31 @@
 \section{Configuration System}
 
-% This section describes the YAML-based configuration management.
+The configuration system provides declarative specification of all experimental parameters through YAML files, enabling reproducible experiments and systematic parameter sweeps without code modification. The implementation uses PyYAML for file parsing, dataclasses for type-safe configuration structures, and validation logic to catch errors before training begins.
 
 \subsection{Configuration Files}
 
-% Describe the configuration file structure.
-%
-% Cover:
-% - server_config.yaml: server settings, aggregation config, evaluation config
-% - cluster_topology.yaml: cluster definitions, node assignments, games per round
-% - Node configs: config/nodes/supervised_configs/node_X.yaml
-%              config/nodes/puzzle_configs/node_X.yaml
-% - PyYAML loading with validation
+Configuration files are organized hierarchically to separate concerns and enable configuration reuse across experiments. The \texttt{config/} directory contains three categories of configuration files: server configuration, cluster topology, and per-node training configurations.
+
+Server configuration files (e.g., \texttt{server\_config\_P2.yaml}) specify federated learning orchestration parameters. The \texttt{server\_config} section defines network settings including host address and port for the WebSocket server. The \texttt{orchestrator\_config} section configures aggregation behavior: \texttt{aggregation\_threshold} sets the minimum fraction of cluster nodes that must participate for aggregation to proceed (typically 0.8 for 80\% participation), \texttt{timeout\_seconds} limits waiting time for stragglers, and the shared/cluster-specific layer patterns define the selective aggregation policy. For example, configuration P2 specifies \texttt{shared\_layer\_patterns: ["res\_blocks.6.*", "res\_blocks.7.*", ..., "res\_blocks.12.*"]} to share only middle residual blocks while keeping early blocks, late blocks, and heads cluster-specific.
+
+Evaluation configuration resides in the \texttt{evaluation\_config} section, controlling when and how cluster models are evaluated. The \texttt{interval\_rounds} parameter determines evaluation frequency (typically every 10 rounds), \texttt{games\_per\_elo\_level} sets the number of games played against each Stockfish opponent, and \texttt{stockfish\_elo\_levels} lists the target opponent strengths for ELO estimation. Additional parameters include \texttt{skip\_check\_positions} (boolean controlling whether positions in check are excluded from playstyle analysis), \texttt{enable\_delta\_analysis} (boolean enabling expensive Stockfish-based delta metric computation), \texttt{delta\_sampling\_rate} (integer controlling position sampling density), and \texttt{stockfish\_depth} (search depth for delta analysis, typically 12-15 plies).
+
+Cluster topology configuration (\texttt{cluster\_topology.yaml}) defines the cluster structure and node assignments. The top-level \texttt{clusters} list contains one entry per cluster, each specifying \texttt{id} (cluster identifier used throughout the system), \texttt{playstyle} (tactical or positional, controlling data filtering), \texttt{description} (human-readable cluster purpose), \texttt{node\_count} (number of nodes in the cluster), \texttt{node\_prefix} (prefix for auto-generated node IDs), and \texttt{games\_per\_round} (target games per node per training round). The topology file also includes an optional \texttt{resume\_training} section with \texttt{enabled} flag and \texttt{starting\_round} parameter, enabling checkpoint restoration and data offset for continued training.
+
+Per-node configuration files specify training data sources and learning parameters for individual nodes. These files reside in subdirectories like \texttt{config/nodes/puzzle\_configs/} and follow the naming pattern \texttt{node\_\{id\}.yaml}. Each node configuration includes \texttt{data\_source} (path to training data files, typically PGN or puzzle JSON), \texttt{data\_type} (supervised, self-play, or puzzle), \texttt{batch\_size}, \texttt{learning\_rate}, \texttt{optimizer} (Adam, SGD, or AdamW), and data augmentation settings such as board flip probability and color swap probability.
+
+YAML loading and validation occurs during server initialization. The configuration loader uses PyYAML's \texttt{safe\_load()} function to parse YAML files into Python dictionaries, avoiding arbitrary code execution vulnerabilities from \texttt{load()}. After parsing, the loader performs schema validation: checking that required fields exist, verifying that numeric parameters fall within valid ranges (e.g., learning rate between $10^{-5}$ and $10^{-1}$), ensuring that referenced files and directories exist, and validating that layer patterns are well-formed regular expressions. Validation errors are collected and reported together, enabling users to fix multiple issues simultaneously rather than encountering them one at a time.
 
 \subsection{Configuration Dataclasses}
 
-% Describe the Python configuration structures.
-%
-% Cover:
-% - RoundConfig dataclass
-% - EvaluationConfig dataclass
-% - TrainingConfig dataclass
-% - Type safety and validation
-% - Default values and overrides
+Configuration dataclasses provide type-safe, validated representations of configuration data with IDE autocompletion support and runtime type checking. The implementation uses Python's \texttt{@dataclass} decorator with type annotations to define configuration structures that mirror the YAML schema.
+
+The \texttt{RoundConfig} dataclass encapsulates parameters controlling a single training round. Fields include \texttt{round\_num: int} (current round number), \texttt{games\_per\_node: int} (target games for each node to generate), \texttt{aggregation\_threshold: float} (minimum participation rate), \texttt{timeout: int} (maximum wait time in seconds), and \texttt{save\_checkpoint: bool} (whether to persist models after this round). The dataclass includes a \texttt{validate()} method that checks invariants such as $0 < \text{aggregation\_threshold} \leq 1$ and \texttt{games\_per\_node} $> 0$, raising \texttt{ValueError} with descriptive messages when validation fails.
+
+The \texttt{EvaluationConfig} dataclass specifies evaluation parameters as described in the configuration files section. Fields match the YAML structure: \texttt{enabled: bool}, \texttt{interval\_rounds: int}, \texttt{games\_per\_elo\_level: int}, \texttt{stockfish\_elo\_levels: List[int]}, \texttt{time\_per\_move: float}, \texttt{skip\_check\_positions: bool}, \texttt{enable\_delta\_analysis: bool}, \texttt{delta\_sampling\_rate: int}, and \texttt{stockfish\_depth: int}. The dataclass provides computed properties like \texttt{total\_games\_per\_cluster()} which returns $\text{games\_per\_elo\_level} \times \text{len}(\text{stockfish\_elo\_levels})$, simplifying downstream logic.
+
+The \texttt{TrainingConfig} dataclass represents node-level training parameters. Core fields include \texttt{batch\_size: int}, \texttt{learning\_rate: float}, \texttt{optimizer: str}, \texttt{weight\_decay: float}, \texttt{epochs\_per\_round: int}, and \texttt{data\_source: Path}. Additional fields control data processing: \texttt{flip\_board: bool}, \texttt{swap\_colors: bool}, \texttt{max\_samples\_per\_round: Optional[int]}, and \texttt{shuffle\_data: bool}. The dataclass uses \texttt{field(default=...)} to specify default values, enabling partial configuration where only non-default parameters need specification in YAML files.
+
+Type safety is enforced through type annotations and runtime checking. When constructing dataclasses from YAML dictionaries, the configuration loader calls \texttt{TrainingConfig(**yaml\_dict)}, which triggers Python's runtime type checking if strict mode is enabled. For critical parameters, the dataclasses include explicit type validation in \texttt{\_\_post\_init\_\_()} methods that convert string paths to \texttt{Path} objects, parse enum strings to enum values, and validate that lists contain homogeneous types. This validation catches configuration errors at startup rather than during training when they would cause cryptic failures.
+
+Default values and overrides enable hierarchical configuration composition. Base configuration files define defaults applicable to all experiments, while experiment-specific files override selected parameters. The configuration loader implements a merge strategy that deep-updates nested dictionaries, allowing a derived configuration to override \texttt{orchestrator\_config.timeout\_seconds} without needing to repeat all other \texttt{orchestrator\_config} fields. This composition reduces duplication across related experiments and ensures consistency for unmodified parameters.

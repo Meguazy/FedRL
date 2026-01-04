@@ -1,51 +1,51 @@
 \section{Storage System}
 
-% This section describes the persistence and experiment tracking implementation.
+The storage system implements persistent tracking of experiments, metrics, and model checkpoints throughout the training lifecycle. The implementation provides a modular architecture with abstract base classes defining storage interfaces and concrete implementations for file-based persistence. This design enables experiment reproducibility, longitudinal analysis of training dynamics, and easy integration with visualization tools.
 
 \subsection{Experiment Tracker}
 
-% Describe the main experiment tracking coordinator.
-%
-% Cover:
-% - File: server/storage/experiment_tracker.py
-% - Class: FileExperimentTracker
-% - Coordinating MetricsStore and ModelRepository
-% - Experiment metadata management
-% - Configuration snapshot storage
+The \texttt{FileExperimentTracker} class in \texttt{server/storage/experiment\_tracker.py} serves as the central coordinator for experiment lifecycle management, providing a unified interface for metrics logging, model checkpoint storage, and experiment metadata tracking. This class orchestrates the \texttt{MetricsStore} and \texttt{ModelRepository} components to ensure that all experiment artifacts are consistently organized and accessible.
+
+Experiment initialization begins when the server calls \texttt{start\_run()}, providing a configuration dictionary and optional run description. The tracker generates a unique run identifier using the format \texttt{run\_YYYYMMDD\_HHMMSS\_uuid}, where the timestamp ensures chronological ordering and the UUID suffix prevents collisions. The tracker creates a run metadata structure containing the run ID, configuration snapshot, start time, description, and status field (initially set to "running"). This metadata is serialized to JSON and stored in \texttt{.metadata/\{run\_id\}.json}, creating an audit trail of all experimental runs.
+
+Coordination between storage components occurs through dependency injection. The experiment tracker accepts \texttt{MetricsStore} and \texttt{ModelRepository} instances during construction, allowing different storage backends to be swapped without modifying tracker logic. When logging metrics, the tracker forwards metric events to the metrics store using \texttt{metrics\_store.log\_metric()}, automatically enriching events with run ID and timestamp. When saving model checkpoints, the tracker delegates to \texttt{model\_repository.save\_checkpoint()}, passing along the run ID and cluster identifiers to ensure proper organization.
+
+Configuration snapshot storage preserves the exact experimental setup for reproducibility. The complete configuration dictionary (including server settings, cluster topology, aggregation policies, and evaluation parameters) is embedded in the run metadata JSON file. This snapshot enables future reproduction of experiments by loading the saved configuration and verifying that code changes have not altered behavior. The tracker also records git commit hashes (if available) to link experiment results with specific code versions.
+
+Experiment completion is managed through \texttt{end\_run()}, which updates the run metadata with end time, final status (completed, failed, or interrupted), and optional summary results. The tracker computes experiment duration, counts total training rounds completed, and aggregates final metrics such as achieved ELO ratings and playstyle divergence. This summary is appended to the metadata file, providing quick access to experiment outcomes without requiring full metric file parsing.
 
 \subsection{Metrics Store}
 
-% Describe metrics logging implementation.
-%
-% Cover:
-% - File: server/storage/file_metrics_store.py
-% - Class: FileMetricsStore (implements MetricsStore interface)
-% - Per-round metric logging to JSON files
-% - Metrics categories: training, evaluation, divergence, weight_statistics, move_types
-% - File structure: experiments/{exp_id}/metrics/{round_num}_{metric_type}.json
+The \texttt{FileMetricsStore} class in \texttt{server/storage/file\_metrics\_store.py} implements append-only logging of training and evaluation metrics using the JSONL (JSON Lines) format. This storage strategy balances write performance (append-only files are fast), query flexibility (each line is valid JSON), and compression efficiency (gzip compresses JSONL well due to repeated field names).
+
+Storage organization follows a hierarchical structure rooted at \texttt{storage/metrics/\{run\_id\}/}. The primary storage file is \texttt{events.jsonl.gz}, containing all metric events in chronological order. Each event is a JSON object with fields including \texttt{timestamp}, \texttt{round\_num}, \texttt{entity\_type} (node, cluster, or global), \texttt{entity\_id}, \texttt{metric\_name}, and \texttt{value}. The append-only nature ensures thread safety without locks (file system append operations are atomic) and provides a complete temporal history suitable for time-series analysis.
+
+Optional entity-organized views improve query performance for entity-specific metrics. When \texttt{organize\_by\_entity} is enabled, the store creates per-entity JSONL files under \texttt{by\_entity/\{entity\_type\}/\{entity\_id\}.jsonl.gz}. For example, tactical cluster metrics are stored in \texttt{by\_entity/cluster/cluster\_tactical.jsonl.gz}. This organization enables fast retrieval of all metrics for a specific cluster without scanning the global events file, at the cost of duplicate storage (events are written to both global and entity-specific files).
+
+Compression reduces storage requirements by approximately 5-7× through gzip compression at level 6. The metric store writes events to in-memory buffers, periodically flushing to disk via \texttt{gzip.open()}. JSON field names (which repeat for every event) compress exceptionally well, and numeric metric values benefit from dictionary-based compression. The compression level 6 strikes a balance between compression ratio and CPU overhead, avoiding the diminishing returns of higher compression levels.
+
+Automatic indexing supports efficient queries over large metric datasets. The store maintains an index file \texttt{index.json} containing metadata about available metrics: discovered metric names, entity types and IDs, round number ranges, and file offsets for the first occurrence of each metric. When queries arrive, the store consults the index to determine which file regions to scan, avoiding full file reads. The index updates incrementally as new metrics are logged, using a lightweight scanning process that reads only recently appended data.
 
 \subsection{Model Repository}
 
-% Describe model checkpoint management.
-%
-% Cover:
-% - File: server/storage/local_model_repository.py
-% - Class: LocalModelRepository (implements ModelRepository interface)
-% - Saving cluster models: torch.save(state_dict, path)
-% - Checkpoint interval configuration
-% - File structure: experiments/{exp_id}/models/round_{num}_cluster_{id}.pt
-% - Loading checkpoints for resume training
+The \texttt{LocalModelRepository} class in \texttt{server/storage/local\_model\_repository.py} manages persistent storage of PyTorch model checkpoints with versioning, integrity verification, and automatic cleanup. The repository organizes checkpoints by run ID and cluster ID, enabling independent version tracking for each cluster's model evolution.
+
+Checkpoint storage uses PyTorch's native serialization via \texttt{torch.save(state\_dict, path)}, which employs Python's pickle protocol to serialize tensors efficiently. Each checkpoint is saved to \texttt{storage/models/\{run\_id\}/\{cluster\_id\}/round\_\{num:04d\}.pt}, where the zero-padded round number ensures lexicographic sorting matches chronological order. Accompanying metadata files \texttt{round\_\{num:04d\}\_metadata.json} record checkpoint provenance: timestamp, training loss, validation metrics, optimizer state (if saved), and data generation information.
+
+Checksum verification ensures checkpoint integrity during storage and retrieval. When \texttt{compute\_checksums} is enabled, the repository computes SHA256 hashes of checkpoint files immediately after writing and stores the hashes in \texttt{checksums.json}. During checkpoint loading, the repository recomputes the hash and compares against the stored value, detecting silent corruption from disk errors or incomplete writes. If a checksum mismatch occurs, the repository raises an error and optionally falls back to the previous checkpoint.
+
+Version tracking through symbolic links provides convenient access to important checkpoints. The repository maintains \texttt{latest.pt} as a symlink to the most recent checkpoint, enabling quick model loading without round number specification. When \texttt{keep\_best} is enabled, the repository also maintains \texttt{best.pt} pointing to the checkpoint with the lowest validation loss (or highest ELO rating, depending on configuration). These symlinks simplify checkpoint selection for evaluation and deployment.
+
+Automatic cleanup prevents unbounded storage growth during long training runs. When \texttt{keep\_last\_n} is configured, the repository deletes checkpoints older than the last N rounds after each save, retaining only recent history. The cleanup logic protects the "best" checkpoint from deletion (if \texttt{keep\_best} is true), ensuring that optimal models are preserved regardless of subsequent performance degradation. Cleanup occurs asynchronously to avoid blocking checkpoint saves.
 
 \subsection{Plugin System}
 
-% Describe the metric plugin architecture.
-%
-% Cover:
-% - File: server/storage/plugins/metric_registry.py
-% - Class: MetricRegistry
-% - Plugin registration and execution
-% - Available plugins:
-%   * PlaystyleMetricPlugin (playstyle_metric_plugin.py)
-%   * DiversityMetrics (diversity_metrics.py)
-%   * SystemMetrics (system_metrics.py)
-% - Extensibility for custom metrics
+The \texttt{MetricRegistry} class in \texttt{server/storage/plugins/metric\_registry.py} implements an extensible plugin architecture for custom metric computation. This registry pattern allows new metrics to be added without modifying core evaluation code, supporting experiment-specific analyses and integration with external tools.
+
+Plugin registration follows a simple interface: plugins implement a \texttt{compute()} method accepting context (cluster models, evaluation results, round number) and returning a dictionary of computed metrics. The registry maintains a dictionary mapping plugin names to plugin instances, populated during initialization through explicit registration calls. For example, \texttt{registry.register("playstyle", PlaystyleMetricPlugin())} makes the playstyle plugin available for execution.
+
+Available plugins provide specialized metrics beyond the core evaluation suite. The \texttt{PlaystyleMetricPlugin} in \texttt{playstyle\_metric\_plugin.py} integrates with the playstyle metrics calculator to compute tactical scores, move type distributions, and opening diversity for evaluation games. The \texttt{DiversityMetrics} plugin in \texttt{diversity\_metrics.py} quantifies cluster behavioral divergence through statistical tests on playstyle distributions. The \texttt{SystemMetrics} plugin in \texttt{system\_metrics.py} tracks computational resource usage including CPU time, memory consumption, and GPU utilization per training round.
+
+Plugin execution occurs at configurable intervals during training. After completing an evaluation round, the server iterates through all registered plugins, calling their \texttt{compute()} methods with current experiment state. Plugins return metrics as dictionaries with string keys and numeric values, which the registry merges into the global metrics stream. This design enables plugins to access any experiment data (models, metrics history, configuration) while maintaining loose coupling through the standardized interface.
+
+Extensibility for custom metrics is achieved through plugin subclassing. Users can create new plugins by inheriting from \texttt{MetricPlugin} base class and implementing the \texttt{compute()} method. The registry automatically discovers and registers plugins placed in the \texttt{server/storage/plugins/} directory, or plugins can be registered programmatically via the API. This extensibility enables domain-specific metrics (e.g., chess-specific tactical motif detection), integration with external evaluation frameworks, and custom analysis pipelines without forking the codebase.

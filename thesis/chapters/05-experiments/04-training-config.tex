@@ -1,0 +1,72 @@
+\section{Training Configuration}
+
+All experiments use identical training configurations to ensure fair comparison, with the only differences being the layer sharing policies (B1, B2, P1-P4). This section specifies the hyperparameters, data configuration, and model architecture used throughout the experimental evaluation.
+
+\subsection{Model Architecture}
+
+All experiments use the AlphaZero-style convolutional residual network described in Section~\ref{sec:network-architecture}. The architecture consists of:
+
+\begin{itemize}
+\item Input block: Single convolutional layer with batch normalization processing the 119-plane board representation
+\item 19 residual blocks: Each with two $3 \times 3$ convolutional layers, 256 filters, batch normalization, and skip connections
+\item Policy head: Convolutional layer and fully connected layer outputting 4,672 move logits
+\item Value head: Convolutional layer and fully connected layers outputting a scalar position evaluation in [-1, 1]
+\end{itemize}
+
+The model contains approximately 11 million parameters: 20K in the input block, 9.5M in residual blocks, and 2M in the heads. This configuration provides sufficient capacity for learning chess at advanced amateur level while remaining computationally feasible for federated training. The architecture is identical across all experiments—only the aggregation strategy differs.
+
+\subsection{Training Hyperparameters}
+
+Each experiment runs for 200 training rounds, with each round consisting of local client training followed by model aggregation according to the experiment's sharing policy.
+
+\textbf{Federated learning parameters:}
+\begin{itemize}
+\item Total rounds: 200
+\item Nodes per cluster: 4 tactical + 4 positional (8 total)
+\item Puzzles per node per round: 400 (3,200 puzzles total per round)
+\item Local training epochs: 5 epochs over the 400 puzzles before aggregation
+\item Aggregation threshold: 0.8 (80\% of cluster nodes must participate)
+\item Round timeout: 1,200 seconds (20 minutes)
+\end{itemize}
+
+The aggregation threshold of 0.8 requires at least 4 out of 4 nodes in each cluster to participate (with some tolerance for occasional failures). If fewer nodes participate in a round, aggregation is skipped and models retain their previous weights.
+
+\textbf{Neural network optimization:}
+\begin{itemize}
+\item Optimizer: Adam with default parameters ($\beta_1 = 0.9$, $\beta_2 = 0.999$)
+\item Learning rate: $1 \times 10^{-3}$ (constant, no decay schedule)
+\item Batch size: 64 puzzles
+\item Weight decay: $1 \times 10^{-4}$ for L2 regularization
+\item Gradient clipping: Not used (Adam's adaptive learning rate provides sufficient stability)
+\end{itemize}
+
+\textbf{Loss function:}
+The training objective combines policy loss and value loss with equal weights:
+\begin{equation}
+\mathcal{L} = \mathcal{L}_{\text{policy}} + \mathcal{L}_{\text{value}}
+\end{equation}
+
+where $\mathcal{L}_{\text{policy}}$ is the cross-entropy loss between the predicted move distribution and the target move, and $\mathcal{L}_{\text{value}}$ is the mean squared error between the predicted position value and the puzzle outcome (1.0 for correct solutions).
+
+\subsection{Data Configuration}
+
+Training data comes from the Lichess puzzle database, a public collection of over 2 million chess puzzles with verified solutions and thematic tags. Puzzles are pre-filtered into disjoint tactical and positional sets as described in Section~\ref{sec:data-filtering}.
+
+\textbf{Tactical cluster puzzle themes:} fork, pin, skewer, discovered attack, double attack, sacrifice, deflection, attraction, removal of defender, interference, clearance, x-ray, zwischenzug. These puzzles emphasize sharp tactical calculations and concrete forcing variations.
+
+\textbf{Positional cluster puzzle themes:} endgame techniques (rook endgames, pawn endgames, minor piece endgames), positional advantage, pawn structure, space advantage, weak squares, outpost, piece activity. These puzzles emphasize long-term planning and strategic understanding.
+
+The puzzle sets are completely disjoint—no puzzle appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than from shared examples.
+
+\textbf{Data sampling and augmentation:}
+Each node randomly samples 400 puzzles per round from its cluster's puzzle set (sampling with replacement). Over 200 rounds, each node trains on 80,000 puzzle positions, providing sufficient data for convergence. Data augmentation is applied through board flips (horizontal reflection with move translation) and color swaps (playing from black's perspective), effectively doubling the training data size and improving generalization to symmetrically equivalent positions.
+
+\textbf{Puzzle preprocessing:}
+Each puzzle is converted into a training example consisting of:
+\begin{itemize}
+\item Input: 119-plane tensor representation of the puzzle position (Section~\ref{sec:network-architecture})
+\item Policy target: One-hot encoding of the correct move (all probability mass on the solution move)
+\item Value target: 1.0 (assuming the puzzle solution leads to a winning outcome)
+\end{itemize}
+
+This supervised learning approach trains the network to predict expert-level moves in tactical and positional situations, providing a foundation for subsequent self-play reinforcement learning if desired.

@@ -1,83 +1,33 @@
 \section{Evaluation Methodology}
 \label{sec:evaluation}
 
-Our evaluation framework measures three distinct aspects of the federated learning system: playing strength, playstyle preservation, and cluster divergence. These metrics allow us to assess whether selective aggregation achieves the dual objectives of maintaining competitive playing ability while preserving distinct tactical and positional characteristics. Evaluations are conducted periodically during training (every 10 rounds by default) to track the evolution of both strength and style across different aggregation configurations. Each evaluation generates approximately 30 games per cluster through matches against calibrated opponents, with each game analyzed in depth to extract over 40 distinct metrics spanning position evaluation, move classification, opening diversity, and strategic patterns.
+Our evaluation framework measures three distinct aspects of the federated learning system: playing strength, playstyle preservation, and cluster divergence. These metrics assess whether selective aggregation achieves the dual objectives of maintaining competitive playing ability while preserving distinct tactical and positional characteristics. Evaluations are conducted periodically during training to track the evolution of both strength and style across different aggregation configurations.
 
 \subsection{Playing Strength Evaluation}
 
-Playing strength is quantified through ELO rating estimation based on match results against calibrated Stockfish opponents at multiple difficulty levels. This approach provides an objective, standardized measure of chess ability that can be compared across different training configurations and aggregation strategies.
+Playing strength is quantified through ELO rating estimation based on match results against calibrated Stockfish opponents at multiple difficulty levels (1000, 1200, and 1400 ELO). For each cluster, we play a series of evaluation matches with alternating colors, yielding 30 total evaluation games per cluster per evaluation round.
 
-For each cluster, we play a series of evaluation matches against Stockfish engines configured to operate at specific ELO ratings. The default evaluation protocol uses three opponent strengths: 1000 ELO (novice level), 1200 ELO (beginner level), and 1400 ELO (intermediate level). These ratings span the range where we expect our models to perform during early to mid training, providing meaningful win/loss signals without overwhelming the model with opponents far beyond its current strength. At each ELO level, we play 10 games with alternating colors: 5 games where the AI plays white (receiving first-move advantage) and 5 games where the AI plays black. This yields 30 total evaluation games per cluster per evaluation round, providing sufficient statistical power to estimate playing strength while remaining computationally feasible.
-
-Stockfish engine configuration varies based on the target ELO rating to accurately simulate human players at different skill levels. For target ratings below 1320 ELO, we use Stockfish's skill level setting (ranging from 0 to 20) combined with search depth limiting. The skill level is computed as $\max(0, \min(20, \lfloor (R_{\text{target}} - 800) / 100 \rfloor))$, and depth is limited to 1 ply for ratings below 900, 2 ply for ratings 900-1099, and 3 ply for ratings 1100-1319. For target ratings at or above 1320 ELO, we enable Stockfish's UCI strength limiting mode and directly specify the target ELO, allowing the engine to self-regulate its playing strength through controlled evaluation function approximations and occasional suboptimal move selection. All evaluation games use a time control of 0.1 seconds (100 milliseconds) per move for the AI model, providing sufficient time for neural network inference and move selection while enabling rapid evaluation. Stockfish operates under its configured depth or skill limitations rather than explicit time controls.
-
-Match results are recorded as wins (AI achieves checkmate or opponent resigns), draws (stalemate, insufficient material, threefold repetition, or fifty-move rule), and losses (AI is checkmated or resigns). Each game outcome is converted to a score using the standard ELO convention: 1 point for a win, 0.5 points for a draw, and 0 points for a loss. For each opponent level, we compute win rate, draw rate, and loss rate as percentages of the 10 games played at that level, providing insight into the AI's performance profile against opponents of different strengths.
-
-ELO estimation uses an iterative approximation algorithm that finds the single ELO rating that best explains the observed match results across all opponent levels. For a candidate ELO rating $R_{\text{test}}$ and an opponent with known rating $R_{\text{opp}}$, the expected score (probability of winning plus half the probability of drawing) is computed using the standard ELO formula:
+ELO estimation uses the standard formula where the expected score between two players is:
 
 \begin{equation}
 E(R_{\text{test}}, R_{\text{opp}}) = \frac{1}{1 + 10^{(R_{\text{opp}} - R_{\text{test}})/400}}
 \end{equation}
 
-This formula reflects the principle that a 400-point ELO difference corresponds to an expected score of approximately 0.91 (91\% win expectation for the higher-rated player), while equal ratings yield an expected score of 0.5 (50\% win expectation).
-
-We test candidate ratings from 800 to 2400 ELO in increments of 25 ELO points, spanning the full range of plausible ratings for our models. For each candidate rating $R_{\text{test}}$, we compute the total squared error between the expected scores (based on the ELO formula) and the actual scores (observed from match results) across all $n$ opponent levels:
-
-\begin{equation}
-\text{Error}(R_{\text{test}}) = \sum_{i=1}^{n} \left( E(R_{\text{test}}, R_{\text{opp},i}) - \frac{S_i}{G_i} \right)^2
-\end{equation}
-
-where $S_i$ is the total score achieved against opponent level $i$ (wins plus 0.5 times draws) and $G_i$ is the number of games played against that opponent (10 in our default configuration). The estimated ELO $\hat{R}$ is the candidate rating that minimizes this squared error:
-
-\begin{equation}
-\hat{R} = \operatorname*{arg\,min}_{R_{\text{test}} \in \{800, 825, 850, \ldots, 2400\}} \text{Error}(R_{\text{test}})
-\end{equation}
-
-This approach finds the rating that provides the best overall fit to the observed performance across all opponent strengths, accounting for the AI's entire performance profile rather than results against a single opponent.
-
-To quantify uncertainty in the ELO estimate, we compute a confidence range that decreases as more evaluation games are played. The confidence interval width (in ELO points) is given by:
-
-\begin{equation}
-\Delta R = \max(50, 400 - 10 \cdot G_{\text{total}})
-\end{equation}
-
-where $G_{\text{total}} = \sum_{i=1}^{n} G_i$ is the total number of evaluation games across all opponent levels. With our default of 30 evaluation games ($3$ opponents $\times$ 10 games each), the confidence range is $\pm 100$ ELO. This reflects the principle that ELO estimates from limited game samples have inherent uncertainty due to the stochastic nature of game outcomes and the discrete sampling of opponent strengths. The confidence interval narrows to a minimum of $\pm 50$ ELO as the number of evaluation games increases, acknowledging that even with many games, there remains some irreducible uncertainty in rating estimation. When comparing configurations, we consider ELO estimates statistically distinguishable if their confidence intervals do not overlap.
+We estimate the cluster's ELO rating by finding the rating that best fits the observed match results across all opponent levels using least squares optimization. Confidence intervals are computed based on the number of evaluation games, with our default of 30 games providing a $\pm 100$ ELO confidence range. Implementation details including Stockfish configuration, time controls, and specific computational procedures are described in Chapter 4.
 
 \subsection{Playstyle Metrics}
 
-Playstyle characterization quantifies the tactical versus positional nature of each cluster's play through comprehensive analysis of self-play games and evaluation games. We extract over 30 distinct metrics from each game, covering position evaluation, move selection patterns, pawn structure, center control, opening diversity, and critical decision-making. These metrics are aggregated across all analyzed games to produce a cluster-level playstyle profile.
+Playstyle characterization quantifies the tactical versus positional nature of each cluster's play through comprehensive analysis of self-play and evaluation games. The primary metric is the \textbf{tactical score}, a normalized composite metric ranging from 0.0 (purely positional) to 1.0 (purely tactical).
 
-\subsubsection{Tactical Score Computation}
+The tactical score integrates three normalized component metrics:
 
-The tactical score is a normalized composite metric that integrates multiple features indicative of tactical or positional play. It ranges from 0.0 (purely positional) to 1.0 (purely tactical), enabling quantitative comparison of playing styles across clusters and configurations.
+\textbf{Attacks metric}: Measures the total material value of opponent pieces under attack, normalized by the maximum possible attacked material (39 points).
 
-Position analysis focuses on the middlegame phase where strategic differences are most pronounced. We analyze positions from move 6 through move 25 (plies 12-50), excluding the opening phase where moves are often book knowledge and the endgame phase where limited material constrains tactical opportunities. Positions where either player is in check are optionally skipped to avoid distortions from forced tactical sequences, as check positions may inflate tactical metrics due to the reduced set of legal responses.
+\textbf{Moves metric}: Measures the average number of legal moves available, normalized by typical middlegame move counts (40 moves).
 
-Three normalized component metrics contribute to the tactical score, each capturing a distinct aspect of tactical versus positional play:
+\textbf{Material metric}: Measures total material captured during the opening and early middlegame, normalized by significant exchange thresholds (20 points).
 
-\textbf{Attacks Metric}: This measures the total material value of opponent pieces under attack, reflecting the degree to which the player targets enemy forces with aggressive piece placement. For each analyzed position, we identify all opponent pieces that are attacked (i.e., can be legally captured by at least one of the player's pieces) and sum their material values using standard chess valuations: pawns = 1 point, knights = 3 points, bishops = 3 points, rooks = 5 points, queens = 9 points. The king is not included in attacked material calculations as it cannot be captured. The attacked material sum is averaged across all analyzed positions in the game, then normalized by dividing by 39 points (the maximum possible attacked material: one queen, two rooks, two bishops, two knights, assuming all pawns have been promoted or captured). The attacks metric is thus:
-
-\begin{equation}
-\text{AttacksMetric} = \frac{1}{N} \sum_{t=1}^{N} \frac{\sum_{p \in \text{attacked}(t)} \text{value}(p)}{39}
-\end{equation}
-
-where $N$ is the number of analyzed positions, $\text{attacked}(t)$ is the set of opponent pieces under attack at position $t$, and $\text{value}(p)$ is the material value of piece $p$.
-
-\textbf{Moves Metric}: This measures the average number of legal moves available across analyzed positions, capturing the mobility and activity level of the position. Tactical positions typically feature active piece placement with multiple attacking options, yielding high legal move counts (often 35-45 legal moves). Positional positions may have fewer immediately forcing options, with pieces coordinating for long-term advantage rather than immediate threats. We count the number of legal moves at each analyzed position, average across all positions, and normalize by dividing by 40 (a typical middlegame move count for active positions), capping the result at 1.0 to prevent positions with exceptionally high mobility from dominating the metric:
-
-\begin{equation}
-\text{MovesMetric} = \min\left(1.0, \frac{1}{N} \sum_{t=1}^{N} \frac{|\text{LegalMoves}(t)|}{40} \right)
-\end{equation}
-
-where $|\text{LegalMoves}(t)|$ is the count of legal moves at position $t$.
-
-\textbf{Material Metric}: This measures the total material captured during the game up through move 25 (ply 50), reflecting the propensity for tactical exchanges and piece sacrifices. Tactical players engage in frequent exchanges to create threats and simplify positions with concrete advantages, while positional players may avoid early exchanges to maintain strategic complexity and piece coordination. We sum the material value of all pieces captured from move 1 through move 25 (covering the opening through early middlegame), normalize by dividing by 20 points (representing significant material exchange, roughly two rooks or a queen plus minor pieces), and cap at 1.0:
-
-\begin{equation}
-\text{MaterialMetric} = \min\left(1.0, \frac{\sum_{\text{move}=1}^{25} \text{CapturedMaterial}(\text{move})}{20} \right)
-\end{equation}
-
-The three component metrics are combined into a single tactical score through weighted averaging. If material was captured during the analyzed portion of the game (MaterialMetric $> 0$), all three metrics contribute equally. If no material was captured (rare, but possible in highly closed positions or very short games), only the attacks and moves metrics are averaged, as the absence of captures does not necessarily indicate non-tactical play (e.g., a game could feature strong attacks that were successfully defended without exchanges):
+These components are combined through weighted averaging:
 
 \begin{equation}
 \text{TacticalScore} =
@@ -87,194 +37,40 @@ The three component metrics are combined into a single tactical score through we
 \end{cases}
 \end{equation}
 
-The tactical score is rounded to three decimal places and classified into one of five discrete categories based on threshold ranges: Very Tactical (TacticalScore $> 0.70$), Tactical ($0.65 \leq \text{TacticalScore} \leq 0.70$), Balanced ($0.60 \leq \text{TacticalScore} < 0.65$), Positional ($0.50 \leq \text{TacticalScore} < 0.60$), and Very Positional (TacticalScore $< 0.50$). These thresholds were established through empirical analysis of human games from the Lichess database, with tactical openings (e.g., Sicilian Dragon, King's Gambit) typically scoring above 0.65 and positional openings (e.g., Queen's Gambit Declined, Nimzo-Indian) typically scoring below 0.60.
+For each cluster, we report the mean tactical score, standard deviation, and distribution across five classification categories: Very Tactical ($> 0.70$), Tactical ($0.65$-$0.70$), Balanced ($0.60$-$0.65$), Positional ($0.50$-$0.60$), and Very Positional ($< 0.50$).
 
-For each cluster, we report the mean tactical score across all analyzed games, the standard deviation (indicating consistency of playstyle), the minimum and maximum scores (indicating range), and the distribution of games across the five classification categories. A cluster with strong tactical characteristics should exhibit a mean tactical score above 0.65 with most games classified as Tactical or Very Tactical, while a positional cluster should score below 0.60 with most games classified as Positional or Very Positional.
+Beyond the aggregate tactical score, we perform detailed \textbf{move-level classification} to quantify specific playing patterns. Each move is classified into categories including captures, checks, pawn advances, quiet moves, and aggressive moves (union of captures and checks). We compute the percentage of moves in each category, enabling both absolute and relative comparisons between clusters.
 
-\subsubsection{Move Type Classification and Distribution}
-
-Beyond the aggregate tactical score, we perform detailed move-level classification to quantify specific move selection patterns. Each move in each analyzed game is classified into multiple potentially overlapping categories based on its chess properties. The primary move type categories are:
-
-\textbf{Captures}: Moves that remove an opponent piece from the board (board.is\_capture(move) returns true). Includes both equal exchanges (trading pieces of equal value), favorable captures (winning material), and sacrifices (capturing less valuable pieces while offering more valuable pieces for recapture). Capture rate is a strong indicator of tactical style, as tactical players actively seek opportunities to win material or create tactical complications through forcing exchanges.
-
-\textbf{Checks}: Moves that place the opponent's king in check, requiring an immediate defensive response. Checks are forcing moves that limit the opponent's options and often initiate tactical sequences. Frequent checking can indicate aggressive, tactical play, though excessive checking without purpose may be inefficient.
-
-\textbf{Pawn Advances}: Pawn moves that are not captures (i.e., pushing pawns forward rather than capturing diagonally). Pawn advances can serve tactical purposes (advancing passed pawns, opening lines for pieces, restricting opponent piece mobility) or positional purposes (controlling space, preparing piece maneuvers, establishing pawn chains). The context and timing of pawn advances distinguish tactical from positional usage.
-
-\textbf{Piece Development}: Moves that develop knights or bishops (moving them from their starting squares to active squares) during the opening phase (plies $\leq 20$, corresponding to the first 10 moves). Efficient piece development is a fundamental principle in the opening, establishing piece activity and preparing for middlegame operations. Development rate can indicate opening knowledge and adherence to chess principles.
-
-\textbf{Castling}: Moves that execute kingside (O-O) or queenside (O-O-O) castling, simultaneously moving the king to safety and activating a rook. Castling is typically performed in the opening or early middlegame. The timing and frequency of castling can indicate opening style and risk tolerance.
-
-\textbf{Quiet Moves}: Moves that are neither captures nor checks. Quiet moves include piece repositioning, pawn advances, and preparatory moves that improve position without immediate forcing tactics. A high quiet move percentage may indicate positional play focused on gradual improvement, though quiet moves are also present in tactical sequences (e.g., quiet intermediate moves in combinations).
-
-\textbf{Aggressive Moves}: The union of captures and checks, representing moves that directly threaten opponent material or king safety. Aggressive move percentage is a key discriminator between tactical and positional styles, as tactical players consistently create threats while positional players may prioritize long-term advantages.
-
-For each move type category, we compute three statistics across all analyzed games for each cluster: total count (the number of moves of that type across all games), percentage (the proportion of all moves that fall into that category), and average per game (the mean number of moves of that type in each game). These statistics enable both absolute comparison (e.g., tactical cluster plays 150 total captures vs.~positional cluster plays 100) and relative comparison (e.g., captures constitute 25\% of tactical cluster moves vs.~20\% of positional cluster moves).
-
-\subsubsection{Positional Structure Metrics}
-
-Several metrics quantify aspects of position structure and piece coordination that characterize positional understanding:
-
-\textbf{Center Control}: The central four squares (d4, d5, e4, e5) are the most important in chess, controlling these squares provides piece mobility, attack lines, and spatial advantage. We measure center control by counting the number of pieces (excluding pawns occupying the center, which are counted separately) that attack each central square. For each analyzed position, we compute:
-
-\begin{equation}
-\text{CenterControl}_{\text{White}} = \sum_{sq \in \{d4, d5, e4, e5\}} |\{p : p \in \text{WhitePieces}, p \text{ attacks } sq\}|
-\end{equation}
-
-and similarly for Black. We average center control across all analyzed positions and report separate values for each color when the AI is analyzed. High center control indicates active piece placement and adherence to strategic principles regarding central domination.
-
-\textbf{Pawn Structure Metrics}: Pawns form the strategic skeleton of the position, and pawn structure weaknesses often determine long-term evaluation. We track three pawn structure metrics:
-
-\textit{Average Pawn Rank}: The mean rank (1-8 from White's perspective, 8-1 from Black's) of all pawns for the analyzed player. Higher average pawn rank indicates advanced pawns, which can be either aggressive (in tactical play, pushing passed pawns) or strategic (in positional play, controlling space).
-
-\begin{equation}
-\text{AvgPawnRank} = \frac{1}{|\text{Pawns}|} \sum_{p \in \text{Pawns}} \text{Rank}(p)
-\end{equation}
-
-\textit{Isolated Pawns}: Pawns with no friendly pawns on adjacent files. Isolated pawns are often weak as they cannot be defended by other pawns and may become targets. Positional players typically avoid creating isolated pawns unless they provide compensation (e.g., open files for rooks). We count isolated pawns at each analyzed position and report the average:
-
-\begin{equation}
-\text{IsolatedPawns}(t) = |\{p \in \text{Pawns}_t : \text{File}(p-1) \text{ and File}(p+1) \text{ have no friendly pawns}\}|
-\end{equation}
-
-\textit{Doubled Pawns}: Multiple pawns on the same file, created when a pawn captures and another pawn advances to the same file. Doubled pawns are generally considered weak as they reduce pawn mobility and create targets. We count doubled pawns by identifying files with two or more pawns:
-
-\begin{equation}
-\text{DoubledPawns}(t) = \sum_{f \in \{a,b,c,d,e,f,g,h\}} \max(0, |\text{Pawns}_t \text{ on file } f| - 1)
-\end{equation}
-
-\textbf{Move Diversity}: We track the number of unique destination squares used across all moves in a game. High move diversity indicates flexible piece placement and exploration of multiple strategic plans, while low diversity may indicate repetitive maneuvering or limited piece activity. Move diversity ratio is computed as:
-
-\begin{equation}
-\text{MoveDiversityRatio} = \frac{\text{UniqueDestinationSquares}}{\text{TotalMoves} / 2}
-\end{equation}
-
-normalized by the number of ply-pairs to account for game length.
-
-\subsubsection{Delta Analysis: Tipping Point Metric}
-
-The delta metric quantifies the criticality of positions encountered, measuring how much evaluation changes based on move choice. Positions with large delta values represent critical tipping points where the correct move maintains or increases advantage while alternative moves lead to significant disadvantage. Positions with small delta values have multiple reasonable continuations with similar evaluations, reflecting strategic flexibility.
-
-Delta analysis uses the Stockfish chess engine configured at depth 12 (12-ply search) with multi-PV mode set to 2, requesting the engine to report evaluations for the top two moves. For each analyzed position $t$, Stockfish provides:
-- The best move $m_1$ with evaluation score $s_1$ (in centipawns, where 100 centipawns = 1 pawn)
-- The second-best move $m_2$ with evaluation score $s_2$
-
-The delta is defined as the absolute difference between these evaluations, converted to pawn units:
-
-\begin{equation}
-\delta(t) = \frac{|s_1 - s_2|}{100}
-\end{equation}
-
-We sample positions for delta analysis rather than analyzing every position due to computational cost. Sampling focuses on the middlegame phase (plies 15-40) where tactical and positional decisions are most consequential. The default sampling rate is every third position (sample every position $t$ where $t \bmod 3 = 0$ and $15 \leq t \leq 40$), balancing statistical coverage against evaluation time. For each cluster, we report:
-- Average delta $\bar{\delta} = \frac{1}{N_{\text{sampled}}} \sum_{t} \delta(t)$
-- Maximum delta $\max_t \delta(t)$ (the most critical single position)
-- Minimum delta $\min_t \delta(t)$ (the least critical position)
-- Number of positions sampled $N_{\text{sampled}}$
-
-Tactical clusters are expected to show higher average delta values, as tactical positions often feature forcing sequences where the correct move wins material or achieves checkmate while alternatives lose. Positional clusters may show lower delta values, as positional play involves gradual maneuvering where multiple plans have similar evaluations.
-
-\subsubsection{Opening Diversity and Classification}
-
-Opening diversity measures the variety of opening systems played, indicating whether the cluster has developed a narrow repertoire (playing the same openings repeatedly) or a broad repertoire (exploring multiple opening systems). We classify openings using the Encyclopedia of Chess Openings (ECO) code system, which assigns alphanumeric codes (A00-E99) to opening variations based on the initial move sequence.
-
-For each game, we extract the opening moves (typically the first 3-5 moves by each player) and map the move sequence to its corresponding ECO code and opening name using a database of ECO classifications. We maintain a frequency count of how many times each opening appears in the cluster's games:
-
-\begin{equation}
-\text{OpeningFrequency}[ECO_i] = \text{count of games with opening } ECO_i
-\end{equation}
-
-From the frequency distribution, we identify the top 5-10 most frequently played openings and report their ECO codes, names, and occurrence counts. High concentration on a few openings suggests specialized opening preparation (common in focused training), while broad distribution across many openings suggests diverse strategic exploration.
-
-\subsubsection{Game Phase-Specific Analysis}
-
-We divide games into three phases based on move number and analyze legal move counts separately for each phase:
-- Opening: Plies 1-12 (moves 1-6)
-- Middlegame: Plies 13-40 (moves 7-20)
-- Endgame: Plies 41+ (moves 21+)
-
-For each phase, we compute the average number of legal moves available across all positions in that phase. Opening positions typically have moderate move counts (20-30) as piece development proceeds. Middlegame positions often have the highest move counts (35-50) with active pieces and complex tactics. Endgame positions have fewer moves (15-30) due to reduced material. Differences in phase-specific move counts can indicate stylistic tendencies: tactical players may have higher middlegame move counts due to active piece placement, while positional players may maintain mobility across all phases through piece coordination.
+Additional playstyle metrics include \textbf{center control} (number of pieces attacking central squares d4, d5, e4, e5), \textbf{pawn structure analysis} (isolated pawns, doubled pawns, average pawn rank), \textbf{opening diversity} (variety of opening systems using ECO codes), and \textbf{delta analysis} (position criticality measured by evaluation differences between best and second-best moves). These metrics provide comprehensive characterization of strategic and tactical tendencies. Detailed computation procedures and sampling strategies are described in Chapter 4.
 
 \subsection{Cluster Divergence Metrics}
 
-Cluster divergence quantifies the degree to which tactical and positional clusters have developed distinct internal representations, validating that selective aggregation successfully preserves playstyle-specific features. We measure divergence at both the parameter level (comparing neural network weights) and the behavioral level (comparing playstyle metrics).
+Cluster divergence quantifies the degree to which clusters have developed distinct internal representations. We measure divergence at both the parameter level (comparing neural network weights) and behavioral level (comparing playstyle metrics).
 
 \subsubsection{Parameter-Level Divergence}
 
-Parameter-level divergence compares the neural network weights between the tactical and positional cluster models on a layer-by-layer basis. For each layer or group of layers, we extract the weight tensors $W_A$ (tactical cluster) and $W_B$ (positional cluster) and compute three complementary distance metrics.
-
-\textbf{Cosine Similarity} measures the angle between weight vectors, capturing directional alignment regardless of magnitude. Weight tensors are flattened into vectors and their dot product is normalized:
+Parameter-level divergence compares neural network weights between cluster models on a layer-by-layer basis. For each layer group, we compute the L2 distance between weight tensors, normalized by parameter count to enable fair comparison across layers of different sizes:
 
 \begin{equation}
-\text{CosineSimilarity}(W_A, W_B) = \frac{W_A \cdot W_B}{\|W_A\|_2 \|W_B\|_2} = \frac{\sum_i w_{A,i} w_{B,i}}{\sqrt{\sum_i w_{A,i}^2} \sqrt{\sum_i w_{B,i}^2}}
+\text{Divergence}(W_A, W_B) = \frac{\|W_A - W_B\|_2}{\sqrt{|\text{Parameters}|}}
 \end{equation}
 
-Cosine similarity ranges from $-1$ (vectors point in opposite directions) through $0$ (orthogonal vectors) to $+1$ (identical directions). For neural network weights, negative values are rare; values close to $+1$ indicate that both clusters have learned similar weight patterns (suggesting shared knowledge), while values significantly below $+1$ indicate divergent weight patterns (suggesting cluster-specific specialization).
-
-\textbf{L2 Distance} measures the Euclidean distance between weight tensors, capturing both directional and magnitude differences:
-
-\begin{equation}
-\text{L2Distance}(W_A, W_B) = \|W_A - W_B\|_2 = \sqrt{\sum_i (w_{A,i} - w_{B,i})^2}
-\end{equation}
-
-To enable comparison across layers of different sizes, we normalize the L2 distance by the combined norms of the weight tensors:
-
-\begin{equation}
-\text{L2Distance}_{\text{normalized}}(W_A, W_B) = \frac{\|W_A - W_B\|_2}{\|W_A\|_2 + \|W_B\|_2}
-\end{equation}
-
-This normalization ensures that large layers (e.g., convolutional layers with millions of parameters) and small layers (e.g., fully connected layers with thousands of parameters) contribute comparably to divergence assessment.
-
-\textbf{Divergence Index} combines cosine similarity and normalized L2 distance into a single metric that increases monotonically as weights become more different:
-
-\begin{equation}
-\text{Divergence}(W_A, W_B) = (1 - \text{CosineSimilarity}(W_A, W_B)) \times (1 + \text{L2Distance}_{\text{normalized}}(W_A, W_B))
-\end{equation}
-
-The divergence index is $0$ when $W_A = W_B$ (cosine similarity $= 1$, L2 distance $= 0$) and increases as weights diverge. The multiplicative combination ensures that both directional differences (captured by $1 - \text{CosineSimilarity}$) and magnitude differences (captured by L2 distance) contribute to the overall divergence score.
-
-We compute these three metrics for each layer in the neural network and aggregate results by layer group as defined in Section~\ref{sec:network-architecture}: input block (input convolutional and batch normalization layers), early residual blocks (residual layers 0-5), middle residual blocks (residual layers 6-12), late residual blocks (residual layers 13-18), policy head, and value head. By comparing divergence across layer groups, we can identify where in the network clusters differ most. Under selective aggregation, we expect low divergence in shared layer groups (due to inter-cluster averaging) and higher divergence in cluster-specific groups (due to independent optimization).
+We aggregate results by layer group (input block, early residual blocks, middle residual blocks, late residual blocks, policy head, value head). Under selective aggregation, we expect low divergence in shared layer groups and higher divergence in cluster-specific groups.
 
 \subsubsection{Behavioral Divergence}
 
-Behavioral divergence measures differences in playstyle metrics between clusters, quantifying whether clusters exhibit distinct playing styles regardless of the underlying weight differences.
+Behavioral divergence measures differences in playstyle metrics between clusters. Key metrics include:
 
-\textbf{Playstyle Divergence} is computed as the standard deviation of tactical scores across clusters:
+\textbf{Playstyle divergence}: The absolute difference in mean tactical scores between clusters, quantifying behavioral separation.
 
-\begin{equation}
-\text{PlaystyleDivergence} = \sqrt{\frac{1}{C} \sum_{c=1}^{C} (\text{TacticalScore}_c - \bar{\text{TacticalScore}})^2}
-\end{equation}
+\textbf{ELO spread}: The range of playing strengths across clusters, indicating whether selective aggregation creates strength imbalances.
 
-where $C$ is the number of clusters (2 in our tactical vs.~positional setup) and $\bar{\text{TacticalScore}}$ is the mean tactical score across clusters. Higher playstyle divergence indicates that clusters have successfully developed distinct playing styles. For our two-cluster configuration with one tactical and one positional cluster, playstyle divergence simplifies to half the absolute difference in tactical scores.
+\textbf{Move type differences}: Absolute differences in move category percentages (captures, checks, quiet moves) between clusters, validating stylistic separation.
 
-\textbf{ELO Spread} measures the range of playing strengths across clusters:
+These behavioral metrics validate that data filtering and selective aggregation have achieved distinct tactical versus positional characteristics.
 
-\begin{equation}
-\text{ELOSpread} = \max_c(\text{ELO}_c) - \min_c(\text{ELO}_c)
-\end{equation}
+\subsection{Statistical Validation}
 
-Large ELO spread may indicate that selective aggregation has created strength imbalances between clusters, with one cluster benefiting more from shared knowledge. Ideally, selective aggregation should preserve playstyle diversity (high playstyle divergence) without sacrificing strength balance (low ELO spread).
+Statistical validation ensures observed differences are meaningful rather than artifacts of random variation. For ELO comparisons, we use confidence intervals based on game sample sizes—configurations are considered statistically distinguishable if their confidence intervals do not overlap. For playstyle metrics, we report means, standard deviations, and distributions across classification categories. Divergence metrics are evaluated relative to baseline expectations from full sharing (B1, low divergence) and no sharing (B2, maximum divergence).
 
-\textbf{Move Type Comparison} quantifies differences in move selection behavior by computing the absolute difference in each move type percentage between clusters:
-
-\begin{equation}
-\Delta_{\text{category}} = |\text{Pct}_{\text{tactical}, \text{category}} - \text{Pct}_{\text{positional}, \text{category}}|
-\end{equation}
-
-for each move category (captures, checks, aggressive moves, quiet moves, pawn advances, castling, piece development). Large differences in capture rate ($\Delta_{\text{captures}}$) and aggressive move rate ($\Delta_{\text{aggressive}}$) provide strong evidence of stylistic separation, validating that data filtering and selective aggregation have achieved distinct tactical versus positional characteristics. We also compare positional feature differences ($\Delta_{\text{center control}}$, $\Delta_{\text{isolated pawns}}$, etc.) and opening diversity differences ($\Delta_{\text{opening concentration}}$) to assess comprehensive divergence across all measured dimensions.
-
-\subsection{Statistical Analysis and Confidence}
-
-Statistical validation ensures that observed differences between aggregation configurations and between clusters are meaningful rather than artifacts of random variation, small sample sizes, or evaluation noise.
-
-For ELO estimates, we report confidence intervals as described in the playing strength evaluation subsection. These intervals quantify the uncertainty inherent in estimating a rating from a limited game sample. When comparing two configurations, we consider their playing strengths statistically distinguishable if their confidence intervals do not overlap: $[\hat{R}_A - \Delta R_A, \hat{R}_A + \Delta R_A] \cap [\hat{R}_B - \Delta R_B, \hat{R}_B + \Delta R_B] = \emptyset$. Non-overlapping intervals provide strong evidence ($p < 0.05$ approximately) of a true strength difference. Overlapping intervals suggest the observed ELO difference may be within measurement uncertainty, requiring additional evaluation games for conclusive comparison.
-
-For playstyle metrics, we compute descriptive statistics across the set of analyzed games: mean (central tendency), standard deviation (spread/consistency), minimum (lower bound), and maximum (upper bound). The standard deviation is particularly informative: low standard deviation indicates consistent playstyle across games (all games exhibit similar tactical scores), while high standard deviation indicates variable playstyle (some games highly tactical, others positional). For clusters intended to maintain consistent playstyles, we expect low within-cluster standard deviation combined with high between-cluster difference in means.
-
-The distribution of tactical scores across the five classification categories (Very Tactical, Tactical, Balanced, Positional, Very Positional) provides additional insight into playstyle consistency. A cluster with strong tactical identity should show most games (>70\%) classified as Tactical or Very Tactical, with few games in the Balanced or Positional categories. A mixed or transitioning cluster may show a broader distribution across categories. We report the count and percentage of games in each category, enabling visual assessment of playstyle concentration.
-
-Divergence metrics are evaluated relative to baseline expectations established by the two baseline configurations: full sharing (B2) and no sharing (B1). Under full sharing, all layers are averaged across clusters at every round, so we expect low divergence (cosine similarity near 1.0, small L2 distance) across all layer groups, as both clusters converge toward identical representations. Under no sharing, clusters never exchange weights, so divergence accumulates freely as each cluster independently optimizes for its training data. The maximum observed divergence under no sharing provides an upper bound on how different clusters can become. Selective aggregation configurations (P1-P4) should exhibit intermediate divergence: shared layers should have divergence close to the full-sharing baseline, while cluster-specific layers should have divergence approaching (but potentially not reaching) the no-sharing baseline.
-
-We track all metrics across training rounds to assess convergence and stability. Training loss should decrease monotonically during the supervised phase and stabilize during self-play, indicating successful learning without overfitting or divergence. Playing strength (ELO) should increase during early training as the model acquires chess knowledge, then plateau once the model reaches the performance ceiling given the network architecture, training data, and evaluation opponent strength. Playstyle metrics should stabilize after an initial transient period (typically 20-50 rounds) once clusters have settled into consistent playing styles shaped by their filtered training data. Divergence metrics may increase initially as clusters specialize, then stabilize once distinct representations have formed and the selective aggregation policy (which layers to share) constrains further divergence.
-
-All metrics are logged at regular intervals (every 10 training rounds by default, configurable via the evaluation interval parameter) and stored in structured JSON format for subsequent analysis. Each evaluation round generates a JSON file per cluster containing all playstyle metrics, a JSON file for model divergence metrics, and a compressed JSONL (JSON Lines) event stream recording all metrics chronologically. This comprehensive logging enables longitudinal analysis of training dynamics, comparison of different aggregation strategies throughout the learning process, and post-hoc investigation of unexpected behaviors or performance patterns.
-
+All metrics are logged at regular intervals during training and stored in structured JSON format for longitudinal analysis. This enables tracking of convergence dynamics, comparison of aggregation strategies throughout training, and investigation of performance patterns. Specific evaluation protocols, frequencies, and experimental configurations are detailed in Chapter 5.
