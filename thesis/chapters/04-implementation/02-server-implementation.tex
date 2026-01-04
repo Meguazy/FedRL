@@ -1,41 +1,39 @@
 \section{Server Implementation}
 
-% This section describes the server-side implementation of the federated learning coordinator.
+The server-side implementation coordinates all aspects of the federated learning process, from managing node connections to orchestrating aggregation rounds. This section describes the core server components that enable distributed training coordination.
 
 \subsection{Training Orchestrator}
 
-% Describe the TrainingOrchestrator class that manages the complete training workflow.
-%
-% Cover:
-% - File: chess-federated-learning/server/main.py
-% - Class: TrainingOrchestrator (lines 87-1099)
-% - Main loop: run_training() method
-% - Round execution: _execute_round() method
-% - Key workflow: broadcast → collect → aggregate → evaluate
-% - Configuration: RoundConfig dataclass (aggregation_threshold, timeout, weighting)
-% - EvaluationConfig dataclass (Stockfish levels, games per level)
-% - Integration with cluster manager, aggregation, and evaluation subsystems
+The \texttt{TrainingOrchestrator} class in \texttt{server/main.py} serves as the central coordinator for the federated learning training loop. This class integrates all server subsystems—communication, aggregation, evaluation, and storage—into a unified training workflow that executes repeatedly across multiple rounds.
+
+The orchestrator manages two primary configuration structures. The \texttt{RoundConfig} dataclass defines parameters for each training round, including the aggregation threshold (default 0.8, requiring 80\% of nodes to participate), timeout for waiting on node responses (300-1200 seconds depending on training mode), weighting strategies for intra-cluster ("\texttt{samples}" or "\texttt{uniform}") and inter-cluster aggregation, and the shared versus cluster-specific layer patterns that control selective aggregation. The \texttt{EvaluationConfig} dataclass specifies evaluation parameters, including whether evaluation is enabled, the interval between evaluations (every 10 rounds by default), the number of games to play per Stockfish ELO level (default 10), the set of ELO levels to test against (typically [1000, 1200, 1400]), time allocated per move (0.1 seconds), and settings for delta analysis including Stockfish search depth (12 plies).
+
+The \texttt{run\_training()} method implements the main training loop, executing for a specified number of rounds or until manually interrupted. For each round, the orchestrator calls \texttt{\_execute\_round()}, which implements a six-phase workflow. First, it broadcasts \texttt{START\_TRAINING} messages to all registered nodes, instructing them to begin local training with the current cluster model. Second, it collects \texttt{MODEL\_UPDATE} messages from nodes, waiting until either the aggregation threshold is met (e.g., 8 out of 10 nodes have responded) or the timeout expires. Third, it performs intra-cluster aggregation using the \texttt{IntraClusterAggregator}, combining model updates from nodes within each cluster independently. Fourth, it performs inter-cluster selective aggregation using the \texttt{InterClusterAggregator}, sharing only specified layers across clusters while preserving cluster-specific parameters. Fifth, it broadcasts \texttt{CLUSTER\_MODEL} messages back to nodes with the updated aggregated models specific to each cluster. Sixth, it logs comprehensive metrics, saves model checkpoints at configured intervals, and optionally runs playstyle evaluation against Stockfish if the evaluation interval has elapsed.
+
+The orchestrator maintains state across rounds, tracking the current round number, a starting round offset for resume training scenarios, cluster-specific models as PyTorch state dictionaries, and the current run identifier for organizing stored artifacts. Integration with the storage subsystem through \texttt{FileExperimentTracker} enables automatic logging of training metrics, aggregation statistics, evaluation results, and model checkpoints. The orchestrator handles graceful shutdown through signal handlers that respond to \texttt{SIGINT} and \texttt{SIGTERM}, ensuring that in-progress rounds complete and final checkpoints are saved before termination.
 
 \subsection{Cluster Management}
 
-% Describe the cluster topology and node registration system.
-%
-% Cover:
-% - File: server/cluster_manager.py
-% - ClusterManager class responsibilities
-% - Node registration and health tracking
-% - Cluster topology configuration (cluster_topology.yaml)
-% - Readiness checking before round execution
-% - Handling node failures and disconnections
+The \texttt{ClusterManager} class in \texttt{server/cluster\_manager.py} manages the topology and state of all clusters and their constituent nodes. Each cluster is represented by a \texttt{Cluster} dataclass that encapsulates cluster metadata: a unique cluster identifier (e.g., "\texttt{cluster\_tactical}"), the associated playstyle label (e.g., "\texttt{tactical}" or "\texttt{positional}"), the target node count, a node prefix for auto-generating node IDs (e.g., "\texttt{agg}"), a human-readable description, the number of games to train per round (cluster-specific setting), and an optional path to an initial model checkpoint for resume training.
+
+Node management within clusters uses three sets to track node states. The \texttt{expected\_nodes} set contains all node IDs that should register based on the configured node count, generated automatically with sequential numbering (e.g., \texttt{agg\_001}, \texttt{agg\_002}, ..., \texttt{agg\_010} for a 10-node cluster). The \texttt{active\_nodes} set tracks currently connected and responsive nodes that have successfully registered and maintain active WebSocket connections. The \texttt{inactive\_nodes} set tracks nodes that previously registered but have since disconnected or timed out. This three-set architecture enables the cluster manager to distinguish between nodes that have never connected, nodes currently participating in training, and nodes temporarily offline but expected to rejoin.
+
+Cluster topology is defined declaratively through \texttt{cluster\_topology.yaml}, which specifies all clusters, their playstyles, node counts, and training parameters. The \texttt{ClusterManager} parses this YAML configuration at server startup, automatically generating expected node IDs and initializing cluster state. Node registration follows a validation protocol: when a node sends a \texttt{REGISTER} message, the \texttt{ClusterManager} checks whether the node ID matches one of the expected nodes for any cluster. If valid, the node is added to the cluster's active set and assigned to that cluster's playstyle. If the node ID is unrecognized, registration is rejected with an error message.
+
+Readiness checking determines whether training can proceed for a given round. The \texttt{check\_cluster\_readiness()} method compares the number of active nodes against the configured threshold for each cluster. For example, with a threshold of 0.8 and 10 expected nodes per cluster, at least 8 nodes must be active in each cluster for training to proceed. This ensures sufficient participation for meaningful aggregation while tolerating a limited number of offline or disconnected nodes. The readiness check also validates that cluster models exist for all clusters, preventing training from starting with missing model state.
+
+Node disconnection handling updates cluster state when WebSocket connections close. The node transitions from \texttt{active\_nodes} to \texttt{inactive\_nodes}, and its last activity timestamp is recorded. The \texttt{ClusterManager} does not automatically remove inactive nodes, allowing them to rejoin seamlessly if they reconnect. This design accommodates transient network failures and node restarts without requiring re-registration or manual intervention.
 
 \subsection{Server Communication}
 
-% Describe the WebSocket server implementation.
-%
-% Cover:
-% - File: server/communication/server_socket.py
-% - Async WebSocket server with Python asyncio
-% - Message protocol: server/communication/protocol.py
-% - Message types: REGISTER, START_TRAINING, MODEL_UPDATE, CLUSTER_MODEL, ERROR
-% - Timeout mechanisms for model collection
-% - Aggregation threshold enforcement (0.8 = 80% of nodes required)
+The server communication layer, implemented in \texttt{server/communication/server\_socket.py}, provides an asynchronous WebSocket server that manages bidirectional communication with training clients. Built on Python's \texttt{asyncio} and the \texttt{websockets} library, the \texttt{FederatedLearningServer} class handles concurrent connections from potentially dozens of nodes while maintaining non-blocking operation.
+
+The communication protocol defined in \texttt{server/communication/protocol.py} uses a message-based architecture with strongly-typed message enumerations. The \texttt{MessageType} enum defines all valid message types, divided into three categories. Client-to-server messages include \texttt{REGISTER} (node registration request with node ID and capabilities), \texttt{MODEL\_UPDATE} (trained model parameters plus training metrics like samples processed and loss), \texttt{METRICS} (training metrics without model weights), and \texttt{HEARTBEAT} (keep-alive signal for connection health monitoring). Server-to-client messages include \texttt{REGISTER\_ACK} (registration confirmation with assigned cluster ID), \texttt{START\_TRAINING} (command to begin training round with configuration parameters), \texttt{CLUSTER\_MODEL} (aggregated model distribution specific to the node's cluster), and \texttt{REQUEST\_MODEL} (request for a node's current model state). Bidirectional messages include \texttt{ERROR} (error notification with error code and description) and \texttt{DISCONNECT} (graceful disconnection notice).
+
+Message serialization uses JSON for the message envelope (type, timestamp, node ID, metadata) and base64-encoded binary data for model parameters. The \texttt{Message} dataclass provides a structured representation with type safety and automatic validation. The \texttt{MessageFactory} class offers factory methods for creating typed messages with correct field structure, reducing errors in message construction and improving code maintainability.
+
+Connection management uses \texttt{asyncio} event loops to handle multiple concurrent WebSocket connections. Each connected node has a dedicated coroutine that listens for incoming messages and routes them to appropriate handlers based on message type. The server maintains a connection registry mapping node IDs to active WebSocket connections, enabling targeted message delivery when broadcasting cluster-specific models.
+
+Timeout enforcement protects against nodes that disconnect or hang during training. When collecting \texttt{MODEL\_UPDATE} messages during a round, the orchestrator sets an \texttt{asyncio} timeout (typically 300-1200 seconds depending on expected training duration). If a node fails to respond within the timeout period, it is excluded from that round's aggregation. The aggregation threshold mechanism allows training to proceed even when some nodes are slow or offline, as long as the minimum participation requirement is met (e.g., 80\% of nodes). This design balances robustness against stragglers with the need for sufficient data diversity in aggregation.
+
+Error handling follows an exception-based model with structured logging. Communication errors (connection closed, malformed messages, timeout) are caught, logged with context binding (node ID, cluster ID, round number), and converted to \texttt{ERROR} messages when appropriate. The server does not crash on individual node failures but continues operating with the remaining healthy nodes, logging failures for post-hoc analysis.

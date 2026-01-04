@@ -1,65 +1,61 @@
 \section{Data Processing Implementation}
 
-% This section describes the data loading and preprocessing pipeline.
-
+The data processing pipeline transforms raw chess games and puzzles into training-ready tensors for the neural network. This section describes the encoding schemes, filtering mechanisms, and data extraction procedures implemented in the \texttt{data/} module that convert PGN databases into supervised learning samples.
+%
 \subsection{Board Encoder}
 
-% Describe the 119-plane encoding implementation.
-%
-% Cover:
-% - File: data/board_encoder.py
-% - Function: encode_board(board, history) → Tensor[8, 8, 119]
-% - Planes 0-95: Current + 7 historical piece positions
-% - Planes 96-118: Game state (repetition, castling, side to move, move count, 50-move rule)
-% - Efficient numpy/torch tensor operations
-% - Handling board history for temporal context
+The \texttt{BoardEncoder} class in \texttt{data/board\_encoder.py} implements the 119-plane tensor representation that serves as neural network input. This encoding follows the AlphaZero paper's specification, capturing not only the current board state but also temporal context through position history. The \texttt{encode()} method accepts a \texttt{chess.Board} object and optional history list, returning a NumPy array of shape (119, 8, 8) with \texttt{float32} dtype.
 
-\subsection{Game Loader and Filters}
+Planes 0-95 encode piece positions across 8 temporal steps (current position plus 7 historical positions). Each temporal step uses 12 planes: 6 piece types (pawn, knight, bishop, rook, queen, king) × 2 colors (white, black). Within each plane, squares containing the relevant piece are set to 1.0, empty squares to 0.0. The board is represented from white's perspective using python-chess's internal representation where square 0 is a1 and square 63 is h8. When history is not provided, the current position is repeated for all 8 temporal steps to maintain consistent tensor dimensions.
 
-% Describe the game loading system.
-%
-% Cover:
-% - File: data/game_loader.py
-% - Class: GameLoader
-% - PGN parsing with python-chess library
-% - Compression support via zstandard (zst files)
-% - GameFilter dataclass: min_rating, playstyle, time_control, result, max_games
-% - Optional Redis caching for distributed access
-% - Streaming for memory efficiency with large databases
+Planes 96-97 encode repetition counters following FIDE rules for threefold repetition. Plane 96 marks squares where the position has occurred once before (1.0 everywhere if true, 0.0 otherwise). Plane 97 marks positions with two or more prior occurrences. These planes enable the network to recognize draws by repetition during training and evaluation.
+
+Planes 98-101 encode castling rights as binary flags. Plane 98 represents white kingside castling, plane 99 white queenside, plane 100 black kingside, and plane 101 black queenside. Each plane is filled entirely with 1.0 if the right is available, 0.0 if lost. This representation allows the network to learn that castling availability affects position evaluation and move selection.
+
+Plane 102 encodes the side to move, filled with 1.0 if white to move and 0.0 if black. This ensures the network can distinguish between positions that are identical except for whose turn it is. Plane 103 encodes the move count (fullmove number from the board's FEN representation) normalized by dividing by 100.0, providing temporal context about game phase.
+
+Planes 104-118 encode the halfmove clock (50-move rule counter) using a thermometer encoding across 15 planes. Plane 104 is 1.0 if the clock is $\geq$1, plane 105 if $\geq$2, continuing through plane 118 if $\geq$15. This encoding allows the network to recognize approaching draws by the 50-move rule and adjust strategy accordingly. The thermometer representation (rather than binary encoding) provides smoother gradients during backpropagation.
+
+\subsection{Move Encoder}
+
+The \texttt{MoveEncoder} class in \texttt{data/move\_encoder.py} implements bidirectional conversion between chess moves and action indices in the range [0, 4671]. The encoding scheme follows AlphaZero's 8×8×73 representation where each of the 64 starting squares has 73 possible move types. The \texttt{encode()} method accepts a \texttt{chess.Move} object and returns an integer index, while \texttt{decode()} performs the inverse operation.
+
+Queen-style moves occupy planes 0-55, encoding 8 directions × 7 distances. The directions follow array indexing convention: North (row decreases toward rank 1), NorthEast, East, SouthEast, South (row increases toward rank 8), SouthWest, West, NorthWest. For each direction, distances 1-7 encode moves of 1 to 7 squares. The plane index is computed as \texttt{direction\_index * 7 + (distance - 1)}. This scheme efficiently represents sliding piece moves (bishop, rook, queen) as well as king moves (distance 1 in any direction) and castling (king moves 2 squares east or west).
+
+Knight moves occupy planes 56-63, encoding the 8 possible L-shaped movements: NNE (2 north, 1 east), ENE (2 east, 1 north), ESE (2 east, 1 south), SSE (2 south, 1 east), SSW (2 south, 1 west), WSW (2 west, 1 south), WNW (2 west, 1 north), NNW (2 north, 1 west). Each plane corresponds to one of these fixed offset patterns.
+
+Underpromotion moves occupy planes 64-72, encoding pawn promotions to pieces other than queen (knight, bishop, rook) in 3 directions (left-diagonal, forward, right-diagonal). White and black pawns use different direction vectors due to asymmetric board representation. The plane index is computed as \texttt{64 + direction\_index * 3 + (promotion\_piece\_index - 1)}, where promotion piece indices are 0 for knight, 1 for bishop, 2 for rook. Queen promotions are encoded as queen-style moves (plane 4 for white forward, capturing queen promotions as appropriate diagonal planes).
+
+The final action index combines the from-square and move plane: \texttt{index = from\_square * 73 + move\_plane}. This yields indices in [0, 4671] covering all possible chess moves. During encoding, special moves are detected and mapped appropriately: castling as 2-square king moves, en passant as diagonal pawn captures, promotions through the underpromotion or queen-style planes. Invalid moves raise \texttt{ValueError} exceptions during encoding.
 
 \subsection{ECO Classification}
 
-% Describe the ECO-based playstyle classifier.
-%
-% Cover:
-% - File: data/eco_classifier.py
-% - Class: ECOClassifier
-% - Tactical ECO codes: 100+ codes (Sicilian B20-B99, King's Gambit C30-C39, etc.)
-% - Positional ECO codes: 100+ codes (QGD D30-D69, Slav D10-D19, London D00-D05, etc.)
-% - Mapping from opening code to playstyle label
-% - Integration with GameFilter
+The \texttt{eco\_classifier.py} module implements playstyle classification based on Encyclopedia of Chess Openings (ECO) codes. This deterministic classification maps each game's opening to either tactical or positional style, enabling data filtering for cluster-specific training. The module defines two large sets of ECO codes extracted from the opening template files described in the methodology.
+
+Tactical codes (stored in \texttt{TACTICAL\_ECO\_CODES}) include 150+ codes covering aggressive and sharp openings. Major tactical families include Sicilian Defence (B20-B99 excluding some positional lines), King's Gambit (C30-C39), Italian Game sharp variations (C50-C54), Alekhine's Defence (B02-B05), Vienna Game (C25-C29), Scandinavian Defence (B01), and King's Indian Attack (E60-E99). These openings typically feature rapid piece activity, tactical complications, and imbalanced pawn structures.
+
+Positional codes (stored in \texttt{POSITIONAL\_ECO\_CODES}) include 200+ codes covering strategic and solid openings. Major positional families include Queen's Gambit Declined (D30-D69), Slav Defence (D10-D19), London System (D00-D05), Caro-Kann Defence (B10-B19), Nimzo-Indian Defence (E20-E59), Queen's Indian Defence (E12-E19), Catalan Opening (E00-E09), English Opening (A10-A39), and Réti Opening (A04-A09). These openings emphasize pawn structure, piece coordination, and long-term planning.
+
+The \texttt{classify\_opening()} function accepts an ECO code string and returns a \texttt{PlaystyleType} enum (TACTICAL or POSITIONAL). Games with unclassified ECO codes (not present in either set) are filtered out during sample extraction to maintain cluster purity. This classification integrates with the \texttt{GameFilter} dataclass, allowing trainers to request games matching specific playstyles during the offset-based sampling process.
 
 \subsection{Sample Extractor}
 
-% Describe position extraction from games.
-%
-% Cover:
-% - File: data/sample_extractor.py
-% - Class: SampleExtractor
-% - TrainingSample structure: board, move_played, game_outcome, move_number, eco_code, playstyle, history
-% - ExtractionConfig: skip_opening_moves=10, skip_endgame_moves (when <5 pieces), sample_rate
-% - Extracting positions from python-chess Game objects
-% - Creating 8-move history for each position
-% - Shuffling for training diversity
+The \texttt{SampleExtractor} class in \texttt{data/sample\_extractor.py} converts complete chess games into individual position-move-outcome training samples. This extraction process filters games by rating and playstyle, skips formulaic opening and simplified endgame positions, and maintains position history for temporal context. The \texttt{extract\_samples()} method orchestrates the entire pipeline, returning a list of \texttt{TrainingSample} objects ready for encoding.
 
-\subsection{Dataset Classes}
+The \texttt{TrainingSample} dataclass encapsulates all information needed for supervised learning: \texttt{board} (the chess position), \texttt{move\_played} (the move to predict), \texttt{game\_outcome} (+1 for win, 0 for draw, -1 for loss from current player's perspective), \texttt{move\_number}, \texttt{eco\_code}, \texttt{playstyle} classification, and \texttt{history} (list of up to 7 previous board positions). The outcome is perspective-adjusted so the network always predicts from the current player's viewpoint.
 
-% Describe PyTorch Dataset implementations.
-%
-% Cover:
-% - ChessDataset (in trainer_supervised.py):
-%   * __getitem__ returns (board_tensor, move_index, outcome)
-%   * Integration with DataLoader for batching
-% - PuzzleDataset (in trainer_puzzle.py):
-%   * Similar structure for puzzle positions
-%   * Extracts all positions from multi-move puzzle sequences
+The \texttt{ExtractionConfig} dataclass controls filtering behavior. The \texttt{skip\_opening\_moves} parameter (default 10) excludes the first N moves from each game, removing highly theoretical opening positions that may not reflect playstyle-specific patterns. The \texttt{skip\_endgame\_moves} parameter (default 5) excludes positions with fewer than N pieces, avoiding simplified endgames where tactics and strategy converge. The \texttt{sample\_rate} parameter (default 1.0) enables subsampling by extracting every Nth position. The \texttt{shuffle\_games} flag (default True) randomizes game order for training diversity.
+
+Sample extraction proceeds in three phases. First, the \texttt{GameLoader} loads games from the PGN database with filters applied (rating range, playstyle, max games) and offset for non-overlapping node data. Second, the \texttt{\_extract\_samples\_from\_game()} method iterates through each game's moves, creating board copies at each position, extracting the move played, determining the game outcome from the current player's perspective, maintaining a sliding window of 7 previous positions for history, applying skip rules (opening moves, endgame positions), and packaging everything into \texttt{TrainingSample} objects. Third, all samples from all games are collected into a single list and returned.
+
+Memory efficiency is critical when processing databases with millions of games. The extractor uses streaming through the \texttt{GameLoader}, processing one game at a time rather than loading all games into memory. Board copies are created only for positions that pass filtering rules, minimizing allocation overhead. The history window uses shallow copies where possible, sharing piece placement data across temporal steps.
+
+\subsection{PyTorch Dataset Classes}
+
+PyTorch \texttt{Dataset} classes bridge the gap between extracted samples and the training loop by providing batched tensor access through \texttt{DataLoader} integration. Two dataset implementations support different training modes: \texttt{ChessDataset} for supervised learning from complete games and \texttt{PuzzleDataset} for tactical puzzle training.
+
+The \texttt{ChessDataset} class (implemented in \texttt{client/trainer/trainer\_supervised.py}) wraps a list of \texttt{TrainingSample} objects along with \texttt{BoardEncoder} and \texttt{MoveEncoder} instances. The \texttt{\_\_getitem\_\_()} method accepts an integer index, retrieves the corresponding sample, encodes the board and history to a (119, 8, 8) tensor using \texttt{BoardEncoder}, encodes the move played to an integer action index using \texttt{MoveEncoder}, converts the game outcome to a tensor, and returns a tuple \texttt{(board\_tensor, move\_index, outcome)} suitable for training. The \texttt{\_\_len\_\_()} method returns the total sample count for iteration.
+
+PyTorch's \texttt{DataLoader} wraps the dataset with batching, shuffling, and parallel loading. Typical configuration uses \texttt{batch\_size=64}, \texttt{shuffle=True}, \texttt{num\_workers=4} for parallel data loading, and \texttt{pin\_memory=True} for faster GPU transfer. The DataLoader collates individual samples into batched tensors: board tensors become (batch, 119, 8, 8), move indices become (batch,), and outcomes become (batch, 1). This batching enables efficient GPU computation during forward and backward passes.
+
+The \texttt{PuzzleDataset} class (implemented in \texttt{client/trainer/trainer\_puzzle.py}) handles tactical puzzles with multi-move solutions. Unlike complete games, puzzles contain sequences of forcing moves that must all be learned. The dataset extracts positions from each move in the solution sequence, treating odd indices (player moves) as training samples and even indices (opponent replies) as context. For a puzzle with solution [setup, move1, reply1, move2, reply2], the dataset creates two samples: position after setup targeting move1, and position after reply1 targeting move2. This ensures the network learns complete tactical patterns, not just initial forcing moves. The encoding process mirrors \texttt{ChessDataset}, using the same \texttt{BoardEncoder} and \texttt{MoveEncoder} interfaces for consistency.

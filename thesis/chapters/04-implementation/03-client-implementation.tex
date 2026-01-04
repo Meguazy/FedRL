@@ -1,54 +1,101 @@
 \section{Client Implementation}
 
-% This section describes the client-side (node) implementation.
+The client-side implementation enables individual training nodes to participate in federated learning by coordinating local training, communication with the server, and model state management. This section describes the core client components that execute training rounds and maintain connection with the server.
 
 \subsection{Federated Learning Node}
 
-% Describe the main node class that manages client-side operations.
-%
-% Cover:
-% - File: chess-federated-learning/client/node.py
-% - Class: FederatedLearningNode
-% - State machine: INITIALIZING → READY → TRAINING → UPDATING → IDLE → ERROR/SHUTDOWN
-% - WebSocket client connection management
-% - Async training task execution
-% - Message handlers: _handle_start_training(), _handle_cluster_model()
-% - Model serialization and transmission
+The \texttt{FederatedLearningNode} class in \texttt{client/node.py} serves as the primary orchestrator for all client-side activities. This class integrates the communication layer with the trainer implementation through a composition-based architecture, separating concerns between network operations (\texttt{FederatedLearningClient}), training execution (\texttt{TrainerInterface}), and overall workflow coordination (the node itself).
+
+Node lifecycle is managed through the \texttt{NodeLifecycleState} enumeration, which defines seven distinct states. The \texttt{INITIALIZING} state occurs during node construction and setup before connection establishment. The \texttt{READY} state indicates successful connection and registration, awaiting training commands. The \texttt{TRAINING} state marks active local training in progress. The \texttt{UPDATING} state represents the period when aggregated models are being received and loaded. The \texttt{IDLE} state indicates the node is connected but not actively training, typically waiting between rounds. The \texttt{ERROR} state signals unrecoverable failures requiring manual intervention. Finally, the \texttt{SHUTDOWN} state indicates graceful node termination. Figure~\ref{fig:node-lifecycle} illustrates the complete state machine with all possible transitions.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}[
+    node distance=2.5cm and 3cm,
+    state/.style={rectangle, rounded corners, draw=black!80, thick,
+                  minimum height=1cm, minimum width=2.2cm,
+                  text centered, font=\small\ttfamily, fill=blue!10},
+    error/.style={rectangle, rounded corners, draw=red!80, thick,
+                  minimum height=1cm, minimum width=2.2cm,
+                  text centered, font=\small\ttfamily, fill=red!10},
+    final/.style={rectangle, rounded corners, draw=gray!80, thick,
+                  minimum height=1cm, minimum width=2.2cm,
+                  text centered, font=\small\ttfamily, fill=gray!10},
+    arrow/.style={->, >=stealth, thick},
+    every edge/.style={draw, arrow}
+]
+
+% Statess
+\node[state] (init) {INITIALIZING};
+\node[state] (ready) [right=of init] {READY};
+\node[state] (idle) [below=of ready] {IDLE};
+\node[state] (training) [left=of idle] {TRAINING};
+\node[error] (error) [below=of training] {ERROR};
+\node[state] (updating) [below=of idle] {UPDATING};
+
+% Transitions
+\draw[arrow] (init) -- node[above, font=\scriptsize] {connect \& register} (ready);
+\draw[arrow] (ready) -- node[right, font=\scriptsize] {registered} (idle);
+\draw[arrow] (idle) -- node[above, font=\scriptsize] {START\_TRAINING} (training);
+\draw[arrow] (training) -- node[below, font=\scriptsize] {training complete} (idle);
+\draw[arrow] (idle) -- node[right, font=\scriptsize] {CLUSTER\_MODEL} (updating);
+\draw[arrow] (updating) -- node[left, font=\scriptsize, align=center] {model\\loaded} (idle);
+
+% Error transitions (from multiple states)
+\draw[arrow, dashed, red!60] (init.west) -- ++(-0.8,0) |- node[near start, left, font=\scriptsize, align=right] {connection\\failed} (error.west);
+\draw[arrow, dashed, red!60] (training) -- node[left, font=\scriptsize, align=right] {training\\failed} (error);
+\draw[arrow, dashed, red!60] (idle.south west) -- ++(-0.3,-0.3) -| node[near start, below left, font=\scriptsize] {unrecoverable error} (error.north);
+
+% Self-loop for IDLE (waiting)
+\path (idle) edge[arrow, loop right, out=45, in=-45, looseness=5, min distance=1.2cm] node[right, font=\scriptsize, xshift=0.1cm] {waiting} (idle);
+
+\end{tikzpicture}
+\caption{Node lifecycle state machine. Solid arrows represent normal state transitions triggered by server messages or training completion. Dashed red arrows indicate error transitions. The \texttt{stop()} method can be called from any state to transition to \texttt{SHUTDOWN}.}
+\label{fig:node-lifecycle}
+\end{figure}
+
+The node's \texttt{start()} method implements the main execution loop. First, it initiates the WebSocket connection through the communication client. Second, it waits for successful registration with a 30-second timeout, transitioning to \texttt{ERROR} state if connection fails. Third, it enters the main event loop that monitors for completed training tasks and handles asynchronous message callbacks. Fourth, it maintains this loop until either \texttt{is\_running} becomes false or an unrecoverable error occurs. Fifth, it ensures graceful shutdown through the \texttt{stop()} method, which cancels ongoing training, disconnects from the server, and logs final statistics.
+
+Message handling is configured during initialization through \texttt{\_setup\_message\_handlers()}, which registers callbacks for each message type. The \texttt{START\_TRAINING} handler in \texttt{\_handle\_start\_training()} extracts training parameters from the message payload, updates the trainer configuration if \texttt{games\_per\_round} has changed, sets the current round number for offset calculation (used by trainers to select non-overlapping data), and spawns a background task executing \texttt{\_run\_training()} with the current model state. The \texttt{CLUSTER\_MODEL} handler in \texttt{\_handle\_cluster\_model()} deserializes the aggregated model state using \texttt{PyTorchSerializer}, replaces the node's current model state, explicitly frees the old model state and calls garbage collection to prevent memory accumulation, and transitions to \texttt{IDLE} state ready for the next round. The \texttt{REGISTER\_ACK} handler confirms successful registration and transitions to \texttt{READY}. The \texttt{ERROR} handler logs server errors and transitions to \texttt{ERROR} state.
+
+Training completion is handled asynchronously by the main event loop, which monitors \texttt{self.training\_task} for completion. Upon detecting a completed task, the node calls \texttt{\_handle\_training\_complete()} with the \texttt{TrainingResult}. This method updates node statistics (rounds completed, total training time, total samples), calls \texttt{client.send\_model\_update()} to transmit the updated model state to the server, calls \texttt{client.send\_metrics()} to transmit additional training metrics (loss, accuracy, policy loss, value loss), and transitions back to \texttt{IDLE} state. Memory management is critical during this process: the method explicitly deletes the training result object and invokes garbage collection to prevent memory leaks during long training runs with hundreds of rounds.
+
+Node statistics are tracked continuously and exposed through \texttt{get\_statistics()}, which returns a comprehensive dictionary including node ID and cluster ID, current lifecycle state, connection status, rounds completed and current round number, total training time and total samples processed, node uptime since start, trainer-specific statistics from \texttt{trainer.get\_statistics()}, and client communication statistics from \texttt{client.get\_stats()}. Final statistics are logged automatically during shutdown through \texttt{\_log\_final\_statistics()}, providing a complete summary of the node's participation in federated learning.
 
 \subsection{Trainer Implementations}
 
-% Describe the pluggable trainer system and specific implementations.
-%
-% Cover:
-% - File: client/trainer/trainer_interface.py
-% - Abstract base: TrainerInterface with train() method
-% - TrainingConfig and TrainingResult structures
-% - Factory pattern: TrainerFactory for instantiation
-%
-% DummyTrainer (trainer_dummy.py):
-%   - For testing without actual chess training
-%   - Simulates training with random parameter modifications
-%
-% SupervisedTrainer (trainer_supervised.py):
-%   - Loads Lichess PGN files (supports .pgn, .pgn.zst, .pgn.gz)
-%   - Filters by playstyle using ECO codes
-%   - Filters by rating (1800+ default)
-%   - Creates ChessDataset for PyTorch DataLoader
-%   - Training loop with combined policy + value loss
-%
-% PuzzleTrainer (trainer_puzzle.py):
-%   - Loads Lichess puzzle database
-%   - Filters by puzzle rating and themes
-%   - Creates PuzzleDataset from FEN + move sequences
-%   - Emphasis on tactical pattern learning
+The trainer subsystem provides pluggable training implementations through the abstract \texttt{TrainerInterface} base class defined in \texttt{client/trainer/trainer\_interface.py}. This interface defines the contract that all trainers must implement, enabling the node to execute different training strategies without modification to the coordination logic.
+
+The \texttt{TrainerInterface} base class defines two critical dataclasses for configuration and results. The \texttt{TrainingConfig} dataclass encapsulates all training parameters: \texttt{games\_per\_round} (number of games or puzzles per training round, typically 100-500), \texttt{batch\_size} (mini-batch size for gradient updates, typically 32-256), \texttt{learning\_rate} (optimizer learning rate, typically 0.001-0.0001), \texttt{exploration\_factor} (exploration coefficient for self-play, if applicable), \texttt{max\_game\_length} (maximum moves per game before forced draw), \texttt{save\_games} (whether to persist game data for analysis), \texttt{playstyle} (optional playstyle filter for data selection, e.g., "tactical" or "positional"), and \texttt{additional\_params} (dictionary for trainer-specific parameters like puzzle rating ranges or themes). The \texttt{TrainingResult} dataclass encapsulates training outcomes: \texttt{model\_state} (updated model parameters as a dictionary, either raw state dict or serialized with \texttt{serialized\_data} key), \texttt{samples} (number of training samples processed), \texttt{loss} (final training loss achieved), \texttt{games\_played} (number of games or puzzles used), \texttt{training\_time} (wall-clock training duration in seconds), \texttt{metrics} (dictionary of additional metrics like accuracy, policy loss, value loss, win rate), \texttt{success} (boolean indicating whether training completed successfully), and \texttt{error\_message} (optional error description if training failed).
+
+The abstract \texttt{train()} method must be implemented by all trainers. It accepts \texttt{initial\_model\_state} (starting model parameters, either raw or serialized) and returns a \texttt{TrainingResult}. The method signature is \texttt{async def train(self, initial\_model\_state: Dict[str, Any]) -> TrainingResult}, ensuring all trainers operate asynchronously to avoid blocking the node's event loop. The optional \texttt{evaluate()} method provides model evaluation capabilities, accepting \texttt{model\_state} and \texttt{num\_games} and returning a dictionary of evaluation metrics. Base class utility methods include \texttt{update\_config()} for dynamically modifying training parameters between rounds, \texttt{get\_statistics()} for retrieving trainer statistics (total games played, training time, average loss), and \texttt{\_add\_to\_history()} for maintaining a history of training results across rounds.
+
+The \texttt{DummyTrainer} implementation in \texttt{client/trainer/trainer\_dummy.py} serves as a lightweight testing trainer that simulates training without actual computation. This trainer is valuable for pipeline validation, storage system testing, and rapid development iteration without chess engines. The \texttt{train()} method simulates training by sleeping for 500ms to mimic processing time, initializing a mock AlphaZero model structure if the initial model state is empty (with input convolution layers, residual blocks, policy head, and value head), making small random modifications to existing model weights (adding uniform random noise in range [-0.01, 0.01]), generating synthetic metrics (loss decreasing by 0.02 per round, accuracy increasing by 0.02 per round, random win rate), and returning a \texttt{TrainingResult} with the modified model and synthetic metrics. The \texttt{\_create\_mock\_alphazero\_model()} method creates a realistic model structure with proper layer naming conventions that match the actual AlphaZero architecture, ensuring compatibility with the selective aggregation system which distinguishes shared layers (input convolution, residual blocks) from cluster-specific layers (policy head, value head).
+
+The \texttt{SupervisedTrainer} implementation in \texttt{client/trainer/trainer\_supervised.py} bootstraps the AlphaZero network by training on high-quality human games from PGN databases. This trainer implements the supervised learning phase described in the methodology, filtering games by rating (minimum 2000 ELO) and playstyle (tactical or positional), and training both the policy head (via cross-entropy loss on moves) and value head (via MSE loss on game outcomes). Device management detects available hardware, using CUDA if available otherwise falling back to CPU. Encoder initialization creates \texttt{BoardEncoder} (converts board positions to 119-plane tensors) and \texttt{MoveEncoder} (converts moves to action indices in range 0-4671). Model serialization uses \texttt{PyTorchSerializer} with compression enabled and base64 encoding for JSON/WebSocket compatibility.
+
+Sample extraction offset calculation ensures non-overlapping data across nodes and rounds through the formula: \texttt{offset = (current\_round + round\_offset) * (nodes\_per\_cluster * games\_per\_round) + node\_index * games\_per\_round}. The \texttt{round\_offset} parameter enables resume training by skipping already-processed data. For example, with 4 nodes per cluster and 100 games per round, round 0 assigns node 0 offset 0, node 1 offset 100, node 2 offset 200, node 3 offset 300. Round 1 assigns node 0 offset 400, node 1 offset 500, etc. If resuming from round 30 (\texttt{round\_offset=30}), round 1 assigns node 0 offset 12400, ensuring previously used data is never reprocessed. The \texttt{\_extract\_node\_index()} method parses the numeric suffix from node IDs (e.g., "agg\_001" becomes index 0, "agg\_002" becomes index 1), providing the zero-based index needed for offset calculation.
+
+The training pipeline executes in several phases. First, \texttt{\_initialize\_model()} creates an \texttt{AlphaZeroNet} instance if none exists, deserializes the model state if provided (checking for \texttt{serialized\_data} key), loads the state dict into the model, and creates the optimizer and learning rate scheduler only once (preserving Adam momentum and scheduler state across rounds). Second, \texttt{\_extract\_samples()} runs \texttt{SampleExtractor} in a thread pool to avoid blocking, filtering by playstyle, minimum rating (2000), and calculated offset, returning a list of \texttt{TrainingSample} objects with board positions, moves played, game outcomes, and position history. Third, a \texttt{ChessDataset} and \texttt{DataLoader} are created with the specified batch size and shuffling enabled. Fourth, \texttt{\_train\_epoch()} executes one training epoch: encoding boards to (119, 8, 8) tensors, encoding moves to integer class indices for cross-entropy loss, forward pass through the model producing policy logits and value predictions, loss computation (policy loss via cross-entropy, value loss via MSE, total loss as their sum), backward pass with gradient computation and optimizer step, periodic memory cleanup every 50 batches (calling \texttt{torch.cuda.empty\_cache()} on GPU), and async sleep every batch to allow other tasks to run. Fifth, the learning rate scheduler (\texttt{ReduceLROnPlateau}) is stepped with the current loss, reducing the learning rate by half if loss plateaus for 15 consecutive rounds (patience=15), with a minimum learning rate of 1e-6. Sixth, the updated model state is serialized and packaged with metadata (framework, num\_parameters), samples are explicitly deleted and garbage collected to free memory, and the current round counter is incremented for the next training call.
+
+The \texttt{PuzzleTrainer} implementation in \texttt{client/trainer/trainer\_puzzle.py} trains on tactical puzzles from the Lichess puzzle database, focusing the policy head on recognizing tactical motifs while leaving the value head to learn from supervised training on full games. Redis integration provides fast puzzle access through \texttt{RedisPuzzleCache}, avoiding repeated CSV parsing. Puzzle filtering supports minimum and maximum rating constraints (default 1500-2500) and theme filtering (optional, e.g., only "fork", "pin", "skewer" puzzles). The training pipeline differs from supervised training in that only the policy head is trained (value head gradients are not backpropagated), puzzles can have multiple moves in the solution sequence (each move becomes a separate training sample), and the offset calculation follows the same formula as supervised training to ensure non-overlapping data.
+
+The \texttt{\_load\_puzzles()} method loads puzzles from Redis using the calculated offset, applies rating and theme filters, and returns a list of \texttt{Puzzle} objects with puzzle ID, FEN string, move sequence (UCI format), rating, and themes. The \texttt{PuzzleDataset} extracts all positions from multi-move puzzle sequences: for a puzzle with moves [setup, move1, reply1, move2, reply2], it creates training samples for move1 and move2 (the player's moves, at odd indices), with each sample containing the board position, the correct move to find, and the position index in the sequence. The \texttt{\_train\_epoch()} method differs from supervised training by computing only policy loss (no value loss in backpropagation), monitoring value loss for logging purposes but not including it in gradient computation, and accumulating metrics that include policy loss, value loss (monitoring only), and total loss (policy only).
 
 \subsection{Client Communication}
 
-% Describe the WebSocket client implementation.
-%
-% Cover:
-% - File: client/communication/client_socket.py
-% - Class: FederatedLearningClient
-% - Async message handling with callbacks
-% - Auto-reconnect on connection loss
-% - Parameter differencing for bandwidth reduction (sends Δθ instead of θ)
+The \texttt{FederatedLearningClient} class in \texttt{client/communication/client\_socket.py} manages all WebSocket communication with the federated learning server. This asynchronous client provides connection management, automatic reconnection with exponential backoff, message serialization and deserialization, and integration with the node lifecycle.
+
+Client state is tracked through the \texttt{ClientState} enumeration with eight states: \texttt{DISCONNECTED} (no active connection), \texttt{CONNECTING} (connection attempt in progress), \texttt{CONNECTED} (WebSocket established but not yet registered), \texttt{REGISTERING} (registration message sent, awaiting acknowledgment), \texttt{REGISTERED} (fully registered and ready for training), \texttt{TRAINING} (local training in progress), \texttt{UPLOADING} (sending model update to server), and \texttt{ERROR} (unrecoverable error state). Connection statistics are tracked through the \texttt{ConnectionStats} dataclass, which records connection attempts, successful connections, total messages sent and received, total uptime, reconnection count, ping failures, keepalive timeouts, last ping time, message size errors (exceeding 500MB limit), and large message warnings (exceeding 100MB).
+
+The \texttt{start()} method implements the main client loop with reconnection logic. The loop calls \texttt{\_connect\_and\_run()} to establish connection and handle messages, catches connection errors and initiates reconnection if \texttt{auto\_reconnect} is enabled, applies exponential backoff to the reconnection delay (starting at 10 seconds, multiplying by 1.5 each failure, capping at 300 seconds), and increments the reconnection counter. This loop continues until \texttt{is\_running} becomes false or \texttt{auto\_reconnect} is disabled, ensuring the client remains connected throughout long training sessions spanning hours or days.
+
+Connection establishment in \texttt{\_connect\_and\_run()} proceeds through several phases. First, it connects to the WebSocket server using the \texttt{websockets} library with ping interval of 60 seconds (automatic keepalive), ping timeout of 45 seconds (tolerance for network latency), maximum message size of 500MB (for large model updates), and close timeout of 20 seconds. Second, it transitions to \texttt{CONNECTED} state and resets the reconnection delay to 10 seconds on successful connection. Third, it spawns two concurrent tasks: \texttt{\_message\_loop()} for receiving messages and \texttt{\_register\_with\_server()} for registration. Fourth, it awaits registration completion with a 30-second timeout. Fifth, it starts \texttt{\_heartbeat\_loop()} after successful registration. Sixth, it continues handling messages until disconnection. Exception handling includes catching \texttt{ConnectionClosed} exceptions with special handling for "keepalive ping timeout" (reduces reconnection delay, logs warning, increments timeout counter) and "message too big" errors (logs error suggesting compression, increments size error counter), catching \texttt{InvalidURI} exceptions and transitioning to \texttt{ERROR} state, catching \texttt{OSError} exceptions for network errors, and ensuring cleanup in the finally block (updating uptime stats, canceling heartbeat task, closing WebSocket).
+
+Registration with the server uses \texttt{\_register\_with\_server()}, which transitions to \texttt{REGISTERING} state, creates a \texttt{REGISTER} message using \texttt{MessageFactory}, sends the message via \texttt{\_send\_message()}, waits for \texttt{REGISTER\_ACK} response with a 30-second timeout using \texttt{\_wait\_for\_message\_type()}, validates the response payload checking the \texttt{success} field, transitions to \texttt{REGISTERED} state on success or \texttt{ERROR} state on failure, and raises an exception if registration fails or times out. The \texttt{\_wait\_for\_message\_type()} utility creates an \texttt{asyncio.Future} and registers it in \texttt{self.pending\_responses} keyed by message type, waits for the future with the specified timeout, and cleans up the pending response entry on timeout or completion.
+
+The message loop in \texttt{\_message\_loop()} iterates over incoming WebSocket messages using \texttt{async for raw\_msg in self.websocket}, increments the received message counter, parses the JSON message using \texttt{Message.from\_json()}, validates the message structure, routes the message to \texttt{\_handle\_message()}, catches JSON decode errors for malformed messages, catches general exceptions to prevent loop termination, and handles \texttt{ConnectionClosed} exceptions with special logging for keepalive timeouts and size errors. Message routing in \texttt{\_handle\_message()} first checks for built-in handlers (\texttt{REGISTER\_ACK}, \texttt{START\_TRAINING}, \texttt{CLUSTER\_MODEL}, \texttt{ERROR}, \texttt{DISCONNECT}), then checks for external handlers registered via \texttt{set\_message\_handler()} (allows node to customize handling), and finally checks \texttt{pending\_responses} for futures awaiting specific message types, resolving any matching futures with the received message.
+
+Model update transmission through \texttt{send\_model\_update()} handles serialization and network transmission of trained models. The method transitions to \texttt{UPLOADING} state, checks if the model state is already serialized (has \texttt{serialized\_data} key) and uses it directly, otherwise serializes using \texttt{PyTorchSerializer} with compression enabled and base64 encoding, packages the serialized model with metadata (framework, compression, encoding), creates a \texttt{MODEL\_UPDATE} message using \texttt{MessageFactory} with model state, samples, loss, and round number, sends the message and logs the transmission, transitions back to \texttt{REGISTERED} state on success, and catches exceptions, transitions to \texttt{ERROR} state, and re-raises. The heartbeat mechanism in \texttt{\_heartbeat\_loop()} sends periodic \texttt{HEARTBEAT} messages every 45 seconds (configurable), checks that the WebSocket is still connected before sending, updates \texttt{last\_ping\_time} statistics on successful send, increments \texttt{ping\_failures} on send errors, and terminates the loop if the WebSocket closes or the state is no longer \texttt{REGISTERED}.
+
+Message size monitoring is implemented in \texttt{\_send\_message()} to detect potential issues before transmission. The method encodes the JSON message to UTF-8 to calculate byte size, logs a warning if size exceeds 100MB (incrementing \texttt{large\_message\_warnings} counter), logs info if size exceeds 10MB, logs trace with exact size in KB for normal messages, sends the message via \texttt{websocket.send()}, increments the sent message counter, and catches exceptions, logs errors, and re-raises. This monitoring helps identify models that may benefit from parameter differencing or additional compression, particularly important when training large models with millions of parameters across hundreds of rounds.

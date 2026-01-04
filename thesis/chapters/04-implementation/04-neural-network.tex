@@ -1,52 +1,43 @@
 \section{Neural Network Implementation}
 
-% This section describes the PyTorch implementation of the AlphaZero network.
-% Note: Chapter 3.3 covered the architecture design; this focuses on implementation details.
+The neural network implementation follows the AlphaZero architecture described in the methodology chapter, realized as PyTorch modules in \texttt{client/trainer/models/alphazero\_net.py}. This section describes the implementation-specific details including module structure, layer configurations, naming conventions for selective aggregation, and parameter initialization.
 
 \subsection{AlphaZeroNet PyTorch Module}
-
-% Describe the PyTorch implementation details.
 %
-% Cover:
-% - File: client/trainer/models/alphazero_net.py
-% - Class: AlphaZeroNet (nn.Module)
-% - Input: 8×8×119 tensor
-% - Input convolution: Conv2d(119, 256, kernel_size=3, padding=1)
-% - Batch normalization and ReLU activation
-% - Sequential stacking of 19 ResidualBlocks
-% - Forward pass implementation
-% - Model variants: create_alphazero_net(size="tiny"|"small"|"medium"|"full"|"large")
+The \texttt{AlphaZeroNet} class inherits from \texttt{torch.nn.Module} and implements the complete neural network architecture. The constructor accepts three configurable parameters: \texttt{input\_channels} (default 119 for the full board representation), \texttt{num\_res\_blocks} (default 19 following the AlphaZero paper), and \texttt{channels} (default 256 for the residual tower width). These parameters enable network variants of different sizes for experimentation and resource-constrained environments.
+
+The input convolution layer uses \texttt{nn.Conv2d(input\_channels, channels, kernel\_size=3, padding=1, bias=False)}, transforming the 119-plane board representation into a 256-channel feature map while preserving the $8 \times 8$ spatial dimensions. Batch normalization via \texttt{nn.BatchNorm2d(channels)} follows the convolution to stabilize training, and ReLU activation introduces non-linearity. The \texttt{bias=False} parameter is critical because batch normalization includes a learnable bias term, making the convolutional bias redundant.
+
+The residual tower is implemented using \texttt{nn.ModuleDict} rather than \texttt{nn.ModuleList} to ensure predictable layer naming. The dictionary uses string keys "0", "1", ..., "18" to create parameter names like \texttt{residual.0.conv1.weight}, \texttt{residual.1.conv1.weight}, etc. This naming convention is essential for the selective aggregation system, which distinguishes shared layers (residual blocks) from cluster-specific layers (policy and value heads) by parsing parameter names with regular expressions. The forward pass iterates through the dictionary in sorted numeric order using \texttt{sorted(self.residual.keys(), key=int)} to ensure deterministic execution order despite dictionary implementation details.
+
+The policy and value heads are instantiated as \texttt{PolicyHead(channels)} and \texttt{ValueHead(channels)}, both receiving the same feature representation from the residual tower. The \texttt{forward()} method accepts an input tensor of shape (batch, 119, 8, 8), applies the input convolution and batch normalization, sequentially processes through all residual blocks, and returns a tuple \texttt{(policy\_logits, value)} where policy logits have shape (batch, 4672) and value has shape (batch, 1). An additional \texttt{predict()} method wraps \texttt{forward()} with \texttt{torch.no\_grad()} and applies softmax to policy logits, facilitating inference without gradient computation.
+
+Network size variants are created through the factory function \texttt{create\_alphazero\_net()}, which provides convenient configurations: tiny (2 blocks, 64 channels for unit testing), small (5 blocks, 128 channels for rapid prototyping), medium (10 blocks, 256 channels for laptop training), full (19 blocks, 256 channels matching the AlphaZero paper), and large (40 blocks, 256 channels matching AlphaZero's final version). All variants use the same 119-plane input representation and 4672-action output space, ensuring compatibility across different model sizes during federated aggregation.
 
 \subsection{Residual Block Implementation}
 
-% Describe the ResidualBlock PyTorch module.
-%
-% Cover:
-% - Class: ResidualBlock (lines 25-67)
-% - Two conv layers: Conv2d(256, 256, kernel_size=3, padding=1)
-% - Batch norm after each conv
-% - Skip connection: out = relu(residual + x)
-% - No dimension reduction (maintains 256 channels throughout)
+The \texttt{ResidualBlock} class implements the building block of the residual tower, following the pre-activation residual network design. Each block contains two convolutional paths and a skip connection. The first path applies \texttt{nn.Conv2d(channels, channels, kernel\_size=3, padding=1, bias=False)} followed by \texttt{nn.BatchNorm2d(channels)} and ReLU activation. The second path applies an identical conv-bn sequence. The skip connection adds the input directly to the output of the second convolution before the final ReLU: \texttt{out = relu(bn2(conv2(relu(bn1(conv1(x))))) + x)}.
+
+The skip connection architecture addresses the vanishing gradient problem in deep networks by providing a direct path for gradients to flow backward through the network. During backpropagation, gradients can bypass degraded layers through the skip connection, enabling training of networks with 19 or more residual blocks. The use of 3×3 convolutions with padding=1 maintains spatial dimensions throughout the block, ensuring the skip connection addition is dimension-compatible without requiring projection layers.
+
+All convolutional layers use \texttt{bias=False} because subsequent batch normalization layers include learnable bias parameters. This reduces parameter count without affecting model expressiveness. Batch normalization computes running statistics (mean and standard deviation) during training and uses fixed statistics during evaluation, controlled automatically by PyTorch's \texttt{model.train()} and \texttt{model.eval()} modes. The forward pass signature \texttt{forward(self, x: torch.Tensor) -> torch.Tensor} accepts and returns tensors of shape (batch, channels, 8, 8), maintaining consistent dimensions for easy stacking.
 
 \subsection{Policy Head Implementation}
 
-% Describe the PolicyHead PyTorch module.
-%
-% Cover:
-% - Class: PolicyHead (lines 70-120)
-% - Architecture: Conv2d(256, 73, 1×1) → Reshape to 4672 logits
-% - Output: 8×8 squares × 73 move types = 4672 actions
-% - Move encoding: 56 queen moves + 8 knight moves + 9 underpromotions
-% - Illegal move masking during inference
-% - CrossEntropyLoss for training (not applied in forward())
+The \texttt{PolicyHead} class implements the move prediction component using AlphaZero's spatial action encoding. The architecture begins with a 3×3 convolution \texttt{nn.Conv2d(in\_channels, 73, kernel\_size=3, padding=1, bias=False)} that reduces the 256-channel feature map to 73 planes. This differs from some implementations that use 1×1 convolutions; AlphaZero's paper specifies 3×3 convolutions to maintain spatial context during move prediction. Batch normalization and ReLU activation follow the convolution.
+
+The output tensor of shape (batch, 73, 8, 8) encodes moves using the AlphaZero action space: each of the 64 squares has 73 possible move types. The 73 planes decompose as 56 queen-style moves (8 directions × 7 distances covering N, NE, E, SE, S, SW, W, NW directions with 1-7 square distances), 8 knight moves (L-shaped movements to all valid knight destinations), and 9 underpromotion moves (3 directions × 3 piece types covering left-diagonal, forward, and right-diagonal pawn promotions to knight, bishop, or rook). Standard pawn promotions to queen are encoded in the queen-style moves. This encoding scheme supports all legal chess moves including castling (encoded as king moves of 2 squares) and en passant (encoded as diagonal pawn captures).
+
+The forward pass reshapes the output from (batch, 73, 8, 8) to (batch, 4672) through two operations. First, \texttt{out.permute(0, 2, 3, 1)} reorders dimensions to (batch, 8, 8, 73), placing the 73 move planes as the innermost dimension. Second, \texttt{out.reshape(out.size(0), -1)} flattens the spatial and plane dimensions to create a 1D vector of 4672 logits ($8 \times 8 \times 73 = 4672$). These logits are not normalized during the forward pass; softmax is applied externally during training (via \texttt{CrossEntropyLoss}) or inference (via \texttt{predict()}).
+
+Illegal move masking occurs during Monte Carlo Tree Search or evaluation by setting logits of illegal moves to large negative values (e.g., -1e8) before softmax application, ensuring negligible probability mass on invalid actions. The policy head parameters are cluster-specific in the selective aggregation framework, allowing different playstyle clusters to learn distinct move preferences (tactical vs. positional) while sharing the feature extraction layers.
 
 \subsection{Value Head Implementation}
 
-% Describe the ValueHead PyTorch module.
-%
-% Cover:
-% - Class: ValueHead (lines 122-171)
-% - Architecture: Conv2d(256, 1, 1×1) → Flatten → FC(256) → ReLU → FC(1) → Tanh
-% - Output range: [-1, +1]
-% - Represents win probability from current player's perspective
-% - MSE loss for training
+The \texttt{ValueHead} class implements position evaluation through a two-stage architecture that progressively reduces spatial dimensions. The first stage applies a 1×1 convolution \texttt{nn.Conv2d(in\_channels, 1, kernel\_size=1, bias=False)} to compress the 256-channel feature map to a single channel, followed by batch normalization and ReLU. This produces a tensor of shape (batch, 1, 8, 8) representing a spatial saliency map over the board. The flattening operation \texttt{out.view(out.size(0), -1)} reshapes this to (batch, 64), treating each square's activation as an independent feature.
+
+The second stage consists of two fully connected layers. The first layer \texttt{nn.Linear(64, 256)} expands the 64 spatial features to 256 hidden units, followed by ReLU activation. This expansion layer learns non-linear combinations of spatial features that correlate with position quality. The second layer \texttt{nn.Linear(256, 1)} reduces the hidden representation to a single scalar value. Finally, \texttt{torch.tanh()} bounds the output to the range $[-1, +1]$, where +1 represents a winning position for the current player, -1 represents a losing position, and 0 represents a drawn or balanced position.
+
+The tanh activation is essential for compatibility with the game outcome labels used during training: wins are labeled as +1, losses as -1, and draws as 0. Mean squared error loss \texttt{nn.MSELoss()} between predicted values and game outcomes trains the network to predict position evaluation. During self-play, the value head guides tree search by estimating leaf node values, and during opening book learning, it learns to evaluate positions based on game results from the PGN database.
+
+Similar to the policy head, value head parameters are cluster-specific in selective aggregation. This allows tactical players to develop value functions that prioritize tactical opportunities (piece activity, king safety, threats), while positional players develop value functions emphasizing long-term factors (pawn structure, space advantage, piece coordination). The shared residual trunk provides common feature extraction, while specialized value heads adapt evaluation criteria to playstyle-specific preferences.

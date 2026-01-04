@@ -1,42 +1,43 @@
 \section{Aggregation Implementation}
 
-% This section describes the implementation of the three-tier aggregation system.
-% Note: Chapter 3.4-3.5 covered the algorithms; this focuses on code structure.
+The aggregation implementation realizes the three-tier architecture that enables clustered federated learning with playstyle preservation. This section describes the base aggregation infrastructure, intra-cluster FedAvg implementation, and inter-cluster selective aggregation that maintains diversity across playstyles. The aggregation modules in \texttt{server/aggregation/} coordinate model updates at both cluster and global levels.
 
 \subsection{Base Aggregator Framework}
 
-% Describe the base aggregation infrastructure.
-%
-% Cover:
-% - File: server/aggregation/base_aggregator.py
-% - Class: BaseAggregator (abstract base class)
-% - AggregationMetrics dataclass
-% - Model validation: check_model_compatibility()
-% - Diversity calculation: calculate_diversity()
-% - Support for PyTorch and TensorFlow frameworks
+The \texttt{BaseAggregator} class in \texttt{server/aggregation/base\_aggregator.py} provides the abstract foundation for all aggregation strategies. This abstract base class defines the interface that both intra-cluster and inter-cluster aggregators must implement, ensuring consistent behavior across aggregation levels. The class supports both PyTorch and TensorFlow models through framework-agnostic serialization and provides comprehensive input validation, metrics collection, and error handling.
+
+The \texttt{AggregationMetrics} dataclass captures statistics about each aggregation operation: \texttt{aggregation\_time} measures execution latency, \texttt{participant\_count} tracks the number of models aggregated, \texttt{total\_samples} sums training samples across participants, \texttt{average\_loss} computes the weighted average loss, and \texttt{model\_diversity} quantifies parameter divergence between models. Additional metrics such as \texttt{convergence\_metric} and custom values stored in \texttt{additional\_metrics} support experiment tracking and analysis.
+
+The base aggregator constructor accepts \texttt{framework} (either 'pytorch' or 'tensorflow') and \texttt{compression} (boolean flag enabling gzip compression). Initialization creates a \texttt{ModelSerializer} instance using the factory function \texttt{get\_serializer()}, configures validation flags, and sets participant limits. The \texttt{min\_participants} parameter (default 1) enforces minimum participation for valid aggregation, while \texttt{max\_participants} (default 1000) prevents memory exhaustion from excessive participants.
+
+Two abstract methods define the aggregator interface. The \texttt{aggregate()} method accepts a dictionary of model states, aggregation weights, and round number, performing the actual aggregation algorithm and returning the aggregated model with metrics. The \texttt{get\_aggregation\_weights()} method calculates how much each participant contributes to the aggregated model based on provided metrics like sample counts or loss values. Subclasses must implement both methods according to their specific aggregation strategy.
+
+Input validation occurs through the \texttt{validate\_inputs()} method, which checks that models and weights dictionaries have matching keys, validates weight types and non-negativity, ensures participant counts fall within configured limits, and verifies that total weight is positive. The \texttt{check\_model\_compatibility()} method verifies that all models share the same parameter structure by comparing keys and tensor shapes against a reference model, raising \texttt{ValueError} if incompatibilities are detected.
+
+Model diversity calculation uses the \texttt{calculate\_model\_diversity()} method, which computes average pairwise parameter distance between all models. The \texttt{\_calculate\_parameter\_distance()} helper iterates through matching parameters, computing absolute differences and averaging across all parameters. High diversity indicates participants have learned different representations, while low diversity suggests convergence or insufficient training data variation.
 
 \subsection{Intra-Cluster Aggregator}
 
-% Describe the within-cluster aggregation implementation.
-%
-% Cover:
-% - File: server/aggregation/intra_cluster_aggregator.py
-% - Class: IntraClusterAggregator
-% - FedAvg implementation: weighted average of state_dicts
-% - Weighting strategies: "samples", "uniform", "loss"
-% - Operating on single cluster at a time
-% - Output: one aggregated model per cluster
+The \texttt{IntraClusterAggregator} class in \texttt{server/aggregation/intra\_cluster\_aggregator.py} implements FedAvg within individual clusters. This aggregator operates on models from nodes sharing the same playstyle classification, combining their updates through weighted averaging to create a cluster-level model. The aggregation preserves playstyle characteristics because all participating nodes trained on games with similar strategic patterns.
+
+The constructor extends \texttt{BaseAggregator} with additional parameters: \texttt{weighting\_strategy} (default 'samples') determines weight calculation method, \texttt{experiment\_tracker} enables checkpoint saving and metrics logging, and \texttt{metric\_registry} supports custom metric computation through plugins. Valid weighting strategies include 'samples' (weight by training sample count), 'uniform' (equal weights), and 'loss' (weight by inverse validation loss, favoring better-performing nodes).
+
+The \texttt{aggregate()} method implements the FedAvg algorithm through six steps. First, input validation checks model compatibility and weight validity using inherited base class methods. Second, weight normalization ensures weights sum to 1.0 through the \texttt{normalize\_weights()} utility function. Third, parameter-wise weighted averaging iterates through all model parameters, computing weighted sums using the formula $w_{agg} = \sum_{i} \alpha_i \cdot w_i$ where $\alpha_i$ represents normalized weight for participant $i$ and $w_i$ denotes their parameter values. Fourth, metrics collection creates an \texttt{AggregationMetrics} instance with timing, participant count, diversity score, and additional cluster metadata. Fifth, checkpoint saving stores the aggregated model to the model repository if \texttt{experiment\_tracker} is configured. Sixth, statistics updates increment total aggregation count and accumulated time for performance monitoring.
+
+The \texttt{get\_aggregation\_weights()} method calculates participant contributions based on the configured strategy. For 'samples' weighting, weights equal each participant's training sample count, naturally giving more influence to nodes that trained on more data. For 'uniform' weighting, all participants receive equal weight regardless of sample count or performance. For 'loss' weighting, weights equal the inverse of validation loss (nodes with lower loss contribute more), computed as $w_i = 1 / (loss_i + \epsilon)$ where $\epsilon = 0.01$ prevents division by zero. The method validates that required metrics exist in the input dictionary before computing weights.
+
+Integration with the experiment tracker enables comprehensive logging. After successful aggregation, the \texttt{log\_metrics()} method records aggregation time, participant count, diversity score, and custom metrics to the metrics store. Checkpoint saving via \texttt{save\_checkpoint()} persists the aggregated model state along with metadata including round number, cluster ID, and performance metrics. This checkpoint serves as both a training artifact and a restore point for fault tolerance.
 
 \subsection{Inter-Cluster Aggregator}
 
-% Describe the selective layer sharing implementation.
-%
-% Cover:
-% - File: server/aggregation/inter_cluster_aggregator.py
-% - Class: InterClusterAggregator
-% - Layer pattern matching for selective sharing
-% - Shared patterns: ["input_conv.*", "residual_blocks.0.*", ...]
-% - Cluster-specific patterns: ["policy_head.*", "value_head.*"]
-% - FedAvg applied only to matched shared layers
-% - Preserving cluster-specific layers unchanged
-% - Output: N updated cluster models (not 1 global model)
+The \texttt{InterClusterAggregator} class in \texttt{server/aggregation/inter\_cluster\_aggregator.py} implements the core innovation of this framework: selective weight sharing across clusters while preserving playstyle diversity. Unlike traditional federated learning that creates a single global model, this aggregator maintains separate models per cluster, synchronizing only specified layers while keeping strategic decision-making layers cluster-specific.
+
+The constructor accepts \texttt{shared\_layer\_patterns} and \texttt{cluster\_specific\_patterns} as lists of layer name patterns supporting wildcards. Default shared patterns include \texttt{["input\_conv.*"]} covering the input convolution that processes board representations. Default cluster-specific patterns include \texttt{["policy\_head.*", "value\_head.*"]} protecting the move selection and position evaluation layers that encode playstyle preferences. The \texttt{weighting\_strategy} parameter (default 'samples') determines how to weight cluster contributions during aggregation of shared layers.
+
+Layer identification uses pattern matching with the \texttt{\_matches\_pattern()} method, which converts wildcard patterns to regular expressions. For example, \texttt{"policy\_head.*"} matches \texttt{"policy\_head.conv.weight"}, \texttt{"policy\_head.bn.bias"}, and all other policy head parameters. The \texttt{\_identify\_shared\_layers()} method scans all parameter names, testing each against shared patterns and collecting matches. Similarly, \texttt{\_identify\_cluster\_specific\_layers()} identifies parameters to preserve per-cluster. Validation ensures no overlap between shared and cluster-specific sets and warns about unclassified layers (which default to cluster-specific for safety).
+
+The \texttt{aggregate()} method implements selective aggregation through nine steps. Step 1 validates inputs using inherited validation methods. Step 2 identifies shared versus cluster-specific layers by pattern matching against all parameter names from the first cluster model. Step 3 validates layer identification by checking for overlaps, ensuring complete coverage, and verifying at least some shared layers exist. Step 4 normalizes aggregation weights to sum to 1.0. Step 5 aggregates shared layers across clusters using FedAvg (weighted averaging), producing a single set of shared parameters. Step 6 updates each cluster model by replacing shared layers with aggregated versions while preserving cluster-specific layers exactly as they were. Step 7 collects aggregation metrics including timing, participant count, shared layer count, and diversity measures. Step 8 computes custom metrics via the metric registry if configured, passing context including original models, updated models, and round number. Step 9 saves updated cluster model checkpoints if experiment tracker is available.
+
+Shared layer aggregation in \texttt{\_aggregate\_shared\_layers()} handles multiple parameter types. PyTorch tensors aggregate through tensor arithmetic: initialization creates a zero tensor matching the reference shape, then weighted sum accumulates $\sum_c \alpha_c \cdot \theta_c$ where $c$ indexes clusters, $\alpha_c$ denotes normalized weights, and $\theta_c$ represents the layer parameters. For list-based representations (TensorFlow or manually serialized models), 1D parameters aggregate element-wise through list comprehension, while 2D parameters require nested loops over rows and columns. Scalar parameters simply sum weighted values.
+
+Cluster model updates in \texttt{\_update\_cluster\_models()} create new model state dictionaries for each cluster. The method starts with a shallow copy of the original cluster model, replaces all shared layer parameters with their aggregated versions, and preserves all cluster-specific and unclassified layers unchanged. This ensures tactical clusters maintain their aggressive policy heads while sharing generic board representation layers with positional clusters, achieving the diversity preservation goal.
