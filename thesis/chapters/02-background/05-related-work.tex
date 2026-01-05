@@ -6,15 +6,15 @@ Our work draws on several areas of research: distributed reinforcement learning,
 
 Distributed training has become essential for reinforcement learning in complex domains due to the computational demands of both environment interaction and neural network training.
 
-\textbf{Parallel Experience Collection:} Many RL systems use multiple actors to collect experience in parallel, dramatically increasing sample efficiency. A3C (Asynchronous Advantage Actor-Critic) introduced asynchronous updates from multiple workers to a shared model. IMPALA (Importance Weighted Actor-Learner Architecture) separates experience collection from learning, using importance sampling to handle the resulting off-policy data.
+\textbf{Parallel Experience Collection:} Many RL systems use multiple actors to collect experience in parallel, dramatically increasing sample efficiency. A3C (Asynchronous Advantage Actor-Critic)~\cite{mnih2016asynchronous} introduced asynchronous updates from multiple workers to a shared model. IMPALA (Importance Weighted Actor-Learner Architecture)~\cite{espeholt2018impala} separates experience collection from learning, using importance sampling to handle the resulting off-policy data.
 
-\textbf{Distributed AlphaZero:} The original AlphaZero training used distributed self-play, with many workers generating games in parallel while a central learner updates the neural network. This architecture enables the massive scale of training required for superhuman performance—AlphaZero played nearly 5 million games during training.
+\textbf{Distributed AlphaZero:} The original AlphaZero training~\cite{silver2018general} used distributed self-play, with many workers generating games in parallel while a central learner updates the neural network. This architecture enables the massive scale of training required for superhuman performance—AlphaZero played nearly 5 million games during training.
 
 However, these distributed RL approaches still rely on centralized aggregation and aim for a single global model. They distribute computation for efficiency but do not address the challenge of maintaining behavioral diversity or training multiple specialized models collaboratively.
 
 \subsection{Federated Reinforcement Learning}
 
-Applying federated learning to reinforcement learning is an emerging research area. While traditional supervised federated learning deals with fixed datasets, federated RL must handle the added complexity of exploration, temporal dependencies, and non-stationary data distributions as policies improve.
+Applying federated learning to reinforcement learning is an emerging research area~\cite{nadiger2019federated,khodadadian2022federated}. While traditional supervised federated learning deals with fixed datasets, federated RL must handle the added complexity of exploration, temporal dependencies, and non-stationary data distributions as policies improve.
 
 \textbf{Policy-Based FedRL:} Some approaches extend FedAvg directly to policy gradient methods, aggregating policy network parameters across agents. However, this faces challenges when agents experience different environments or have different reward functions, as policies optimized for different MDPs may not meaningfully average.
 
@@ -28,9 +28,9 @@ Most federated RL research has focused on settings where agents face different b
 
 Maintaining diversity in multi-agent systems has been studied in several contexts, motivated by applications in team behavior, robust learning, and ensemble methods.
 
-\textbf{Quality Diversity Algorithms:} MAP-Elites and related algorithms explicitly optimize for both performance and behavioral diversity. They maintain archives of solutions that exhibit different behaviors, even if some are suboptimal, creating a diverse collection of strategies.
+\textbf{Quality Diversity Algorithms:} MAP-Elites and related algorithms~\cite{pugh2016quality} explicitly optimize for both performance and behavioral diversity. They maintain archives of solutions that exhibit different behaviors, even if some are suboptimal, creating a diverse collection of strategies.
 
-\textbf{Diversity-Driven Exploration:} In multi-agent RL, some work uses diversity objectives to encourage agents to explore different parts of the state space or learn different policies. This can improve collective exploration efficiency and robustness.
+\textbf{Diversity-Driven Exploration:} In multi-agent RL, some work~\cite{parker2020effective} uses diversity objectives to encourage agents to explore different parts of the state space or learn different policies. This can improve collective exploration efficiency and robustness.
 
 \textbf{Emergent Communication and Specialization:} Research in multi-agent communication has shown that agents can spontaneously develop specialized roles when working toward common goals, with different agents handling different subtasks.
 
@@ -38,21 +38,21 @@ Our work differs from these approaches in that we seek to maintain diversity not
 
 \subsection{Clustered Federated Learning}
 
-Clustered federated learning recognizes that in heterogeneous settings, forcing all clients to converge to a single global model may be suboptimal. Instead, clients are grouped into clusters, with each cluster maintaining its own model.
+Clustered federated learning~\cite{sattler2020clustered,ghosh2020efficient} recognizes that in heterogeneous settings, forcing all clients to converge to a single global model may be suboptimal. Instead, clients are grouped into clusters, with each cluster maintaining its own model.
 
-\textbf{Automatic Clustering:} Several methods propose to automatically discover clusters during training. Clients are initially assigned to clusters randomly or based on data characteristics, then cluster membership is refined based on model similarity or gradient alignment. This allows the system to discover natural groupings in the data distribution.
+\textbf{Automatic Clustering:} Several methods~\cite{ghosh2020efficient} propose to automatically discover clusters during training. Clients are initially assigned to clusters randomly or based on data characteristics, then cluster membership is refined based on model similarity or gradient alignment. This allows the system to discover natural groupings in the data distribution.
 
 \textbf{Multi-Center Federated Learning:} Some approaches maintain multiple global models and allow clients to contribute to the model that best matches their data. This creates a form of competitive federated learning where models specialize to different data distributions.
 
-\textbf{Hierarchical Aggregation:} Similar to our approach, some work uses hierarchical aggregation where updates are first aggregated within clusters, then partial aggregation occurs across clusters. This balances the benefits of local specialization with global knowledge sharing.
+\textbf{Hierarchical Aggregation:} Similar to our approach, some work~\cite{briggs2020federated} uses hierarchical aggregation where updates are first aggregated within clusters, then partial aggregation occurs across clusters. This balances the benefits of local specialization with global knowledge sharing.
 
 However, existing clustered federated learning work focuses on supervised learning tasks with heterogeneous data distributions. The clustering emerges from data heterogeneity rather than being designed to preserve behavioral characteristics. Our work extends these ideas to reinforcement learning where we explicitly initialize and maintain clusters based on strategic playing style, and we introduce selective layer-wise aggregation to balance knowledge transfer with behavioral preservation.
 
 \subsection{Transfer Learning in Deep RL}
 
-Transfer learning in reinforcement learning aims to leverage knowledge from one task to accelerate learning on related tasks. This is relevant to our selective aggregation mechanism.
+Transfer learning in reinforcement learning~\cite{taylor2009transfer} aims to leverage knowledge from one task to accelerate learning on related tasks. This is relevant to our selective aggregation mechanism.
 
-\textbf{Progressive Neural Networks:} Freeze previously learned networks and add new capacity for new tasks, allowing lateral connections. This prevents catastrophic forgetting but increases model size.
+\textbf{Progressive Neural Networks:} Freeze previously learned networks and add new capacity for new tasks~\cite{rusu2016progressive}, allowing lateral connections. This prevents catastrophic forgetting but increases model size.
 
 \textbf{Fine-Tuning and Layer Freezing:} Standard practice is to fine-tune pretrained networks on new tasks, often freezing early layers that learn general features while adapting later layers to task specifics.
 

@@ -4,7 +4,7 @@ This chapter describes the experimental methodology used to validate the playsty
 
 \subsection{Research Hypotheses}
 
-The evaluation framework tests ten research hypotheses that span model performance, behavioral emergence, and system scalability. These hypotheses are organized into three categories: performance-related, behavior-related, and system-related.
+The evaluation framework tests seven research hypotheses that span model performance, behavioral emergence, and system stability. These hypotheses are organized into three categories: performance-related, behavior-related, and system-related.
 
 \subsubsection{Performance Hypotheses}
 
@@ -12,25 +12,19 @@ The evaluation framework tests ten research hypotheses that span model performan
 
 \textbf{H2: Selective aggregation improves cluster models.} This hypothesis examines whether the layer sharing mechanism allows clusters to develop distinct specializations. We measure this through cluster divergence metrics, expecting to see high divergence in cluster-specific layers (like policy heads) and low divergence in shared layers (like early residual blocks). The divergence pattern should fall between the two extremes: B1 (full sharing, near-zero divergence) and B2 (no sharing, maximum divergence).
 
-\textbf{H5: Cross-cluster learning enables knowledge transfer.} While H2 validates specialization, H5 tests whether shared layers enable useful knowledge transfer between clusters. We expect partial sharing experiments (P1-P4) to outperform the no-sharing baseline (B2) because shared layers allow clusters to learn from each other's experience, even while maintaining specialized heads.
+\textbf{H3: Cross-cluster learning enables knowledge transfer.} While H2 validates specialization, H3 tests whether shared layers enable useful knowledge transfer between clusters. We expect partial sharing experiments (P1-P4) to outperform the no-sharing baseline (B2) because shared layers allow clusters to learn from each other's experience, even while maintaining specialized heads.
 
 \subsubsection{Behavioral Hypotheses}
 
-\textbf{H3: Playstyle clusters emerge naturally.} This hypothesis tests whether training on different puzzle sets causes measurable differences in playing style. The tactical cluster should achieve significantly higher tactical scores (measuring aggressive play, captures, and checks) compared to the positional cluster. We use independent t-tests with a stringent threshold ($p < 0.001$) and expect a large effect size (Cohen's $d > 0.8$).
+\textbf{H4: Playstyle clusters emerge naturally.} This hypothesis tests whether training on different puzzle sets causes measurable differences in playing style. The tactical cluster should achieve significantly higher tactical scores (measuring aggressive play, captures, and checks) compared to the positional cluster. We use independent t-tests with a stringent threshold ($p < 0.001$) and expect a large effect size (Cohen's $d > 0.8$).
 
-\textbf{H4: Different clusters develop distinct strategies.} Beyond overall tactical scores, H4 examines whether clusters show different strategic preferences in their move choices. The tactical cluster should play more aggressive moves (captures and checks), while the positional cluster should favor quiet moves, pawn advances, and positional maneuvering. Move type distribution analysis provides the primary evidence for this hypothesis.
+\textbf{H5: Different clusters develop distinct strategies.} Beyond overall tactical scores, H5 examines whether clusters show different strategic preferences in their move choices. The tactical cluster should play more aggressive moves (captures and checks), while the positional cluster should favor quiet moves, pawn advances, and positional maneuvering. Move type distribution analysis provides the primary evidence for this hypothesis.
 
-\textbf{H10: Behavioral differences are measurable.} This hypothesis validates that our evaluation metrics are sensitive enough to detect meaningful behavioral differences. We require effect sizes greater than 0.5 (medium effect) for move type comparisons, ensuring that observed differences are not just statistically significant but also practically meaningful.
+\textbf{H6: Behavioral differences are measurable.} This hypothesis validates that our evaluation metrics are sensitive enough to detect meaningful behavioral differences. We require effect sizes greater than 0.5 (medium effect) for move type comparisons, ensuring that observed differences are not just statistically significant but also practically meaningful.
 
 \subsubsection{System Hypotheses}
 
-\textbf{H6: System scales with more clusters.} This hypothesis examines whether the selective aggregation approach remains effective as the number of clusters increases. While the current experiments use two clusters (tactical and positional), the framework should maintain its benefits with three or more clusters. This is primarily assessed qualitatively through computational overhead analysis.
-
 \textbf{H7: Clusters maintain stability over training.} Training stability is critical for practical deployment. This hypothesis tests whether cluster divergence stabilizes over time rather than oscillating or collapsing back to convergence. We use plateau detection algorithms to identify when metrics stabilize and verify that models don't reconverge in later training rounds.
-
-\textbf{H8: Individual clients benefit from clustering.} Beyond aggregate cluster performance, H8 examines whether individual nodes within each cluster improve over training. We expect more than 80\% of clients to show positive ELO gains from round 1 to round 200, validating that the framework benefits most participants rather than just the cluster average.
-
-\textbf{H9: Framework generalizes to new positions.} Generalization is essential for practical chess AI. This hypothesis tests whether specialized models can still solve puzzles outside their training domain. We expect cross-domain accuracy above 60\%, meaning tactical models should achieve reasonable performance on positional puzzles and vice versa, demonstrating that specialization doesn't cause catastrophic forgetting of general chess knowledge.
 
 \subsection{Experiment Structure}
 
@@ -46,7 +40,7 @@ Both baselines run for 200 rounds with identical training configurations. Each r
 
 \subsubsection{Phase 2: Partial Layer Sharing Experiments}
 
-Phase 2 explores four different layer sharing configurations to identify which layers should be shared versus specialized. The configurations are motivated by the AlphaZero architecture's hierarchical structure, where early layers learn low-level patterns, middle layers learn strategic concepts, and late layers (especially heads) make final decisions.
+Phase 2 explores four different layer sharing configurations to identify which layers should be shared versus specialized. The configurations are motivated by the AlphaZero architecture's~\cite{silver2018general} hierarchical structure (Section~\ref{sec:network-architecture}), where early layers learn low-level patterns, middle layers learn strategic concepts, and late layers (especially heads) make final decisions.
 
 Experiment P1 (Share Early Layers Only) shares the input block and early residual blocks (0-5) while keeping middle layers, late layers, and heads cluster-specific. The hypothesis is that low-level feature extraction generalizes across playing styles, but strategic and tactical reasoning should specialize.
 
@@ -54,7 +48,7 @@ Experiment P2 (Share Middle Layers Only) keeps input and early layers cluster-sp
 
 Experiment P3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive—it allows specialization in low-level features but forces convergence in high-level decision-making.
 
-Experiment P4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific. This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
+Experiment P4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific (Section~\ref{sec:selective-aggregation}). This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
 
 Each experiment runs for 200 rounds with identical training procedures and metric collection protocols. The goal is to compare performance, convergence speed, and behavioral differentiation across configurations to identify the optimal layer sharing strategy.
 
@@ -62,11 +56,11 @@ Each experiment runs for 200 rounds with identical training procedures and metri
 
 Phase 3 conducts comprehensive offline analysis after all training experiments complete. Unlike Phases 1 and 2, which collect metrics during training, Phase 3 uses the final trained models for in-depth evaluation.
 
-Evaluation E1 (Playstyle Analysis) generates 500 self-play games per cluster model to compute comprehensive playstyle statistics with tight confidence intervals. This validates H3 and H4 by comparing tactical scores and move type distributions between clusters with statistical significance tests.
+Evaluation E1 (Playstyle Analysis) generates 500 self-play games per cluster model to compute comprehensive playstyle statistics with tight confidence intervals. This validates H4 and H5 by comparing tactical scores and move type distributions between clusters with statistical significance tests.
 
-Evaluation E2 (Move Type Analysis) generates 200 games per cluster and classifies every move by type (captures, checks, aggressive moves, pawn advances, quiet moves). The analysis computes cluster comparison statistics to quantify behavioral differences and validate H10.
+Evaluation E2 (Move Type Analysis) generates 200 games per cluster and classifies every move by type (captures, checks, aggressive moves, pawn advances, quiet moves). The analysis computes cluster comparison statistics to quantify behavioral differences and validate H6.
 
-Evaluation E3 (Generalization Test) prepares benchmark position sets spanning tactical puzzles (mate-in-N, forks, pins), positional puzzles (endgame techniques, pawn structure), and mixed complexity positions. Each model is evaluated on all position types, including cross-testing tactical models on positional puzzles and vice versa. This validates H9 by measuring generalization beyond training domains.
+Evaluation E3 (Generalization Test) prepares benchmark position sets spanning tactical puzzles (mate-in-N, forks, pins), positional puzzles (endgame techniques, pawn structure), and mixed complexity positions. Each model is evaluated on all position types, including cross-testing tactical models on positional puzzles and vice versa.
 
 \subsection{Cluster Configuration}
 

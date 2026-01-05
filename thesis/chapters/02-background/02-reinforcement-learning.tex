@@ -1,10 +1,10 @@
 \section{Reinforcement Learning}
 
-Reinforcement learning (RL) is a machine learning paradigm where an agent learns to make decisions by interacting with an environment to maximize cumulative rewards. Unlike supervised learning, where correct answers are provided, RL agents must discover effective strategies through trial and error, receiving only sparse feedback about the quality of their actions.
+Reinforcement learning (RL) is a machine learning paradigm where an agent learns to make decisions by interacting with an environment to maximize cumulative rewards~\cite{sutton2018reinforcement}. Unlike supervised learning, where correct answers are provided, RL agents must discover effective strategies through trial and error, receiving only sparse feedback about the quality of their actions.
 
 \subsection{Markov Decision Processes}
 
-Reinforcement learning problems are typically formalized as Markov Decision Processes (MDPs). An MDP is defined by a tuple $(S, A, P, R, \gamma)$ where:
+Reinforcement learning problems are typically formalized as Markov Decision Processes (MDPs)~\cite{sutton2018reinforcement}. An MDP is defined by a tuple $(S, A, P, R, \gamma)$ where:
 
 \begin{itemize}
     \item $S$ is the set of possible states the environment can be in
@@ -36,9 +36,9 @@ Similarly, the action-value function $Q^\pi(s,a)$ represents the expected return
 
 Traditional RL algorithms use tabular representations to store value functions, which becomes impractical for large state spaces. Deep reinforcement learning addresses this limitation by using neural networks as function approximators to estimate value functions and policies. This enables RL to scale to complex domains like video games, robotics, and board games.
 
-Deep Q-Networks (DQN) pioneered this approach by using convolutional neural networks to approximate the action-value function $Q(s,a)$ for Atari games. The key innovations included experience replay, where transitions are stored in a buffer and sampled randomly for training, and a separate target network that stabilizes learning.
+Deep Q-Networks (DQN)~\cite{mnih2015humanlevel} pioneered this approach by using convolutional neural networks to approximate the action-value function $Q(s,a)$ for Atari games. The key innovations included experience replay, where transitions are stored in a buffer and sampled randomly for training, and a separate target network that stabilizes learning.
 
-Policy gradient methods provide an alternative approach by directly parameterizing the policy $\pi_\theta(a|s)$ with neural network parameters $\theta$. The policy gradient theorem allows us to compute gradients of the expected return with respect to these parameters:
+Policy gradient methods~\cite{williams1992simple} provide an alternative approach by directly parameterizing the policy $\pi_\theta(a|s)$ with neural network parameters $\theta$. The policy gradient theorem allows us to compute gradients of the expected return with respect to these parameters:
 
 \begin{equation}
     \nabla_\theta J(\theta) = \mathbb{E}_{\pi_\theta}[\nabla_\theta \log \pi_\theta(a|s) Q^{\pi_\theta}(s,a)]
@@ -48,7 +48,7 @@ Actor-critic methods combine these approaches by maintaining both a policy netwo
 
 \subsection{AlphaZero and Monte Carlo Tree Search}
 
-AlphaZero represents a breakthrough in deep reinforcement learning for board games, achieving superhuman performance in chess, Go, and shogi through pure self-play learning without human knowledge. The algorithm combines three key components: a deep neural network for position evaluation, Monte Carlo Tree Search for move planning, and reinforcement learning for continuous improvement.
+AlphaZero~\cite{silver2018general} represents a breakthrough in deep reinforcement learning for board games, achieving superhuman performance in chess, Go, and shogi through pure self-play learning without human knowledge. The algorithm combines three key components: a deep neural network for position evaluation, Monte Carlo Tree Search for move planning, and reinforcement learning for continuous improvement.
 
 \subsubsection{Neural Network Architecture}
 
@@ -62,7 +62,7 @@ The network uses a deep residual architecture with convolutional layers to proce
 
 \subsubsection{Monte Carlo Tree Search}
 
-Monte Carlo Tree Search (MCTS) is a best-first search algorithm that builds a search tree incrementally through random sampling. Unlike traditional minimax search used in classical chess engines, MCTS focuses computational effort on the most promising variations.
+Monte Carlo Tree Search (MCTS)~\cite{browne2012survey} is a best-first search algorithm that builds a search tree incrementally through random sampling. Unlike traditional minimax search used in classical chess engines, MCTS focuses computational effort on the most promising variations.
 
 Each node in the search tree represents a board position and stores statistics about visits and values. The search proceeds through four phases:
 
@@ -99,4 +99,4 @@ The network is trained to minimize a combined loss function:
 
 This loss function encourages the network to predict game outcomes accurately (value loss) and match the improved MCTS policy (policy loss), with L2 regularization to prevent overfitting.
 
-The key insight of AlphaZero is that MCTS can be viewed as a policy improvement operator. By repeatedly training the network on self-play games where moves are selected by MCTS, the network gradually improves, which in turn makes future MCTS searches more effective. This creates a positive feedback loop that leads to continuous improvement without requiring any domain knowledge beyond the game rules.
+The key insight of AlphaZero is that MCTS can be viewed as a policy improvement operator~\cite{silver2017mastering}. By repeatedly training the network on self-play games where moves are selected by MCTS, the network gradually improves, which in turn makes future MCTS searches more effective. This creates a positive feedback loop that leads to continuous improvement without requiring any domain knowledge beyond the game rules.

@@ -1,6 +1,6 @@
 \section{Aggregation Implementation}
 
-The aggregation implementation realizes the three-tier architecture that enables clustered federated learning with playstyle preservation. This section describes the base aggregation infrastructure, intra-cluster FedAvg implementation, and inter-cluster selective aggregation that maintains diversity across playstyles. The aggregation modules in \texttt{server/aggregation/} coordinate model updates at both cluster and global levels.
+The aggregation implementation realizes the three-tier architecture described in Section~\ref{sec:aggregation-system} that enables clustered federated learning with playstyle preservation. This section describes the base aggregation infrastructure, intra-cluster FedAvg implementation, and inter-cluster selective aggregation that maintains diversity across playstyles. The aggregation modules in \texttt{server/aggregation/} coordinate model updates at both cluster and global levels.
 
 \subsection{Base Aggregator Framework}
 
@@ -18,7 +18,7 @@ Model diversity calculation uses the \texttt{calculate\_model\_diversity()} meth
 
 \subsection{Intra-Cluster Aggregator}
 
-The \texttt{IntraClusterAggregator} class in \texttt{server/aggregation/intra\_cluster\_aggregator.py} implements FedAvg within individual clusters. This aggregator operates on models from nodes sharing the same playstyle classification, combining their updates through weighted averaging to create a cluster-level model. The aggregation preserves playstyle characteristics because all participating nodes trained on games with similar strategic patterns.
+The \texttt{IntraClusterAggregator} class in \texttt{server/aggregation/intra\_cluster\_aggregator.py} implements Federated Averaging~\cite{mcmahan2017communication} within individual clusters. This aggregator operates on models from nodes sharing the same playstyle classification, combining their updates through weighted averaging to create a cluster-level model. The aggregation preserves playstyle characteristics because all participating nodes trained on games with similar strategic patterns.
 
 The constructor extends \texttt{BaseAggregator} with additional parameters: \texttt{weighting\_strategy} (default 'samples') determines weight calculation method, \texttt{experiment\_tracker} enables checkpoint saving and metrics logging, and \texttt{metric\_registry} supports custom metric computation through plugins. Valid weighting strategies include 'samples' (weight by training sample count), 'uniform' (equal weights), and 'loss' (weight by inverse validation loss, favoring better-performing nodes).
 
@@ -30,7 +30,7 @@ Integration with the experiment tracker enables comprehensive logging. After suc
 
 \subsection{Inter-Cluster Aggregator}
 
-The \texttt{InterClusterAggregator} class in \texttt{server/aggregation/inter\_cluster\_aggregator.py} implements the core innovation of this framework: selective weight sharing across clusters while preserving playstyle diversity. Unlike traditional federated learning that creates a single global model, this aggregator maintains separate models per cluster, synchronizing only specified layers while keeping strategic decision-making layers cluster-specific.
+The \texttt{InterClusterAggregator} class in \texttt{server/aggregation/inter\_cluster\_aggregator.py} implements the selective layer aggregation mechanism described in Section~\ref{sec:selective-aggregation}: selective weight sharing across clusters while preserving playstyle diversity. Unlike traditional federated learning that creates a single global model, this aggregator maintains separate models per cluster, synchronizing only specified layers while keeping strategic decision-making layers cluster-specific.
 
 The constructor accepts \texttt{shared\_layer\_patterns} and \texttt{cluster\_specific\_patterns} as lists of layer name patterns supporting wildcards. Default shared patterns include \texttt{["input\_conv.*"]} covering the input convolution that processes board representations. Default cluster-specific patterns include \texttt{["policy\_head.*", "value\_head.*"]} protecting the move selection and position evaluation layers that encode playstyle preferences. The \texttt{weighting\_strategy} parameter (default 'samples') determines how to weight cluster contributions during aggregation of shared layers.
 

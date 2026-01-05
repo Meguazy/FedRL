@@ -1,6 +1,6 @@
 \section{Evaluation Implementation}
 
-The evaluation system implements the metrics framework described in Section~\ref{sec:evaluation}. The implementation spans multiple modules in \texttt{server/evaluation/} that orchestrate game play, analyze positions, classify moves, and compute model divergence.
+The evaluation system implements the metrics framework for assessing playstyle preservation and playing strength. The implementation spans multiple modules in \texttt{server/evaluation/} that orchestrate game play, analyze positions, classify moves, and compute model divergence.
 
 \subsection{Model Evaluator}
 
@@ -48,4 +48,4 @@ The \texttt{WeightStatistics} class in \texttt{server/evaluation/weight\_statist
 
 \subsection{Integration and Orchestration}
 
-The \texttt{ExperimentTracker} coordinates evaluation scheduling during training. At configurable intervals (default every 10 rounds), it triggers evaluation by calling \texttt{ModelEvaluator.evaluate\_cluster()} for each cluster, collecting metrics, computing inter-cluster divergence, and persisting results to JSON files in the metrics store (Section~\ref{sec:storage-system}).
+The \texttt{ExperimentTracker} coordinates evaluation scheduling during training. At configurable intervals (default every 10 rounds), it triggers evaluation by calling \texttt{ModelEvaluator.evaluate\_cluster()} for each cluster, collecting metrics, computing inter-cluster divergence, and persisting results to JSON files in the metrics store.

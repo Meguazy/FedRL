@@ -4,13 +4,13 @@ The baseline experiments establish the performance boundaries for the partial la
 
 \subsection{B1: Full Sharing Baseline}
 
-The first baseline, B1 (Full Sharing), implements standard federated learning without any specialization mechanism. All model layers—input block, all 19 residual blocks, and both policy and value heads—are aggregated across clusters using the FedAvg algorithm. This configuration provides the maximum knowledge sharing between clusters but prevents any form of model specialization.
+The first baseline, B1 (Full Sharing), implements standard federated learning without any specialization mechanism. All model layers—input block, all 19 residual blocks, and both policy and value heads—are aggregated across clusters using the FedAvg algorithm~\cite{mcmahan2017communication}. This configuration provides the maximum knowledge sharing between clusters but prevents any form of model specialization.
 
 \subsubsection{Configuration}
 
 The B1 experiment uses a shared layer configuration that includes every parameter in the model. The \texttt{shared\_layer\_patterns} list specifies all layer groups: \texttt{input\_conv.*}, \texttt{input\_bn.*}, \texttt{res\_blocks.*}, \texttt{policy\_head.*}, and \texttt{value\_head.*}. Meanwhile, the \texttt{cluster\_specific\_patterns} list remains empty, indicating that no layers are kept cluster-specific.
 
-During aggregation, both clusters (tactical and positional) collect updates from their respective nodes and compute weighted averages using FedAvg. However, since all layers are designated as shared, the aggregation mechanism synchronizes these layers between clusters. This effectively forces both clusters to converge toward identical models, with any cluster-specific knowledge being averaged away during aggregation.
+During aggregation, both clusters (tactical and positional) collect updates from their respective nodes and compute weighted averages using FedAvg~\cite{mcmahan2017communication}. However, since all layers are designated as shared, the aggregation mechanism (Section~\ref{sec:aggregation-system}) synchronizes these layers between clusters. This effectively forces both clusters to converge toward identical models, with any cluster-specific knowledge being averaged away during aggregation.
 
 The training runs for 200 rounds, with each round consisting of local training on 400 puzzles per node followed by model aggregation. The aggregation threshold is set to 0.8, requiring at least 80\% of cluster nodes (4 out of 4 nodes, with some tolerance) to participate before aggregation occurs. The timeout per round is 1,200 seconds (20 minutes), providing sufficient time for local training, model uploads, and aggregation.
 
@@ -20,7 +20,7 @@ The B1 baseline represents the standard federated learning approach without clus
 
 \textbf{Near-zero divergence.} Since all layers are synchronized between clusters after each round, the cluster divergence metrics should remain close to zero throughout training. Any temporary divergence that emerges during local training will be eliminated by the aggregation step. This provides a lower bound on divergence—the minimum possible separation when no specialization is allowed.
 
-\textbf{Minimal playstyle separation.} Despite training on different puzzle sets (tactical vs. positional), the two clusters should develop similar playing styles because their models are forced to converge. The tactical score differences between clusters will be minimal, as the shared policy head cannot maintain distinct strategic preferences. This serves as a negative control for hypothesis H3, demonstrating that playstyle separation requires some form of model specialization.
+\textbf{Minimal playstyle separation.} Despite training on different puzzle sets (tactical vs. positional), the two clusters should develop similar playing styles because their models are forced to converge. The tactical score differences between clusters will be minimal, as the shared policy head cannot maintain distinct strategic preferences. This serves as a negative control for hypothesis H4, demonstrating that playstyle separation requires some form of model specialization.
 
 \textbf{Fast convergence.} Full knowledge sharing means each cluster benefits from the training data of all 8 nodes, effectively doubling the training data size compared to independent training. We expect relatively fast convergence and good sample efficiency, with ELO ratings improving steadily across both clusters.
 
@@ -54,7 +54,7 @@ The B2 baseline tests whether cluster specialization is beneficial when taken to
 
 \textbf{High divergence.} With no cross-cluster aggregation, the tactical and positional models will evolve along completely different trajectories. Divergence should increase steadily during early training as each model adapts to its specific puzzle distribution. By the end of training, we expect divergence values significantly higher than B1 across all layer groups, providing an upper bound on model separation.
 
-\textbf{Maximum playstyle separation.} The B2 configuration provides ideal conditions for behavioral differentiation. The tactical cluster should develop a highly tactical playing style with high tactical scores, frequent captures and checks, and aggressive move preferences. The positional cluster should develop a positional playing style with lower tactical scores, more quiet moves, and focus on long-term planning. This serves as a positive control for hypothesis H3, demonstrating that specialization is possible when models train independently.
+\textbf{Maximum playstyle separation.} The B2 configuration provides ideal conditions for behavioral differentiation. The tactical cluster should develop a highly tactical playing style with high tactical scores, frequent captures and checks, and aggressive move preferences. The positional cluster should develop a positional playing style with lower tactical scores, more quiet moves, and focus on long-term planning. This serves as a positive control for hypothesis H4, demonstrating that specialization is possible when models train independently.
 
 \textbf{Slower convergence.} Unlike B1, each cluster only has access to its own 4 nodes' data (1,600 puzzles per round total, compared to 3,200 when sharing with the other cluster). This smaller effective dataset may slow convergence and require more rounds to reach comparable performance. The learning curves should show slower ELO improvement compared to configurations with knowledge sharing.
 
@@ -82,7 +82,7 @@ This divergence difference validates hypothesis H2 from a boundary conditions pe
 
 \subsubsection{Performance and Knowledge Transfer}
 
-The performance comparison between B1 and B2 tests hypothesis H5 (cross-cluster learning enables knowledge transfer). If B1 significantly outperforms B2, it suggests that knowledge sharing is beneficial despite preventing specialization. Conversely, if B2 matches or exceeds B1's performance, it suggests that specialization benefits outweigh knowledge transfer benefits, motivating stronger specialization in the partial sharing experiments.
+The performance comparison between B1 and B2 tests hypothesis H3 (cross-cluster learning enables knowledge transfer). If B1 significantly outperforms B2, it suggests that knowledge sharing is beneficial despite preventing specialization. Conversely, if B2 matches or exceeds B1's performance, it suggests that specialization benefits outweigh knowledge transfer benefits, motivating stronger specialization in the partial sharing experiments.
 
 We expect the truth to lie somewhere in between: B1 may show faster initial convergence due to larger effective dataset size, but B2 may achieve higher final performance on cluster-specific tasks due to specialization. The partial sharing experiments aim to capture the best of both worlds—fast convergence through shared general knowledge and strong final performance through specialized cluster-specific layers.
 
@@ -92,7 +92,7 @@ The behavioral metrics provide the clearest contrast between baselines. B1 shoul
 
 B2, on the other hand, should show maximum behavioral differentiation. With completely independent models, each cluster can fully optimize for its training distribution. The tactical cluster should exhibit highly tactical play, while the positional cluster should exhibit strongly positional play. The effect sizes for tactical score differences and move type distribution differences should be large in B2 but small in B1.
 
-This comparison validates hypothesis H3 (playstyle clusters emerge naturally) by demonstrating that behavioral differentiation requires model specialization. It also provides guidance for the partial sharing experiments: if we want clusters to develop distinct playing styles, we must keep at least some layers (likely the policy head) cluster-specific rather than shared.
+This comparison validates hypothesis H4 (playstyle clusters emerge naturally) by demonstrating that behavioral differentiation requires model specialization. It also provides guidance for the partial sharing experiments: if we want clusters to develop distinct playing styles, we must keep at least some layers (likely the policy head) cluster-specific rather than shared.
 
 \subsubsection{Design Space Motivation}
 
@@ -102,4 +102,4 @@ If B1 converges faster but achieves lower final performance, it suggests that ea
 
 If B2 shows strong specialization but slow convergence, it suggests that some knowledge transfer is beneficial but full sharing is excessive. This motivates experiments P1-P3, which selectively share different layer groups to balance knowledge transfer and specialization.
 
-The baselines also establish performance bounds for statistical testing. Hypothesis H1 requires that partial sharing outperforms B1 (full sharing), while hypothesis H5 requires that partial sharing outperforms B2 (no sharing). Together, these constraints define success: the optimal partial sharing configuration should beat both baselines by achieving stronger final performance than B1 while converging faster than B2.
+The baselines also establish performance bounds for statistical testing. Hypothesis H1 requires that partial sharing outperforms B1 (full sharing), while hypothesis H3 requires that partial sharing outperforms B2 (no sharing). Together, these constraints define success: the optimal partial sharing configuration should beat both baselines by achieving stronger final performance than B1 while converging faster than B2.

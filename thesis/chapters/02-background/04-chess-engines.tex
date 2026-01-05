@@ -6,17 +6,17 @@ Computer chess has been a central domain for artificial intelligence research si
 
 Traditional chess engines rely on three core components: board representation, move generation, and position evaluation combined with tree search.
 
-\textbf{Minimax and Alpha-Beta Pruning:} Classical engines use minimax search to explore the game tree, assuming both players play optimally. The algorithm recursively evaluates positions by assuming the maximizing player wants the highest score while the minimizing player wants the lowest. Alpha-beta pruning dramatically reduces the search space by eliminating branches that cannot affect the final decision.
+\textbf{Minimax and Alpha-Beta Pruning:} Classical engines use minimax search to explore the game tree, assuming both players play optimally. The algorithm recursively evaluates positions by assuming the maximizing player wants the highest score while the minimizing player wants the lowest. Alpha-beta pruning~\cite{knuth1975analysis} dramatically reduces the search space by eliminating branches that cannot affect the final decision.
 
 \textbf{Hand-Crafted Evaluation Functions:} Classical engines evaluate positions using carefully designed functions that consider material balance, piece activity, pawn structure, king safety, and other strategic factors. These evaluation functions encode centuries of human chess knowledge into numerical scores.
 
-Stockfish, currently the strongest classical chess engine, represents the pinnacle of this approach. It combines sophisticated search algorithms, aggressive pruning techniques, and finely tuned evaluation heuristics to search billions of positions per second. Despite being based on traditional methods, Stockfish remains competitive with neural network engines in many positions.
+Stockfish~\cite{stockfish2023}, currently the strongest classical chess engine, represents the pinnacle of this approach. It combines sophisticated search algorithms, aggressive pruning techniques, and finely tuned evaluation heuristics to search billions of positions per second. Despite being based on traditional methods, Stockfish remains competitive with neural network engines in many positions. Earlier milestones in classical chess AI include Deep Blue~\cite{campbell2002deep}, which famously defeated world champion Garry Kasparov in 1997.
 
 \subsection{Neural Network Chess Engines}
 
-The introduction of AlphaZero in 2017 demonstrated that neural networks trained through self-play could achieve superhuman chess performance without domain knowledge. Unlike classical engines that use hand-crafted evaluation functions, AlphaZero learned position evaluation and move selection entirely from self-play.
+The introduction of AlphaZero~\cite{silver2018general} in 2017 demonstrated that neural networks trained through self-play could achieve superhuman chess performance without domain knowledge. Unlike classical engines that use hand-crafted evaluation functions, AlphaZero learned position evaluation and move selection entirely from self-play.
 
-The success of AlphaZero inspired several open-source projects, most notably Leela Chess Zero (LC0), which reimplemented the AlphaZero approach using distributed training across thousands of volunteer computers. LC0 has evolved to match and sometimes exceed Stockfish's playing strength, particularly in positions requiring long-term strategic planning.
+The success of AlphaZero inspired several open-source projects, most notably Leela Chess Zero (LC0)~\cite{lc0}, which reimplemented the AlphaZero approach using distributed training across thousands of volunteer computers. LC0 has evolved to match and sometimes exceed Stockfish's playing strength, particularly in positions requiring long-term strategic planning.
 
 Neural network engines exhibit different playing characteristics compared to classical engines. They tend to favor positional understanding and long-term planning over tactical calculation depth. This has enriched computer chess by introducing more varied and sometimes more human-like playing styles.
 

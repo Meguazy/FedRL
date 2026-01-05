@@ -1,10 +1,10 @@
 \section{Federated Learning}
 
-Federated learning is a distributed machine learning paradigm that enables multiple participants to collaboratively train a shared model while keeping their data decentralized. Unlike traditional centralized training where all data is aggregated in one location, federated learning brings the model to the data rather than the data to the model. This approach addresses privacy concerns, reduces communication costs, and enables learning from data that cannot be easily centralized due to legal, technical, or practical constraints.
+Federated learning is a distributed machine learning paradigm that enables multiple participants to collaboratively train a shared model while keeping their data decentralized~\cite{mcmahan2017communication}. Unlike traditional centralized training where all data is aggregated in one location, federated learning brings the model to the data rather than the data to the model. This approach addresses privacy concerns, reduces communication costs, and enables learning from data that cannot be easily centralized due to legal, technical, or practical constraints.
 
 \subsection{Federated Averaging Algorithm}
 
-The foundational algorithm for federated learning is Federated Averaging (FedAvg), proposed by McMahan et al. FedAvg coordinates distributed training across multiple clients through a central server that aggregates local model updates.
+The foundational algorithm for federated learning is Federated Averaging (FedAvg), proposed by McMahan et al.~\cite{mcmahan2017communication}. FedAvg coordinates distributed training across multiple clients through a central server that aggregates local model updates.
 
 The basic FedAvg procedure consists of several rounds of communication between the server and clients:
 
@@ -26,9 +26,9 @@ The key advantage of FedAvg is that it performs multiple local optimization step
 
 \subsection{Challenges in Federated Learning}
 
-While federated learning offers many benefits, it also introduces several challenges compared to centralized training:
+While federated learning offers many benefits, it also introduces several challenges compared to centralized training~\cite{kairouz2021advances}:
 
-\textbf{Non-IID Data:} In typical federated settings, data across clients is not independently and identically distributed. Different clients may have data from different distributions, different label distributions, or different amounts of data. This heterogeneity can slow convergence and lead to suboptimal models.
+\textbf{Non-IID Data:} In typical federated settings, data across clients is not independently and identically distributed~\cite{li2020federated}. Different clients may have data from different distributions, different label distributions, or different amounts of data. This heterogeneity can slow convergence and lead to suboptimal models.
 
 \textbf{Communication Efficiency:} Since clients may have limited bandwidth or intermittent connectivity, minimizing communication rounds is essential. Techniques like gradient compression, quantization, and local optimization help reduce communication costs.
 
@@ -44,10 +44,10 @@ Personalized federated learning addresses this by allowing some degree of model 
 
 \textbf{Fine-tuning:} Clients start with a global model but continue training locally after federation completes, adapting the model to their specific data.
 
-\textbf{Multi-task Learning:} The model is split into shared and personalized layers. Shared layers learn common representations across all clients, while personalized layers adapt to individual client characteristics.
+\textbf{Multi-task Learning:} The model is split into shared and personalized layers~\cite{arivazhagan2019federated}. Shared layers learn common representations across all clients, while personalized layers adapt to individual client characteristics.
 
-\textbf{Clustered Federated Learning:} Clients are grouped into clusters based on data similarity or other criteria. Each cluster maintains its own model through federated averaging within the cluster, while potentially sharing knowledge across clusters.
+\textbf{Clustered Federated Learning:} Clients are grouped into clusters based on data similarity or other criteria~\cite{sattler2020clustered}. Each cluster maintains its own model through federated averaging within the cluster, while potentially sharing knowledge across clusters.
 
-\textbf{Meta-Learning:} The global model is trained to be easily adaptable to new clients with minimal fine-tuning, using techniques like Model-Agnostic Meta-Learning (MAML).
+\textbf{Meta-Learning:} The global model is trained to be easily adaptable to new clients with minimal fine-tuning~\cite{fallah2020personalized}, using techniques like Model-Agnostic Meta-Learning (MAML).
 
 These personalization techniques recognize that a one-size-fits-all global model is not always optimal, especially when client data distributions are significantly different. Our work builds on the clustered federated learning approach, extending it to reinforcement learning settings where behavioral diversity is not just a result of data heterogeneity but a desired outcome.

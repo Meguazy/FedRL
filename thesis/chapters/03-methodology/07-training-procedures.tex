@@ -1,7 +1,7 @@
 \section{Training Procedures}
 \label{sec:training-procedures}
 
-The training pipeline combines supervised learning from human games with reinforcement learning through self-play, following the AlphaZero paradigm adapted for federated learning with playstyle preservation. Training proceeds in two phases: an initial supervised bootstrapping phase that provides the neural network with basic chess knowledge, followed by a self-play phase that refines playing strength through reinforcement learning with Monte Carlo Tree Search.
+The training pipeline combines supervised learning from human games with reinforcement learning through self-play, following the AlphaZero paradigm~\cite{silver2018general} adapted for federated learning with playstyle preservation. Training proceeds in two phases: an initial supervised bootstrapping phase that provides the neural network with basic chess knowledge, followed by a self-play phase that refines playing strength through reinforcement learning with Monte Carlo Tree Search.
 
 \begin{figure}[h]
 \centering
@@ -96,7 +96,7 @@ The supervised bootstrapping phase continues for a predefined number of training
 
 \subsection{Self-Play Training Phase}
 
-Following supervised bootstrapping, the training pipeline transitions to self-play reinforcement learning, where the neural network improves by playing games against itself with Monte Carlo Tree Search acting as a policy improvement operator. This phase follows the AlphaZero paradigm, generating training data through search-guided play rather than relying on external game databases.
+Following supervised bootstrapping, the training pipeline transitions to self-play reinforcement learning, where the neural network improves by playing games against itself with Monte Carlo Tree Search acting as a policy improvement operator. This phase follows the AlphaZero paradigm~\cite{silver2018general}, generating training data through search-guided play rather than relying on external game databases.
 
 In each self-play iteration, the current neural network $f_\theta$ with parameters $\theta$ plays games against itself using MCTS to select moves. For each position $s$ encountered during self-play, MCTS runs a fixed number of simulations (typically 800-1600) to construct a search tree exploring possible continuations. The MCTS visit counts at the root node define an improved policy $\boldsymbol{\pi}$ that is typically stronger than the raw neural network policy $\mathbf{p}(s)$ due to explicit lookahead search.
 
@@ -122,7 +122,7 @@ This loss function trains the neural network to imitate the MCTS search results:
 
 In the federated setting, self-play games are generated independently by each client using the current cluster-aggregated model. Clients within the same cluster produce diverse self-play trajectories due to stochastic move sampling (when $\tau = 1$) and different MCTS random seeds. After generating a batch of self-play games and training on the resulting positions, clients send updated parameters to the cluster server for aggregation, maintaining the same federated learning workflow as the supervised phase.
 
-The self-play phase continues indefinitely, with the network progressively strengthening through the iterative cycle of game generation, training, and aggregation. Periodic evaluation against fixed-strength opponents (Section~\ref{sec:evaluation}) monitors playing strength to assess training progress and compare selective aggregation configurations.
+The self-play phase continues indefinitely, with the network progressively strengthening through the iterative cycle of game generation, training, and aggregation. Periodic evaluation against fixed-strength opponents (Section~\ref{sec:evaluation-protocol}) monitors playing strength to assess training progress and compare selective aggregation configurations.
 
 \subsection{Monte Carlo Tree Search Integration}
 
@@ -140,7 +140,7 @@ This formula combines the exploitation term $Q(s, a)$, which favors actions with
 
 Selection continues until reaching a leaf node: either a position not yet expanded in the search tree or a terminal position (checkmate, stalemate, or draw by repetition/insufficient material). For terminal positions, the exact game outcome is returned immediately. For non-terminal leaf positions, the expansion phase adds the position to the search tree and evaluates it using the neural network. The network's policy output $\mathbf{p}(s)$ initializes the prior probabilities $P(s, a)$ for all legal actions from $s$, and the value output $v(s)$ provides an estimated outcome without further search.
 
-AlphaZero eliminates the traditional rollout simulation phase, instead using the neural network's value prediction $v(s)$ as the leaf evaluation. This constitutes the simulation phase: rather than playing out the position to a terminal state, the network's learned value function estimates the expected outcome from $s$ under optimal play.
+AlphaZero~\cite{silver2018general} eliminates the traditional rollout simulation phase, instead using the neural network's value prediction $v(s)$ as the leaf evaluation. This constitutes the simulation phase: rather than playing out the position to a terminal state, the network's learned value function estimates the expected outcome from $s$ under optimal play.
 
 The backpropagation phase propagates the evaluation $v(s)$ up the tree along the trajectory that reached the leaf. For each position-action pair $(s, a)$ along the path, the visit count $N(s, a)$ is incremented and the mean action-value $Q(s, a)$ is updated:
 
@@ -168,7 +168,7 @@ Augmentation techniques can be applied during batch sampling to increase data ef
 
 In the federated learning setting, each client maintains its own local replay buffer populated with self-play games generated using the current cluster-aggregated model. Clients do not share raw experience tuples (which would require transmitting large amounts of position data); instead, they share only the updated neural network parameters after training on their local replay buffers. This preserves privacy and reduces communication overhead while allowing knowledge transfer through model aggregation.
 
-The ratio of self-play games generated to training steps performed is a critical hyperparameter. AlphaZero generates many self-play games per network update to ensure the replay buffer is populated with diverse high-quality data. Typical configurations might generate 1,000 to 5,000 self-play games per training iteration, with each game contributing 80-120 positions on average, yielding hundreds of thousands of training samples per iteration. The network then trains on batches sampled from this pool for multiple epochs before generating new self-play games with the updated network.
+The ratio of self-play games generated to training steps performed is a critical hyperparameter. AlphaZero~\cite{silver2018general} generates many self-play games per network update to ensure the replay buffer is populated with diverse high-quality data. Typical configurations might generate 1,000 to 5,000 self-play games per training iteration, with each game contributing 80-120 positions on average, yielding hundreds of thousands of training samples per iteration. The network then trains on batches sampled from this pool for multiple epochs before generating new self-play games with the updated network.
 
 This iterative cycle of game generation, buffer population, batch sampling, and network training continues throughout the self-play phase, with federated aggregation occurring at regular intervals to incorporate knowledge from all clients within a cluster and selectively share knowledge across clusters. The experience replay mechanism ensures training stability and data efficiency while the federated aggregation mechanism ensures collaborative learning with playstyle preservation.
 

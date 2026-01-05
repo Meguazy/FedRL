@@ -4,7 +4,7 @@ The data processing pipeline transforms raw chess games and puzzles into trainin
 %
 \subsection{Board Encoder}
 
-The \texttt{BoardEncoder} class in \texttt{data/board\_encoder.py} implements the 119-plane tensor representation that serves as neural network input. This encoding follows the AlphaZero paper's specification, capturing not only the current board state but also temporal context through position history. The \texttt{encode()} method accepts a \texttt{chess.Board} object and optional history list, returning a NumPy array of shape (119, 8, 8) with \texttt{float32} dtype.
+The \texttt{BoardEncoder} class in \texttt{data/board\_encoder.py} implements the 119-plane tensor representation that serves as neural network input (Section~\ref{sec:network-architecture}). This encoding follows the AlphaZero specification~\cite{silver2018general}, capturing not only the current board state but also temporal context through position history. The \texttt{encode()} method accepts a \texttt{chess.Board} object and optional history list, returning a NumPy array of shape (119, 8, 8) with \texttt{float32} dtype.
 
 Planes 0-95 encode piece positions across 8 temporal steps (current position plus 7 historical positions). Each temporal step uses 12 planes: 6 piece types (pawn, knight, bishop, rook, queen, king) × 2 colors (white, black). Within each plane, squares containing the relevant piece are set to 1.0, empty squares to 0.0. The board is represented from white's perspective using python-chess's internal representation where square 0 is a1 and square 63 is h8. When history is not provided, the current position is repeated for all 8 temporal steps to maintain consistent tensor dimensions.
 
@@ -30,7 +30,7 @@ The final action index combines the from-square and move plane: \texttt{index = 
 
 \subsection{ECO Classification}
 
-The \texttt{eco\_classifier.py} module implements playstyle classification based on Encyclopedia of Chess Openings (ECO) codes. This deterministic classification maps each game's opening to either tactical or positional style, enabling data filtering for cluster-specific training. The module defines two large sets of ECO codes extracted from the opening template files described in the methodology.
+The \texttt{eco\_classifier.py} module implements playstyle classification based on Encyclopedia of Chess Openings (ECO) codes as described in Section~\ref{sec:playstyle-filtering}. This deterministic classification maps each game's opening to either tactical or positional style, enabling data filtering for cluster-specific training. The module defines two large sets of ECO codes extracted from the opening template files described in the methodology.
 
 Tactical codes (stored in \texttt{TACTICAL\_ECO\_CODES}) include 150+ codes covering aggressive and sharp openings. Major tactical families include Sicilian Defence (B20-B99 excluding some positional lines), King's Gambit (C30-C39), Italian Game sharp variations (C50-C54), Alekhine's Defence (B02-B05), Vienna Game (C25-C29), Scandinavian Defence (B01), and King's Indian Attack (E60-E99). These openings typically feature rapid piece activity, tactical complications, and imbalanced pawn structures.
 

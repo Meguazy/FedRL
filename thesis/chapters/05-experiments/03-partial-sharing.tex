@@ -4,7 +4,7 @@ Phase 2 explores four different partial layer sharing configurations to identify
 
 \subsection{Layer Group Definitions}
 
-Before describing each experiment, we need to establish how the AlphaZero architecture is divided into layer groups. The model's 11 million parameters are organized hierarchically, with each group serving a distinct function in the decision-making pipeline.
+Before describing each experiment, we need to establish how the AlphaZero architecture~\cite{silver2018general} is divided into layer groups (Section~\ref{sec:network-architecture}). The model's 11 million parameters are organized hierarchically, with each group serving a distinct function in the decision-making pipeline.
 
 The \textbf{input block} consists of a convolutional layer and batch normalization, totaling approximately 20,000 parameters. This layer performs initial feature extraction from the 119-plane board representation, converting the raw position encoding into a dense feature map. The input block learns to identify basic board features like piece locations, castling rights, and move history.
 
