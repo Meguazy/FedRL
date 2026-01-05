@@ -1,6 +1,69 @@
 \section{Evaluation Metrics}
+\label{sec:evaluation-metrics}
 
-The evaluation methodology uses the metrics described in Section~\ref{sec:evaluation} and implemented in Chapter 4.7. This section specifies which metrics are collected, at what frequency, and what values are expected across the different experimental configurations.
+Our evaluation framework measures three distinct aspects of the federated learning system: playing strength, playstyle preservation, and cluster divergence. These metrics assess whether selective aggregation achieves the dual objectives of maintaining competitive playing ability while preserving distinct tactical and positional characteristics. This section describes the metrics, their collection schedule, and expected patterns across different experimental configurations.
+
+\subsection{Playing Strength Metrics}
+
+Playing strength is quantified through ELO rating estimation based on match results against calibrated Stockfish opponents at multiple difficulty levels (1000, 1200, and 1400 ELO). For each cluster, we play a series of evaluation matches with alternating colors, yielding 30 total evaluation games per cluster per evaluation round.
+
+ELO estimation uses the standard formula where the expected score between two players is:
+
+\begin{equation}
+E(R_{\text{test}}, R_{\text{opp}}) = \frac{1}{1 + 10^{(R_{\text{opp}} - R_{\text{test}})/400}}
+\end{equation}
+
+We estimate the cluster's ELO rating by finding the rating that best fits the observed match results across all opponent levels using least squares optimization. Confidence intervals are computed based on the number of evaluation games, with our default of 30 games providing a $\pm 100$ ELO confidence range.
+
+\subsection{Playstyle Metrics}
+
+Playstyle characterization quantifies the tactical versus positional nature of each cluster's play through comprehensive analysis of self-play and evaluation games. The primary metric is the \textbf{tactical score}, a normalized composite metric ranging from 0.0 (purely positional) to 1.0 (purely tactical).
+
+The tactical score integrates three normalized component metrics:
+
+\textbf{Attacks metric}: Measures the total material value of opponent pieces under attack, normalized by the maximum possible attacked material (39 points).
+
+\textbf{Moves metric}: Measures the average number of legal moves available, normalized by typical middlegame move counts (40 moves).
+
+\textbf{Material metric}: Measures total material captured during the opening and early middlegame, normalized by significant exchange thresholds (20 points).
+
+These components are combined through weighted averaging:
+
+\begin{equation}
+\text{TacticalScore} =
+\begin{cases}
+\frac{\text{AttacksMetric} + \text{MovesMetric} + \text{MaterialMetric}}{3} & \text{if MaterialMetric} > 0 \\[0.3cm]
+\frac{\text{AttacksMetric} + \text{MovesMetric}}{2} & \text{otherwise}
+\end{cases}
+\end{equation}
+
+For each cluster, we report the mean tactical score, standard deviation, and distribution across five classification categories: Very Tactical ($> 0.70$), Tactical ($0.65$-$0.70$), Balanced ($0.60$-$0.65$), Positional ($0.50$-$0.60$), and Very Positional ($< 0.50$).
+
+Beyond the aggregate tactical score, we perform detailed \textbf{move-level classification} to quantify specific playing patterns. Each move is classified into categories including captures, checks, pawn advances, quiet moves, and aggressive moves (union of captures and checks). We compute the percentage of moves in each category, enabling both absolute and relative comparisons between clusters.
+
+\subsection{Cluster Divergence Metrics}
+
+Cluster divergence quantifies the degree to which clusters have developed distinct internal representations. We measure divergence at both the parameter level (comparing neural network weights) and behavioral level (comparing playstyle metrics).
+
+\subsubsection{Parameter-Level Divergence}
+
+Parameter-level divergence compares neural network weights between cluster models on a layer-by-layer basis. For each layer group, we compute the L2 distance between weight tensors, normalized by parameter count to enable fair comparison across layers of different sizes:
+
+\begin{equation}
+\text{Divergence}(W_A, W_B) = \frac{\|W_A - W_B\|_2}{\sqrt{|\text{Parameters}|}}
+\end{equation}
+
+We aggregate results by layer group (input block, early residual blocks, middle residual blocks, late residual blocks, policy head, value head). Under selective aggregation, we expect low divergence in shared layer groups and higher divergence in cluster-specific groups.
+
+\subsubsection{Behavioral Divergence}
+
+Behavioral divergence measures differences in playstyle metrics between clusters. Key metrics include:
+
+\textbf{Playstyle divergence}: The absolute difference in mean tactical scores between clusters, quantifying behavioral separation.
+
+\textbf{ELO spread}: The range of playing strengths across clusters, indicating whether selective aggregation creates strength imbalances.
+
+\textbf{Move type differences}: Absolute differences in move category percentages (captures, checks, quiet moves) between clusters, validating stylistic separation.
 
 \subsection{Metric Collection Schedule}
 

@@ -17,7 +17,7 @@ Integration with playstyle analysis occurs through \texttt{GameAnalyzer} and \te
 
 \subsection{Playstyle Metrics Calculator}
 
-The \texttt{PlaystyleMetricsCalculator} in \texttt{server/evaluation/playstyle\_metrics.py} implements the tactical score computation from Section~\ref{sec:evaluation}. The \texttt{GameAnalyzer} parses PGN strings, replays move sequences, and extracts features at each position using \texttt{python-chess} methods:
+The \texttt{PlaystyleMetricsCalculator} in \texttt{server/evaluation/playstyle\_metrics.py} implements the tactical score computation from Section~\ref{sec:evaluation-metrics}. The \texttt{GameAnalyzer} parses PGN strings, replays move sequences, and extracts features at each position using \texttt{python-chess} methods:
 
 \begin{itemize}
 \item \texttt{calculate\_attacked\_material()}: Uses \texttt{board.is\_attacked\_by()} to identify attacked pieces, sums values from \texttt{PIECE\_VALUES} dictionary
