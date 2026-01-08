@@ -50,7 +50,7 @@ Behavioral separation metrics reveal stark differences across configurations. P1
 
 The critical factor is policy head architecture. All configurations with independent policy heads (P1, P2, P4) successfully specialize, while configurations with shared policy heads (B1, P3) fail completely. Surprisingly, B2's complete independence also fails to produce strong specialization, suggesting that architectural constraints (like partial sharing forcing differentiation) may be necessary to drive behavioral divergence beyond what emerges naturally from data distribution differences alone.
 
-\textbf{Conclusion}: Hypothesis partially supported. Playstyle emergence is possible but requires specific architectural properties—namely independent policy heads combined with appropriate sharing constraints. Training distribution alone is insufficient; the architecture must permit and encourage specialization through controlled aggregation.
+\textbf{Conclusion}: Hypothesis partially supported. Playstyle emergence is possible but requires specific architectural properties, namely independent policy heads combined with appropriate sharing constraints. Training distribution alone is insufficient; the architecture must permit and encourage specialization through controlled aggregation.
 
 \subsubsection{H5: Different Clusters Develop Distinct Strategies}
 
@@ -90,7 +90,7 @@ Effect sizes exceed Cohen's d > 0.5 thresholds for P2 and P4 across multiple met
 
 Policy head divergence trajectories demonstrate consistent stabilization patterns. All configurations with independent policy heads (B2, P1, P2, P4) exhibit rapid initial divergence decrease from rounds 10-100 (P2: 0.32 to 0.26), gradual stabilization from rounds 100-200 (P2: 0.26 to 0.23), and plateau behavior from rounds 200-350 (P2: 0.23 to 0.22).
 
-The plateau after round 200 indicates that specialization solidifies and persists through extended training. No configuration shows reconvergence—the divergence values stabilize rather than decreasing toward zero. This validates that federated aggregation with selective sharing creates stable specialization rather than transient training artifacts that eventually collapse to homogeneity.
+The plateau after round 200 indicates that specialization solidifies and persists through extended training. No configuration shows reconvergence, the divergence values stabilize rather than decreasing toward zero. This validates that federated aggregation with selective sharing creates stable specialization rather than transient training artifacts that eventually collapse to homogeneity.
 
 B1 and P3 maintain zero divergence throughout training due to shared policy heads, confirming that forced synchronization prevents any emergence of specialization regardless of training duration. The stability of non-zero divergence in P1, P2, and P4 demonstrates that architectural choices determine long-term behavioral outcomes.
 

@@ -8,7 +8,7 @@ Before describing each experiment, we need to establish how the AlphaZero archit
 
 The \textbf{input block} consists of a convolutional layer and batch normalization, totaling approximately 20,000 parameters. This layer performs initial feature extraction from the 119-plane board representation, converting the raw position encoding into a dense feature map. The input block learns to identify basic board features like piece locations, castling rights, and move history.
 
-The \textbf{early residual blocks} (blocks 0-5) contain approximately 2.5 million parameters distributed across six residual blocks with skip connections. These layers learn low-level pattern recognition, including piece recognition, basic board geometry, and simple tactical patterns. Early residual blocks capture features that are largely universal across playing styles—all chess players need to recognize pieces and understand basic board topology.
+The \textbf{early residual blocks} (blocks 0-5) contain approximately 2.5 million parameters distributed across six residual blocks with skip connections. These layers learn low-level pattern recognition, including piece recognition, basic board geometry, and simple tactical patterns. Early residual blocks capture features that are largely universal across playing styles, all chess players need to recognize pieces and understand basic board topology.
 
 The \textbf{middle residual blocks} (blocks 6-12) contain approximately 3.5 million parameters across seven residual blocks. These layers learn mid-level tactical patterns such as forks, pins, skewers, discovered attacks, and other common tactical motifs. The question of whether these patterns are playstyle-specific or universal motivates experiment P2.
 
@@ -16,7 +16,7 @@ The \textbf{late residual blocks} (blocks 13-18) also contain approximately 3.5 
 
 The \textbf{policy head} contains approximately 1.5 million parameters across a convolutional layer and fully connected layer. The policy head outputs 4,672 logits representing move probabilities for all possible moves (64 source squares × 64 destination squares, plus special moves and promotions). This head directly encodes move selection preferences and is the primary candidate for playstyle-specific parameters.
 
-The \textbf{value head} contains approximately 500,000 parameters across a convolutional layer and fully connected layers. The value head outputs a single scalar in the range [-1, 1] representing the estimated game outcome from the current position. While position evaluation might seem universal, different playing styles may evaluate positions differently—tactical players may value active pieces more, while positional players may prioritize pawn structure.
+The \textbf{value head} contains approximately 500,000 parameters across a convolutional layer and fully connected layers. The value head outputs a single scalar in the range [-1, 1] representing the estimated game outcome from the current position. While position evaluation might seem universal, different playing styles may evaluate positions differently, tactical players may value active pieces more, while positional players may prioritize pawn structure.
 
 \subsection{P1: Share Early Layers Only}
 
@@ -26,7 +26,7 @@ The first partial sharing experiment, P1, tests the hypothesis that low-level fe
 
 The P1 experiment designates the input block (\texttt{input\_conv.*}, \texttt{input\_bn.*}) and early residual blocks (\texttt{res\_blocks.0.*} through \texttt{res\_blocks.5.*}) as shared layers. These approximately 2.5 million parameters are aggregated across both tactical and positional clusters after each training round.
 
-All remaining layers—middle residual blocks (6-12), late residual blocks (13-18), and both heads—are marked as cluster-specific. These approximately 8.5 million parameters remain separate for each cluster, allowing independent specialization based on the respective puzzle distributions.
+All remaining layers, middle residual blocks (6-12), late residual blocks (13-18), and both heads, are marked as cluster-specific. These approximately 8.5 million parameters remain separate for each cluster, allowing independent specialization based on the respective puzzle distributions.
 
 The aggregation protocol works as follows: after local training, nodes within each cluster combine their updates using FedAvg to produce a cluster model. Then, for shared layers only, the tactical and positional cluster models synchronize their parameters using weighted averaging. The cluster-specific layers remain unchanged during this cross-cluster synchronization step.
 
@@ -56,7 +56,7 @@ This creates an unusual "sandwich" pattern where the edges of the network (input
 
 The P2 configuration tests whether mid-level tactical patterns are universal across playing styles. The underlying question is: do tactical and positional players recognize the same tactical patterns (forks, pins, skewers) even if they prioritize them differently?
 
-One perspective argues that tactical pattern recognition is universal—both tactical and positional players need to identify when a fork is possible or when a pin exists. The difference lies not in pattern recognition but in how these patterns influence move selection. Under this view, sharing middle layers (where tactical patterns are encoded) could be beneficial.
+One perspective argues that tactical pattern recognition is universal, both tactical and positional players need to identify when a fork is possible or when a pin exists. The difference lies not in pattern recognition but in how these patterns influence move selection. Under this view, sharing middle layers (where tactical patterns are encoded) could be beneficial.
 
 An alternative perspective suggests that even pattern recognition differs between styles. Tactical players may develop more refined representations of forcing moves and material exchanges, while positional players may develop stronger representations of piece coordination and pawn structures. Under this view, sharing middle layers would hurt specialization.
 
@@ -104,9 +104,9 @@ The P4 experiment is motivated by multi-task learning principles and the AlphaZe
 
 Applying this principle to playstyle clustering, we hypothesize that most chess knowledge is universal: piece values, mobility, king safety, pawn structure principles, tactical patterns, and strategic concepts. Both tactical and positional players need to understand these concepts. The difference lies in how they \emph{apply} this knowledge when selecting moves and evaluating positions.
 
-The policy head encodes move selection preferences—which moves to prioritize given a position. Tactical players should have policy heads that assign high probability to forcing moves, captures, and checks. Positional players should have policy heads that favor quiet moves, pawn advances, and long-term improvements.
+The policy head encodes move selection preferences, which moves to prioritize given a position. Tactical players should have policy heads that assign high probability to forcing moves, captures, and checks. Positional players should have policy heads that favor quiet moves, pawn advances, and long-term improvements.
 
-The value head encodes position evaluation criteria—how to score a position's quality. Tactical players may value material imbalances and active piece positions more highly, while positional players may value solid pawn structures and space advantages.
+The value head encodes position evaluation criteria, how to score a position's quality. Tactical players may value material imbalances and active piece positions more highly, while positional players may value solid pawn structures and space advantages.
 
 By keeping only these 2 million parameters cluster-specific, P4 tests whether playstyle can be encoded in a compact specialized layer. The advantage is maximum knowledge transfer through the shared 9.5M parameter backbone, potentially leading to faster convergence and stronger overall chess understanding. The risk is that 2M parameters may not be sufficient to capture all playstyle-specific nuances, potentially limiting behavioral differentiation.
 
@@ -140,4 +140,4 @@ The partial sharing experiments address three central questions about selective 
 
 \textbf{Is there a tradeoff between performance and specialization?} By plotting ELO against playstyle separation metrics for all experiments, we can examine whether more sharing leads to higher performance but lower behavioral differentiation. We expect to find a sweet spot where sufficient specialization enables playstyle differences without sacrificing the knowledge transfer benefits. If P4 achieves both high ELO and strong playstyle separation, it would demonstrate that this tradeoff can be minimized through careful layer selection.
 
-The answers to these questions will not only validate the specific framework design but also provide insights applicable to other federated learning domains where clients have different task distributions or objectives. The principle of selective aggregation—sharing task-agnostic layers while specializing task-specific layers—generalizes beyond chess to any scenario where cluster-level customization is valuable.
+The answers to these questions will not only validate the specific framework design but also provide insights applicable to other federated learning domains where clients have different task distributions or objectives. The principle of selective aggregation, sharing task-agnostic layers while specializing task-specific layers, generalizes beyond chess to any scenario where cluster-level customization is valuable.

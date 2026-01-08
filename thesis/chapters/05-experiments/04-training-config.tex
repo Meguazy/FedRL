@@ -6,7 +6,7 @@ All experiments use identical training configurations to ensure fair comparison,
 
 All experiments use the AlphaZero-style convolutional residual network described in Section~\ref{sec:network-architecture}. The architecture consists of an input block (single convolutional layer with batch normalization processing the 119-plane board representation), 19 residual blocks (each with two $3 \times 3$ convolutional layers, 256 filters, batch normalization, and skip connections), a policy head (convolutional layer and fully connected layer outputting 4,672 move logits), and a value head (convolutional layer and fully connected layers outputting a scalar position evaluation in [-1, 1]).
 
-The model contains approximately 11 million parameters: 20K in the input block, 9.5M in residual blocks, and 2M in the heads. This configuration provides sufficient capacity for learning chess at advanced amateur level while remaining computationally feasible for federated training. The architecture is identical across all experiments—only the aggregation strategy differs.
+The model contains approximately 11 million parameters: 20K in the input block, 9.5M in residual blocks, and 2M in the heads. This configuration provides sufficient capacity for learning chess at advanced amateur level while remaining computationally feasible for federated training. The architecture is identical across all experiments, only the aggregation strategy differs.
 
 \subsection{Training Hyperparameters}
 
@@ -47,7 +47,7 @@ Training data comes from the Lichess game database, a collection of millions of 
 
 The tactical cluster trains on games from sharp tactical openings emphasizing dynamic imbalances and concrete calculations, including the Sicilian Defence (B20-B99) with variations like the Dragon and Najdorf, the King's Gambit (C30-C39), Italian Game aggressive lines (C50-C54), Alekhine's Defence (B02-B05), and Vienna Game (C25-C29). The positional cluster trains on games from strategic positional openings emphasizing structural advantages and piece coordination, including Queen's Gambit Declined (D30-D69), Slav Defence (D10-D19), Nimzo-Indian Defence (E20-E59), Queen's Indian Defence (E12-E19), Catalan Opening (E00-E09), English Opening (A10-A39), and Réti Opening (A04-A09).
 
-The game sets are completely disjoint by ECO code—no opening classification appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than from shared games.
+The game sets are completely disjoint by ECO code, no opening classification appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than from shared games.
 
 Each node samples 400 games per round from its cluster's filtered game set using deterministic offset-based sampling. Over 200 rounds, each node trains on 80,000 game positions, providing sufficient data for convergence. Data augmentation is applied through board flips (horizontal reflection with move translation) and color swaps (playing from black's perspective), effectively doubling the training data size and improving generalization to symmetrically equivalent positions.
 

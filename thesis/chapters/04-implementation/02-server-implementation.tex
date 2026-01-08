@@ -4,7 +4,7 @@ The server-side implementation coordinates all aspects of the federated learning
 
 \subsection{Training Orchestrator}
 
-The \texttt{TrainingOrchestrator} class in \texttt{server/main.py} serves as the central coordinator for the federated learning training loop. This class integrates all server subsystems—communication, aggregation, evaluation, and storage—into a unified training workflow that executes repeatedly across multiple rounds.
+The \texttt{TrainingOrchestrator} class in \texttt{server/main.py} serves as the central coordinator for the federated learning training loop. This class integrates all server subsystems, communication, aggregation, evaluation, and storage, into a unified training workflow that executes repeatedly across multiple rounds.
 
 The orchestrator manages two primary configuration structures. The \texttt{RoundConfig} dataclass defines parameters for each training round, including the aggregation threshold (default 0.8, requiring 80\% of nodes to participate), timeout for waiting on node responses (300-1200 seconds depending on training mode), weighting strategies for intra-cluster ("\texttt{samples}" or "\texttt{uniform}") and inter-cluster aggregation, and the shared versus cluster-specific layer patterns that control selective aggregation. The \texttt{EvaluationConfig} dataclass specifies evaluation parameters, including whether evaluation is enabled, the interval between evaluations (every 10 rounds by default), the number of games to play per Stockfish ELO level (default 10), the set of ELO levels to test against (typically [1000, 1200, 1400]), time allocated per move (0.1 seconds), and settings for delta analysis including Stockfish search depth (12 plies).
 

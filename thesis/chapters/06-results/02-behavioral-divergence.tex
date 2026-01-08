@@ -28,7 +28,7 @@ P4 achieves the strongest behavioral separation at 1.95, indicating that sharing
 
 The baseline configurations reveal a surprising finding: both B1 (full sharing) and B2 (no sharing) show minimal behavioral separation (0.23 and 0.20 respectively). While B1's homogeneity is expected due to complete parameter synchronization, B2's failure to develop distinct playstyles despite independent training suggests that the tactical and positional game distributions (separated by ECO opening codes) may not be sufficiently different to drive specialization without architectural constraints.
 
-This reveals a critical performance-diversity trade-off. P4 achieves maximum behavioral separation (1.95) but exhibits the worst performance (937.5 ELO). P2 balances strong separation (1.51) with near-optimal performance (1137.5 ELO, only 12.5 below B2). P3's complete specialization failure stems from shared policy heads—since the policy head directly controls move selection, sharing it forces identical tactical decision-making regardless of backbone differences.
+This reveals a critical performance-diversity trade-off. P4 achieves maximum behavioral separation (1.95) but exhibits the worst performance (937.5 ELO). P2 balances strong separation (1.51) with near-optimal performance (1137.5 ELO, only 12.5 below B2). P3's complete specialization failure stems from shared policy heads, since the policy head directly controls move selection, sharing it forces identical tactical decision-making regardless of backbone differences.
 
 \subsection{Model Parameter Divergence}
 

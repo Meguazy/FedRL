@@ -8,7 +8,7 @@ Distributed training has become essential for reinforcement learning in complex 
 
 \textbf{Parallel Experience Collection:} Many RL systems use multiple actors to collect experience in parallel, dramatically increasing sample efficiency. A3C (Asynchronous Advantage Actor-Critic)~\cite{mnih2016asynchronous} introduced asynchronous updates from multiple workers to a shared model. IMPALA (Importance Weighted Actor-Learner Architecture)~\cite{espeholt2018impala} separates experience collection from learning, using importance sampling to handle the resulting off-policy data.
 
-\textbf{Distributed AlphaZero:} The original AlphaZero training~\cite{silver2018general} used distributed self-play, with many workers generating games in parallel while a central learner updates the neural network. This architecture enables the massive scale of training required for superhuman performance—AlphaZero played nearly 5 million games during training.
+\textbf{Distributed AlphaZero:} The original AlphaZero training~\cite{silver2018general} used distributed self-play, with many workers generating games in parallel while a central learner updates the neural network. This architecture enables the massive scale of training required for superhuman performance, AlphaZero played nearly 5 million games during training.
 
 However, these distributed RL approaches still rely on centralized aggregation and aim for a single global model. They distribute computation for efficiency but do not address the challenge of maintaining behavioral diversity or training multiple specialized models collaboratively.
 

@@ -19,16 +19,3 @@ Correlation analysis examines pairwise relationships between metrics to reveal u
 
 Cross-experiment comparison aggregates final-round metrics from all six experiments (B1, B2, P1-P4) into comparison tables and visualizations. This enables identification of the optimal configuration and validation of hypotheses H1, H2, and H3.
 
-\subsection{Generalization Testing}
-
-Generalization is assessed using held-out puzzle sets not seen during training. This validation occurs after all experiments complete:
-
-\begin{enumerate}
-\item Prepare benchmark sets: 100 tactical puzzles, 100 positional puzzles, 100 mixed puzzles
-\item Load final models from each experiment
-\item Evaluate each model on all three benchmark sets
-\item Compute accuracy: percentage of puzzles where the model's top move matches the solution
-\item Cross-test: Evaluate tactical models on positional puzzles and vice versa
-\end{enumerate}
-
-The success criterion requires cross-domain accuracy exceeding 60\%, meaning tactical models must achieve above 60\% accuracy on positional puzzles and vice versa. All analysis procedures are automated through Python scripts that load metrics from the structured JSON storage, perform statistical tests, and generate visualizations for inclusion in the results chapter.

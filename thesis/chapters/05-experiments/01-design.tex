@@ -46,7 +46,7 @@ Experiment P1 (Share Early Layers Only) shares the input block and early residua
 
 Experiment P2 (Share Middle Layers Only) keeps input and early layers cluster-specific, shares middle residual blocks (6-12), and keeps late layers cluster-specific. This tests whether mid-level strategic concepts can be shared while allowing specialization in both feature extraction and final decision-making.
 
-Experiment P3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive—it allows specialization in low-level features but forces convergence in high-level decision-making.
+Experiment P3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive, it allows specialization in low-level features but forces convergence in high-level decision-making.
 
 Experiment P4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific (Section~\ref{sec:selective-aggregation}). This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
 
@@ -78,7 +78,7 @@ The 4-4 split ensures balanced representation of both playing styles and prevent
 
 Each node samples 400 puzzles per round from its cluster's puzzle set. The sampling is random with replacement, allowing the model to revisit puzzles across rounds but ensuring diversity within each round. Over 200 rounds, each node trains on 80,000 puzzle positions, providing sufficient data for convergence.
 
-The puzzle sets are disjoint—no puzzle appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than shared examples. The Lichess puzzle database provides over 2 million tagged puzzles, making it straightforward to create large non-overlapping sets.
+The puzzle sets are disjoint, no puzzle appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than shared examples. The Lichess puzzle database provides over 2 million tagged puzzles, making it straightforward to create large non-overlapping sets.
 
 Data augmentation is applied during training through board flips (horizontal flip with move translation) and color swaps (playing from black's perspective). This effectively doubles the training data size and improves generalization by exposing models to symmetrically equivalent positions.
 
@@ -88,7 +88,7 @@ Aggregation occurs at the end of each round after all participating nodes comple
 
 For B1 (Full Sharing), all layers are aggregated using FedAvg weighted by the number of training examples. Each cluster performs independent aggregation, but since all layers are shared, the two clusters converge toward identical models.
 
-For B2 (No Sharing), no aggregation occurs—each cluster maintains its own model checkpoint without combining updates. This is equivalent to running two independent training runs that happen to share the same experimental infrastructure.
+For B2 (No Sharing), no aggregation occurs, each cluster maintains its own model checkpoint without combining updates. This is equivalent to running two independent training runs that happen to share the same experimental infrastructure.
 
 For P1-P4 (Partial Sharing), layer-specific aggregation applies FedAvg only to designated shared layers while preserving cluster-specific layers unchanged. For example, in P4, the input block and all 19 residual blocks are aggregated across nodes within each cluster and then synchronized between clusters, while policy and value heads remain cluster-specific.
 

@@ -81,7 +81,7 @@ The early sharing configuration (P1) should display low divergence (below 0.05) 
 
 The backbone sharing configuration (P4) was hypothesized to achieve optimal performance. It should show low divergence (under 0.05) in all residual blocks while policy and value heads exhibit very high divergence (exceeding 0.4). If heads alone can encode playstyle, tactical score differences should be high (above 0.15). The predicted optimal ELO stems from maximal knowledge sharing across 86\% of parameters. The divergence pattern should show clear separation with near-zero divergence in the backbone and concentrated divergence in the 14\% of parameters comprising the heads.
 
-The middle and late sharing configurations (P2 and P3) serve as exploratory experiments. P2 shares only middle layers and should demonstrate moderate divergence in both input/early layers and policy/value heads. P3 shares late layers plus heads and is expected to fail at playstyle separation since shared policy heads cannot maintain distinct move preferences---this configuration tests whether forcing convergence in decision-making layers prevents behavioral specialization regardless of earlier layer independence.
+The middle and late sharing configurations (P2 and P3) serve as exploratory experiments. P2 shares only middle layers and should demonstrate moderate divergence in both input/early layers and policy/value heads. P3 shares late layers plus heads and is expected to fail at playstyle separation since shared policy heads cannot maintain distinct move preferences. This configuration tests whether forcing convergence in decision-making layers prevents behavioral specialization regardless of earlier layer independence.
 
 \subsection{Hypothesis-Metric Mapping}
 
