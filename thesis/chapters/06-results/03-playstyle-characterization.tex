@@ -18,14 +18,14 @@ B1 & Tactical & 27.40 & 18.89 & 8.51 & 74.84 \\
 B1 & Positional & 27.17 & 18.42 & 8.75 & 74.88 \\
 B2 & Tactical & 28.89 & 18.94 & 9.96 & 73.70 \\
 B2 & Positional & 28.69 & 19.46 & 9.23 & 73.28 \\
-P1 & Tactical & 27.27 & 18.68 & 8.59 & 74.66 \\
-P1 & Positional & 26.36 & 17.70 & 8.66 & 75.31 \\
-P2 & Tactical & 29.19 & 18.52 & 10.67 & 72.92 \\
-P2 & Positional & 27.68 & 17.97 & 9.71 & 74.27 \\
-P3 & Tactical & 27.21 & 18.75 & 8.46 & 74.69 \\
-P3 & Positional & 27.23 & 19.52 & 7.71 & 74.85 \\
-P4 & Tactical & 29.59 & 20.22 & 9.38 & 72.42 \\
-P4 & Positional & 27.64 & 19.12 & 8.52 & 74.91 \\
+E1 & Tactical & 27.27 & 18.68 & 8.59 & 74.66 \\
+E1 & Positional & 26.36 & 17.70 & 8.66 & 75.31 \\
+E2 & Tactical & 29.19 & 18.52 & 10.67 & 72.92 \\
+E2 & Positional & 27.68 & 17.97 & 9.71 & 74.27 \\
+E3 & Tactical & 27.21 & 18.75 & 8.46 & 74.69 \\
+E3 & Positional & 27.23 & 19.52 & 7.71 & 74.85 \\
+E4 & Tactical & 29.59 & 20.22 & 9.38 & 72.42 \\
+E4 & Positional & 27.64 & 19.12 & 8.52 & 74.91 \\
 \hline
 \end{tabular}
 \end{table}
@@ -42,38 +42,38 @@ The cluster-specific differences become more apparent when examining the tactica
 \hline
 B1 (Full) & +0.23 & +0.47 & -0.24 & -0.04 \\
 B2 (None) & +0.20 & -0.52 & +0.73 & +0.42 \\
-P1 (Early) & +0.91 & +0.98 & -0.07 & -0.65 \\
-P2 (Middle) & +1.51 & +0.55 & +0.96 & -1.35 \\
-P3 (Late) & -0.02 & -0.77 & +0.75 & -0.16 \\
-P4 (Backbone) & +1.95 & +1.10 & +0.86 & -2.49 \\
+E1 (Early) & +0.91 & +0.98 & -0.07 & -0.65 \\
+E2 (Middle) & +1.51 & +0.55 & +0.96 & -1.35 \\
+E3 (Late) & -0.02 & -0.77 & +0.75 & -0.16 \\
+E4 (Backbone) & +1.95 & +1.10 & +0.86 & -2.49 \\
 \hline
 \end{tabular}
 \end{table}
 
-P4 demonstrates the strongest behavioral differentiation with tactical clusters playing 1.95\% more aggressive moves, 1.10\% more captures, and 2.49\% fewer quiet moves compared to positional clusters. P2 follows with 1.51\% more aggressive moves and 1.35\% fewer quiet moves in tactical play. P1 shows moderate differentiation at 0.91\% more aggressive moves and 0.98\% more captures.
+E4 demonstrates the strongest behavioral differentiation with tactical clusters playing 1.95\% more aggressive moves, 1.10\% more captures, and 2.49\% fewer quiet moves compared to positional clusters. E2 follows with 1.51\% more aggressive moves and 1.35\% fewer quiet moves in tactical play. E1 shows moderate differentiation at 0.91\% more aggressive moves and 0.98\% more captures.
 
-In contrast, B1, B2, and P3 exhibit minimal behavioral differences despite training on games from different opening classifications. B1 and B2 show near-zero differentiation (0.20-0.23\% in aggressive moves), while P3 actually shows negative differentiation (-0.02\% aggressive moves), indicating complete failure to develop distinct tactical versus positional playing styles.
+In contrast, B1, B2, and E3 exhibit minimal behavioral differences despite training on games from different opening classifications. B1 and B2 show near-zero differentiation (0.20-0.23\% in aggressive moves), while E3 actually shows negative differentiation (-0.02\% aggressive moves), indicating complete failure to develop distinct tactical versus positional playing styles.
 
-The pattern is clear: tactical clusters consistently favor more aggressive moves, more captures, and fewer quiet positional moves, while positional clusters prefer strategic positioning with higher quiet move percentages. However, this specialization only emerges in configurations with independent policy heads (P1, P2, P4). Shared policy heads (B1, P3) prevent behavioral specialization regardless of training distribution differences or backbone architecture.
+The pattern is clear: tactical clusters consistently favor more aggressive moves, more captures, and fewer quiet positional moves, while positional clusters prefer strategic positioning with higher quiet move percentages. However, this specialization only emerges in configurations with independent policy heads (E1, E2, E4). Shared policy heads (B1, E3) prevent behavioral specialization regardless of training distribution differences or backbone architecture.
 
 \subsection{Positional Metrics}
 
 Beyond move types, we analyze several positional characteristics to understand strategic differences in how models evaluate and navigate chess positions.
 
-Center control, measured as the average number of center squares (e4, d4, e5, d5) controlled, shows minimal variation across configurations. B1 averages 5.68 squares, B2 averages 5.56, P1 averages 5.51, P2 averages 5.29, P3 averages 5.52, and P4 averages 5.39. This narrow range (5.29-5.68) suggests center control is not discriminative for playstyle differences in this game-based training, likely because the positions extracted from games across all opening phases maintain relatively balanced center control regardless of tactical versus positional opening classification.
+Center control, measured as the average number of center squares (e4, d4, e5, d5) controlled, shows minimal variation across configurations. B1 averages 5.68 squares, B2 averages 5.56, E1 averages 5.51, E2 averages 5.29, E3 averages 5.52, and E4 averages 5.39. This narrow range (5.29-5.68) suggests center control is not discriminative for playstyle differences in this game-based training, likely because the positions extracted from games across all opening phases maintain relatively balanced center control regardless of tactical versus positional opening classification.
 
-Material metrics reveal small but consistent variation. Attacked material (average material value under attack) ranges from 67.53 (B2) to 72.75 (P1). P2 shows slightly higher capture frequency at 15.75 captures per game compared to 14.30-14.78 for other configurations, consistent with its aggressive move profile. However, the variation is small enough (67-73 attacked material, 14-16 captures) that material metrics do not strongly differentiate configurations.
+Material metrics reveal small but consistent variation. Attacked material (average material value under attack) ranges from 67.53 (B2) to 72.75 (E1). E2 shows slightly higher capture frequency at 15.75 captures per game compared to 14.30-14.78 for other configurations, consistent with its aggressive move profile. However, the variation is small enough (67-73 attacked material, 14-16 captures) that material metrics do not strongly differentiate configurations.
 
-Legal moves available per position provides insight into positional flexibility. B1 averages 704.9 legal moves per position, indicating high move flexibility. B2, P1, and P2 show moderate flexibility (692.6-696.0 legal moves). P3 maintains high flexibility at 699.3 legal moves. Notably, P4 shows substantially fewer legal moves at 686.3, potentially indicating more constrained or committed positions. This aligns with P4's poor performance, models may be painting themselves into tactical corners with limited escape routes, suggesting overspecialization that sacrifices strategic flexibility for tactical aggression.
+Legal moves available per position provides insight into positional flexibility. B1 averages 704.9 legal moves per position, indicating high move flexibility. B2, E1, and E2 show moderate flexibility (692.6-696.0 legal moves). E3 maintains high flexibility at 699.3 legal moves. Notably, E4 shows substantially fewer legal moves at 686.3, potentially indicating more constrained or committed positions. This aligns with E4's poor performance, models may be painting themselves into tactical corners with limited escape routes, suggesting overspecialization that sacrifices strategic flexibility for tactical aggression.
 
-Move diversity, measured via Shannon entropy of move destination squares, ranges from 0.587 (P1) to 0.626 (B2). B2 and P3 exhibit the highest move diversity (0.62+), suggesting more exploratory playstyles that consider a broader range of candidate moves. P1 shows the lowest diversity at 0.587, indicating more deterministic and focused move selection that concentrates probability mass on a smaller set of preferred moves. P2 and P4 fall in the moderate range (0.596-0.607).
+Move diversity, measured via Shannon entropy of move destination squares, ranges from 0.587 (E1) to 0.626 (B2). B2 and E3 exhibit the highest move diversity (0.62+), suggesting more exploratory playstyles that consider a broader range of candidate moves. E1 shows the lowest diversity at 0.587, indicating more deterministic and focused move selection that concentrates probability mass on a smaller set of preferred moves. E2 and E4 fall in the moderate range (0.596-0.607).
 
 \subsection{Strategic Preference Patterns}
 
-Synthesizing move type distributions and positional metrics reveals coherent strategic preference patterns that characterize each cluster's playing style. Tactical clusters, when successfully specialized (P1, P2, P4), exhibit preference for forcing moves and immediate threats, with 1.0-2.0\% more aggressive moves than positional clusters. They demonstrate higher capture rates and checking frequency, actively seeking to remove opponent pieces and create king attacks. These clusters show lower quiet move percentages, avoiding purely positional maneuvering in favor of concrete tactical sequences. The result is more committed positions with reduced move flexibility (especially P4), suggesting models that calculate forcing variations deeply but sacrifice strategic adaptability.
+Synthesizing move type distributions and positional metrics reveals coherent strategic preference patterns that characterize each cluster's playing style. Tactical clusters, when successfully specialized (E1, E2, E4), exhibit preference for forcing moves and immediate threats, with 1.0-2.0\% more aggressive moves than positional clusters. They demonstrate higher capture rates and checking frequency, actively seeking to remove opponent pieces and create king attacks. These clusters show lower quiet move percentages, avoiding purely positional maneuvering in favor of concrete tactical sequences. The result is more committed positions with reduced move flexibility (especially E4), suggesting models that calculate forcing variations deeply but sacrifice strategic adaptability.
 
 Positional clusters in successful configurations favor strategic positioning over immediate tactics, with 1.0-2.5\% more quiet moves focused on piece development, pawn structure, and space control. They show higher move diversity, maintaining flexibility across multiple candidate moves rather than committing to sharp forcing lines. These clusters demonstrate better positional balance, avoiding overextension into tactically constrained positions, and maintain higher legal move counts, preserving strategic options throughout the game.
 
-Failed specialization configurations (B1, B2, P3) show homogeneous behaviors regardless of training distribution. Despite tactical and positional clusters training on games from completely different ECO opening classifications, their playing styles converge to nearly identical move type distributions and positional characteristics. This confirms that independent policy heads are necessary for behavioral specialization, shared policy heads enforce homogeneity regardless of architectural or data differences.
+Failed specialization configurations (B1, B2, E3) show homogeneous behaviors regardless of training distribution. Despite tactical and positional clusters training on games from completely different ECO opening classifications, their playing styles converge to nearly identical move type distributions and positional characteristics. This confirms that independent policy heads are necessary for behavioral specialization, shared policy heads enforce homogeneity regardless of architectural or data differences.
 
-The strategic patterns validate that selective layer aggregation can create meaningfully distinct playstyles, but only when decision-making layers (policy heads) remain independent. The degree of specialization correlates with parameter sharing extent: more sharing in the backbone (P4) creates stronger specialization but poorer performance, while moderate sharing (P2) balances specialization with playing strength. This suggests an inherent trade-off where architectural constraints that force specialization may simultaneously limit the model's ability to learn optimal chess play.
+The strategic patterns validate that selective layer aggregation can create meaningfully distinct playstyles, but only when decision-making layers (policy heads) remain independent. The degree of specialization correlates with parameter sharing extent: more sharing in the backbone (E4) creates stronger specialization but poorer performance, while moderate sharing (E2) balances specialization with playing strength. This suggests an inherent trade-off where architectural constraints that force specialization may simultaneously limit the model's ability to learn optimal chess play.

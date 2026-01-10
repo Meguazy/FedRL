@@ -1,6 +1,6 @@
 \section{Partial Layer Sharing Experiments}
 
-Phase 2 explores four different partial layer sharing configurations to identify the optimal balance between knowledge transfer and model specialization. Each experiment selectively shares different layer groups based on hypotheses about which layers encode general chess knowledge versus playstyle-specific patterns. The configurations span from sharing only early layers (P1) to sharing the entire backbone except heads (P4), systematically testing different points in the design space.
+Phase 2 explores four different partial layer sharing configurations to identify the optimal balance between knowledge transfer and model specialization. Each experiment selectively shares different layer groups based on hypotheses about which layers encode general chess knowledge versus playstyle-specific patterns. The configurations span from sharing only early layers (E1) to sharing the entire backbone except heads (E4), systematically testing different points in the design space.
 
 \subsection{Layer Group Definitions}
 
@@ -10,7 +10,7 @@ The \textbf{input block} consists of a convolutional layer and batch normalizati
 
 The \textbf{early residual blocks} (blocks 0-5) contain approximately 2.5 million parameters distributed across six residual blocks with skip connections. These layers learn low-level pattern recognition, including piece recognition, basic board geometry, and simple tactical patterns. Early residual blocks capture features that are largely universal across playing styles, all chess players need to recognize pieces and understand basic board topology.
 
-The \textbf{middle residual blocks} (blocks 6-12) contain approximately 3.5 million parameters across seven residual blocks. These layers learn mid-level tactical patterns such as forks, pins, skewers, discovered attacks, and other common tactical motifs. The question of whether these patterns are playstyle-specific or universal motivates experiment P2.
+The \textbf{middle residual blocks} (blocks 6-12) contain approximately 3.5 million parameters across seven residual blocks. These layers learn mid-level tactical patterns such as forks, pins, skewers, discovered attacks, and other common tactical motifs. The question of whether these patterns are playstyle-specific or universal motivates experiment E2.
 
 The \textbf{late residual blocks} (blocks 13-18) also contain approximately 3.5 million parameters across six residual blocks. These layers learn high-level strategic planning, including pawn structure evaluation, positional advantages, long-term piece coordination, and overall position assessment. Late residual blocks are candidates for playstyle-specific representation.
 
@@ -18,13 +18,13 @@ The \textbf{policy head} contains approximately 1.5 million parameters across a 
 
 The \textbf{value head} contains approximately 500,000 parameters across a convolutional layer and fully connected layers. The value head outputs a single scalar in the range [-1, 1] representing the estimated game outcome from the current position. While position evaluation might seem universal, different playing styles may evaluate positions differently, tactical players may value active pieces more, while positional players may prioritize pawn structure.
 
-\subsection{P1: Share Early Layers Only}
+\subsection{E1: Share Early Layers Only}
 
-The first partial sharing experiment, P1, tests the hypothesis that low-level feature extraction is universal across playing styles while higher-level reasoning should specialize. This configuration shares the input block and early residual blocks (blocks 0-5) between clusters while keeping all other layers cluster-specific.
+The first partial sharing experiment, E1, tests the hypothesis that low-level feature extraction is universal across playing styles while higher-level reasoning should specialize. This configuration shares the input block and early residual blocks (blocks 0-5) between clusters while keeping all other layers cluster-specific.
 
 \subsubsection{Configuration}
 
-The P1 experiment designates the input block (\texttt{input\_conv.*}, \texttt{input\_bn.*}) and early residual blocks (\texttt{res\_blocks.0.*} through \texttt{res\_blocks.5.*}) as shared layers. These approximately 2.5 million parameters are aggregated across both tactical and positional clusters after each training round.
+The E1 experiment designates the input block (\texttt{input\_conv.*}, \texttt{input\_bn.*}) and early residual blocks (\texttt{res\_blocks.0.*} through \texttt{res\_blocks.5.*}) as shared layers. These approximately 2.5 million parameters are aggregated across both tactical and positional clusters after each training round.
 
 All remaining layers, middle residual blocks (6-12), late residual blocks (13-18), and both heads, are marked as cluster-specific. These approximately 8.5 million parameters remain separate for each cluster, allowing independent specialization based on the respective game distributions.
 
@@ -32,7 +32,7 @@ The aggregation protocol works as follows: after local training, nodes within ea
 
 \subsubsection{Hypothesis and Expected Behavior}
 
-The P1 configuration is motivated by the observation that all chess positions require the same basic piece recognition and board understanding regardless of playing style. A tactical player and a positional player both need to recognize where pieces are located, what pieces attack which squares, and basic board geometry. These fundamental features should be learnable from both tactical and positional games.
+The E1 configuration is motivated by the observation that all chess positions require the same basic piece recognition and board understanding regardless of playing style. A tactical player and a positional player both need to recognize where pieces are located, what pieces attack which squares, and basic board geometry. These fundamental features should be learnable from both tactical and positional games.
 
 By sharing early layers, both clusters benefit from the combined training data when learning these universal features. This should accelerate convergence compared to B2 (no sharing) because each cluster effectively has access to 8 nodes' worth of data for early feature learning rather than just 4.
 
@@ -40,67 +40,67 @@ However, strategic reasoning and move selection preferences differ between playi
 
 We expect the following divergence pattern: near-zero divergence in input block and early residual blocks (these layers are synchronized), gradually increasing divergence in middle residual blocks (these layers begin to specialize), high divergence in late residual blocks (strategic reasoning differs), and very high divergence in both heads (move preferences and position evaluation strongly reflect playstyle).
 
-Performance-wise, P1 should achieve good ELO ratings due to efficient learning of shared features combined with specialized strategic reasoning. Playstyle separation should be moderate to high, as cluster-specific middle layers, late layers, and heads can encode behavioral differences.
+Performance-wise, E1 should achieve good ELO ratings due to efficient learning of shared features combined with specialized strategic reasoning. Playstyle separation should be moderate to high, as cluster-specific middle layers, late layers, and heads can encode behavioral differences.
 
-\subsection{P2: Share Middle Layers Only}
+\subsection{E2: Share Middle Layers Only}
 
-The second experiment, P2, takes an unusual approach by sharing only the middle residual blocks (6-12) while keeping everything else cluster-specific. This configuration serves as an exploratory experiment to understand which layers encode tactical knowledge.
+The second experiment, E2, takes an unusual approach by sharing only the middle residual blocks (6-12) while keeping everything else cluster-specific. This configuration serves as an exploratory experiment to understand which layers encode tactical knowledge.
 
 \subsubsection{Configuration}
 
-P2 designates only the middle residual blocks (\texttt{res\_blocks.6.*} through \texttt{res\_blocks.12.*}) as shared layers, comprising approximately 3.5 million parameters. The input block, early residual blocks (0-5), late residual blocks (13-18), and both heads are all cluster-specific.
+E2 designates only the middle residual blocks (\texttt{res\_blocks.6.*} through \texttt{res\_blocks.12.*}) as shared layers, comprising approximately 3.5 million parameters. The input block, early residual blocks (0-5), late residual blocks (13-18), and both heads are all cluster-specific.
 
 This creates an unusual "sandwich" pattern where the edges of the network (input and output) are cluster-specific while the middle is shared. The aggregation synchronizes middle layer parameters between clusters but leaves all other layers independent.
 
 \subsubsection{Hypothesis and Expected Behavior}
 
-The P2 configuration tests whether mid-level tactical patterns are universal across playing styles. The underlying question is: do tactical and positional players recognize the same tactical patterns (forks, pins, skewers) even if they prioritize them differently?
+The E2 configuration tests whether mid-level tactical patterns are universal across playing styles. The underlying question is: do tactical and positional players recognize the same tactical patterns (forks, pins, skewers) even if they prioritize them differently?
 
 One perspective argues that tactical pattern recognition is universal, both tactical and positional players need to identify when a fork is possible or when a pin exists. The difference lies not in pattern recognition but in how these patterns influence move selection. Under this view, sharing middle layers (where tactical patterns are encoded) could be beneficial.
 
 An alternative perspective suggests that even pattern recognition differs between styles. Tactical players may develop more refined representations of forcing moves and material exchanges, while positional players may develop stronger representations of piece coordination and pawn structures. Under this view, sharing middle layers would hurt specialization.
 
-The P2 experiment adjudicates between these perspectives. If middle layer sharing produces good ELO and maintains playstyle separation, it supports the universal tactical patterns hypothesis. If P2 underperforms compared to P1 or P4, it suggests that middle layers do encode playstyle-specific patterns.
+The E2 experiment adjudicates between these perspectives. If middle layer sharing produces good ELO and maintains playstyle separation, it supports the universal tactical patterns hypothesis. If E2 underperforms compared to E1 or E4, it suggests that middle layers do encode playstyle-specific patterns.
 
-We expect divergence to show the reverse pattern from P1: cluster-specific input and early layers will diverge, shared middle layers will maintain near-zero divergence, and cluster-specific late layers and heads will diverge. This unusual pattern helps isolate the role of each layer group.
+We expect divergence to show the reverse pattern from E1: cluster-specific input and early layers will diverge, shared middle layers will maintain near-zero divergence, and cluster-specific late layers and heads will diverge. This unusual pattern helps isolate the role of each layer group.
 
-\subsection{P3: Share Late Layers Only}
+\subsection{E3: Share Late Layers Only}
 
-The third experiment, P3, serves as a control test of the main hypothesis by sharing late residual blocks and both heads while keeping early and middle layers cluster-specific. This configuration is expected to fail, thereby validating that heads encode playstyle.
+The third experiment, E3, serves as a control test of the main hypothesis by sharing late residual blocks and both heads while keeping early and middle layers cluster-specific. This configuration is expected to fail, thereby validating that heads encode playstyle.
 
 \subsubsection{Configuration}
 
-P3 designates late residual blocks (\texttt{res\_blocks.13.*} through \texttt{res\_blocks.18.*}) and both heads (\texttt{policy\_head.*}, \texttt{value\_head.*}) as shared layers. These approximately 5.5 million parameters are synchronized between clusters. The input block, early residual blocks (0-5), and middle residual blocks (6-12) are cluster-specific, totaling approximately 5.5 million parameters.
+E3 designates late residual blocks (\texttt{res\_blocks.13.*} through \texttt{res\_blocks.18.*}) and both heads (\texttt{policy\_head.*}, \texttt{value\_head.*}) as shared layers. These approximately 5.5 million parameters are synchronized between clusters. The input block, early residual blocks (0-5), and middle residual blocks (6-12) are cluster-specific, totaling approximately 5.5 million parameters.
 
 This configuration forces both clusters to use identical strategic reasoning and decision-making layers while allowing them to develop different low-level and mid-level representations. It represents the opposite of our main hypothesis about layer roles.
 
 \subsubsection{Hypothesis and Expected Behavior}
 
-The P3 experiment tests a counter-hypothesis: what if high-level strategic planning and decision-making are actually universal across playing styles, with differences arising only in how positions are interpreted at lower levels?
+The E3 experiment tests a counter-hypothesis: what if high-level strategic planning and decision-making are actually universal across playing styles, with differences arising only in how positions are interpreted at lower levels?
 
 This view would suggest that all strong chess players use similar decision-making processes (e.g., similar move selection criteria, similar position evaluation principles), but tactical and positional players attend to different low-level features when feeding information into these decision processes. Under this model, sharing heads would be acceptable.
 
 However, we expect this hypothesis to be wrong. Playing style seems fundamentally about \emph{how decisions are made}, not just about what features are extracted. A tactical player selects moves based on forcing moves and material exchanges. A positional player selects moves based on long-term pawn structure and piece coordination. These are different decision-making strategies, not just different feature interpretations.
 
-Therefore, we expect P3 to perform poorly in terms of playstyle separation. The shared policy head will be forced to compromise between tactical and positional move preferences, likely converging toward a balanced intermediate strategy that serves neither cluster particularly well. This is similar to the B1 baseline but with even less effective sharing (since early/middle features aren't shared).
+Therefore, we expect E3 to perform poorly in terms of playstyle separation. The shared policy head will be forced to compromise between tactical and positional move preferences, likely converging toward a balanced intermediate strategy that serves neither cluster particularly well. This is similar to the B1 baseline but with even less effective sharing (since early/middle features aren't shared).
 
 We expect divergence to be zero in late residual blocks and both heads (these are synchronized), while input, early, and middle layers diverge. Behavioral metrics should show minimal playstyle differences, validating that heads must be cluster-specific to enable behavioral differentiation.
 
-If P3 somehow performs well, it would challenge our understanding of how playstyle is encoded in neural networks and potentially motivate reconsideration of the layer sharing strategy. However, based on the architecture's design and multi-task learning principles, we strongly expect P3 to underperform P1, P4, and possibly even B2.
+If E3 somehow performs well, it would challenge our understanding of how playstyle is encoded in neural networks and potentially motivate reconsideration of the layer sharing strategy. However, based on the architecture's design and multi-task learning principles, we strongly expect E3 to underperform E1, E4, and possibly even B2.
 
-\subsection{P4: Share All Except Heads}
+\subsection{E4: Share All Except Heads}
 
-The fourth experiment, P4, represents the hypothesis-driven configuration where the entire backbone (input block and all 19 residual blocks) is shared while only the policy and value heads remain cluster-specific. This tests whether minimal specialization is sufficient for playstyle differentiation.
+The fourth experiment, E4, represents the hypothesis-driven configuration where the entire backbone (input block and all 19 residual blocks) is shared while only the policy and value heads remain cluster-specific. This tests whether minimal specialization is sufficient for playstyle differentiation.
 
 \subsubsection{Configuration}
 
-P4 designates the input block and all residual blocks (\texttt{res\_blocks.0.*} through \texttt{res\_blocks.18.*}) as shared layers, comprising approximately 9.5 million parameters (about 86\% of the model). Only the policy head and value head are cluster-specific, totaling approximately 2 million parameters (about 18\% of the model).
+E4 designates the input block and all residual blocks (\texttt{res\_blocks.0.*} through \texttt{res\_blocks.18.*}) as shared layers, comprising approximately 9.5 million parameters (about 86\% of the model). Only the policy head and value head are cluster-specific, totaling approximately 2 million parameters (about 18\% of the model).
 
 This configuration creates a clean separation: a massive shared backbone that learns general chess understanding, and small specialized heads that encode cluster-specific decision-making. The aggregation synchronizes the entire feature extraction pipeline while keeping final decisions independent.
 
 \subsubsection{Hypothesis and Expected Behavior}
 
-The P4 experiment is motivated by multi-task learning principles and the AlphaZero architecture's design. In multi-task learning, a common strategy is to share a large feature extraction backbone across tasks while using task-specific output heads. This allows the backbone to learn general representations useful across tasks while heads specialize for each task's objectives.
+The E4 experiment is motivated by multi-task learning principles and the AlphaZero architecture's design. In multi-task learning, a common strategy is to share a large feature extraction backbone across tasks while using task-specific output heads. This allows the backbone to learn general representations useful across tasks while heads specialize for each task's objectives.
 
 Applying this principle to playstyle clustering, we hypothesize that most chess knowledge is universal: piece values, mobility, king safety, pawn structure principles, tactical patterns, and strategic concepts. Both tactical and positional players need to understand these concepts. The difference lies in how they \emph{apply} this knowledge when selecting moves and evaluating positions.
 
@@ -108,11 +108,11 @@ The policy head encodes move selection preferences, which moves to prioritize gi
 
 The value head encodes position evaluation criteria, how to score a position's quality. Tactical players may value material imbalances and active piece positions more highly, while positional players may value solid pawn structures and space advantages.
 
-By keeping only these 2 million parameters cluster-specific, P4 tests whether playstyle can be encoded in a compact specialized layer. The advantage is maximum knowledge transfer through the shared 9.5M parameter backbone, potentially leading to faster convergence and stronger overall chess understanding. The risk is that 2M parameters may not be sufficient to capture all playstyle-specific nuances, potentially limiting behavioral differentiation.
+By keeping only these 2 million parameters cluster-specific, E4 tests whether playstyle can be encoded in a compact specialized layer. The advantage is maximum knowledge transfer through the shared 9.5M parameter backbone, potentially leading to faster convergence and stronger overall chess understanding. The risk is that 2M parameters may not be sufficient to capture all playstyle-specific nuances, potentially limiting behavioral differentiation.
 
 We expect the following divergence pattern: near-zero divergence in input block and all residual blocks (the entire backbone is synchronized), and very high divergence in both heads (these are the only cluster-specific parameters). This creates a stark separation that makes interpretation straightforward.
 
-Performance-wise, P4 is a strong candidate for the optimal configuration. It maximizes knowledge transfer (more sharing than P1), focuses specialization where it matters most (decision-making), and maintains parameter efficiency (only 2M cluster-specific parameters per cluster). If the hypothesis is correct, P4 should achieve the best combination of high ELO (from shared general knowledge) and strong playstyle separation (from specialized heads).
+Performance-wise, E4 is a strong candidate for the optimal configuration. It maximizes knowledge transfer (more sharing than E1), focuses specialization where it matters most (decision-making), and maintains parameter efficiency (only 2M cluster-specific parameters per cluster). If the hypothesis is correct, E4 should achieve the best combination of high ELO (from shared general knowledge) and strong playstyle separation (from specialized heads).
 
 \subsection{Partial Sharing Design Space}
 
@@ -120,13 +120,13 @@ The four partial sharing experiments systematically explore different points in 
 
 \subsubsection{Configuration Summary}
 
-P1 (Share Early) shares approximately 23\% of model parameters (input + early residual), keeping 77\% cluster-specific. This configuration bets that low-level features are universal but everything else should specialize.
+E1 (Share Early) shares approximately 23\% of model parameters (input + early residual), keeping 77\% cluster-specific. This configuration bets that low-level features are universal but everything else should specialize.
 
-P2 (Share Middle) shares approximately 32\% of model parameters (middle residual only), keeping 68\% cluster-specific. This unusual configuration tests whether mid-level tactical patterns are universal.
+E2 (Share Middle) shares approximately 32\% of model parameters (middle residual only), keeping 68\% cluster-specific. This unusual configuration tests whether mid-level tactical patterns are universal.
 
-P3 (Share Late) shares approximately 50\% of model parameters (late residual + both heads), keeping 50\% cluster-specific. This counter-hypothesis configuration is expected to fail, validating that heads encode playstyle.
+E3 (Share Late) shares approximately 50\% of model parameters (late residual + both heads), keeping 50\% cluster-specific. This counter-hypothesis configuration is expected to fail, validating that heads encode playstyle.
 
-P4 (Share Backbone) shares approximately 86\% of model parameters (entire backbone), keeping only 18\% cluster-specific (heads only). This maximal-sharing configuration tests whether compact specialization suffices.
+E4 (Share Backbone) shares approximately 86\% of model parameters (entire backbone), keeping only 18\% cluster-specific (heads only). This maximal-sharing configuration tests whether compact specialization suffices.
 
 Together, these configurations span sharing ratios from 23\% to 86\%, providing good coverage of the design space. The baselines B1 (100\% shared) and B2 (0\% shared) bookend this range.
 
@@ -134,10 +134,10 @@ Together, these configurations span sharing ratios from 23\% to 86\%, providing 
 
 The partial sharing experiments address three central questions about selective aggregation:
 
-\textbf{Which layers encode playstyle differences?} By comparing divergence patterns across P1-P4, we can identify where specialization occurs. If a layer group shows high divergence when cluster-specific but near-zero divergence when shared, it indicates that the layer encodes playstyle-dependent patterns. We hypothesize that heads will show the highest divergence in all configurations where they're cluster-specific, with late residual blocks also showing substantial divergence.
+\textbf{Which layers encode playstyle differences?} By comparing divergence patterns across E1-E4, we can identify where specialization occurs. If a layer group shows high divergence when cluster-specific but near-zero divergence when shared, it indicates that the layer encodes playstyle-dependent patterns. We hypothesize that heads will show the highest divergence in all configurations where they're cluster-specific, with late residual blocks also showing substantial divergence.
 
-\textbf{What is the optimal sharing strategy?} By comparing ELO ratings and convergence speed across P1-P4 and against baselines B1-B2, we can identify which configuration best balances knowledge transfer and specialization. We hypothesize that P4 will achieve the best ELO (or P1 as a close second) because it maximizes shared general knowledge while maintaining targeted specialization. Configurations that perform poorly (like P3) reveal which layers should not be shared.
+\textbf{What is the optimal sharing strategy?} By comparing ELO ratings and convergence speed across E1-E4 and against baselines B1-B2, we can identify which configuration best balances knowledge transfer and specialization. We hypothesize that E4 will achieve the best ELO (or E1 as a close second) because it maximizes shared general knowledge while maintaining targeted specialization. Configurations that perform poorly (like E3) reveal which layers should not be shared.
 
-\textbf{Is there a tradeoff between performance and specialization?} By plotting ELO against playstyle separation metrics for all experiments, we can examine whether more sharing leads to higher performance but lower behavioral differentiation. We expect to find a sweet spot where sufficient specialization enables playstyle differences without sacrificing the knowledge transfer benefits. If P4 achieves both high ELO and strong playstyle separation, it would demonstrate that this tradeoff can be minimized through careful layer selection.
+\textbf{Is there a tradeoff between performance and specialization?} By plotting ELO against playstyle separation metrics for all experiments, we can examine whether more sharing leads to higher performance but lower behavioral differentiation. We expect to find a sweet spot where sufficient specialization enables playstyle differences without sacrificing the knowledge transfer benefits. If E4 achieves both high ELO and strong playstyle separation, it would demonstrate that this tradeoff can be minimized through careful layer selection.
 
 The answers to these questions will not only validate the specific framework design but also provide insights applicable to other federated learning domains where clients have different task distributions or objectives. The principle of selective aggregation, sharing task-agnostic layers while specializing task-specific layers, generalizes beyond chess to any scenario where cluster-level customization is valuable.

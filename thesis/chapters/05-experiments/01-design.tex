@@ -8,11 +8,11 @@ The evaluation framework tests seven research hypotheses that span model perform
 
 \subsubsection{Performance Hypotheses}
 
-\textbf{H1: Clustered FL outperforms centralized training.} The first hypothesis tests whether allowing clusters to specialize through selective layer sharing produces stronger models than forcing all nodes to converge to a single shared model. We expect that partial sharing (experiments P1-P4) will achieve higher ELO ratings than full sharing (baseline B1) because clusters can develop specialized strategies while still benefiting from shared knowledge in common layers.
+\textbf{H1: Clustered FL outperforms centralized training.} The first hypothesis tests whether allowing clusters to specialize through selective layer sharing produces stronger models than forcing all nodes to converge to a single shared model. We expect that partial sharing (experiments E1-E4) will achieve higher ELO ratings than full sharing (baseline B1) because clusters can develop specialized strategies while still benefiting from shared knowledge in common layers.
 
 \textbf{H2: Selective aggregation improves cluster models.} This hypothesis examines whether the layer sharing mechanism allows clusters to develop distinct specializations. We measure this through cluster divergence metrics, expecting to see high divergence in cluster-specific layers (like policy heads) and low divergence in shared layers (like early residual blocks). The divergence pattern should fall between the two extremes: B1 (full sharing, near-zero divergence) and B2 (no sharing, maximum divergence).
 
-\textbf{H3: Cross-cluster learning enables knowledge transfer.} While H2 validates specialization, H3 tests whether shared layers enable useful knowledge transfer between clusters. We expect partial sharing experiments (P1-P4) to outperform the no-sharing baseline (B2) because shared layers allow clusters to learn from each other's experience, even while maintaining specialized heads.
+\textbf{H3: Cross-cluster learning enables knowledge transfer.} While H2 validates specialization, H3 tests whether shared layers enable useful knowledge transfer between clusters. We expect partial sharing experiments (E1-E4) to outperform the no-sharing baseline (B2) because shared layers allow clusters to learn from each other's experience, even while maintaining specialized heads.
 
 \subsubsection{Behavioral Hypotheses}
 
@@ -42,13 +42,13 @@ Both baselines run for 350 rounds with identical training configurations. Each r
 
 Phase 2 explores four different layer sharing configurations to identify which layers should be shared versus specialized. The configurations are motivated by the AlphaZero architecture's~\cite{silver2018general} hierarchical structure (Section~\ref{sec:network-architecture}), where early layers learn low-level patterns, middle layers learn strategic concepts, and late layers (especially heads) make final decisions.
 
-Experiment P1 (Share Early Layers Only) shares the input block and early residual blocks (0-5) while keeping middle layers, late layers, and heads cluster-specific. The hypothesis is that low-level feature extraction generalizes across playing styles, but strategic and tactical reasoning should specialize.
+Experiment E1 (Share Early Layers Only) shares the input block and early residual blocks (0-5) while keeping middle layers, late layers, and heads cluster-specific. The hypothesis is that low-level feature extraction generalizes across playing styles, but strategic and tactical reasoning should specialize.
 
-Experiment P2 (Share Middle Layers Only) keeps input and early layers cluster-specific, shares middle residual blocks (6-12), and keeps late layers cluster-specific. This tests whether mid-level strategic concepts can be shared while allowing specialization in both feature extraction and final decision-making.
+Experiment E2 (Share Middle Layers Only) keeps input and early layers cluster-specific, shares middle residual blocks (6-12), and keeps late layers cluster-specific. This tests whether mid-level strategic concepts can be shared while allowing specialization in both feature extraction and final decision-making.
 
-Experiment P3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive, it allows specialization in low-level features but forces convergence in high-level decision-making.
+Experiment E3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive, it allows specialization in low-level features but forces convergence in high-level decision-making.
 
-Experiment P4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific (Section~\ref{sec:selective-aggregation}). This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
+Experiment E4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific (Section~\ref{sec:selective-aggregation}). This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
 
 Each experiment runs for 350 rounds with identical training procedures and metric collection protocols. The goal is to compare performance, convergence speed, and behavioral differentiation across configurations to identify the optimal layer sharing strategy.
 
@@ -56,11 +56,11 @@ Each experiment runs for 350 rounds with identical training procedures and metri
 
 Phase 3 conducts comprehensive offline analysis after all training experiments complete. Unlike Phases 1 and 2, which collect metrics during training, Phase 3 uses the final trained models for in-depth evaluation.
 
-Evaluation E1 (Playstyle Analysis) generates 500 self-play games per cluster model to compute comprehensive playstyle statistics with tight confidence intervals. This validates H4 and H5 by comparing tactical scores and move type distributions between clusters with statistical significance tests.
+Evaluation 1 (Playstyle Analysis) generates 500 self-play games per cluster model to compute comprehensive playstyle statistics with tight confidence intervals. This validates H4 and H5 by comparing tactical scores and move type distributions between clusters with statistical significance tests.
 
-Evaluation E2 (Move Type Analysis) generates 200 games per cluster and classifies every move by type (captures, checks, aggressive moves, pawn advances, quiet moves). The analysis computes cluster comparison statistics to quantify behavioral differences and validate H6.
+Evaluation 2 (Move Type Analysis) generates 200 games per cluster and classifies every move by type (captures, checks, aggressive moves, pawn advances, quiet moves). The analysis computes cluster comparison statistics to quantify behavioral differences and validate H6.
 
-Evaluation E3 (Generalization Test) evaluates model performance against Stockfish at multiple skill levels (1000, 1200, 1400 ELO) to assess playing strength. Models are cross-evaluated by testing tactical cluster models against positional cluster models in head-to-head matches to quantify behavioral differences.
+Evaluation 3 (Generalization Test) evaluates model performance against Stockfish at multiple skill levels (1000, 1200, 1400 ELO) to assess playing strength. Models are cross-evaluated by testing tactical cluster models against positional cluster models in head-to-head matches to quantify behavioral differences.
 
 \subsection{Cluster Configuration}
 
@@ -90,6 +90,6 @@ For B1 (Full Sharing), all layers are aggregated using FedAvg weighted by the nu
 
 For B2 (No Sharing), no aggregation occurs, each cluster maintains its own model checkpoint without combining updates. This is equivalent to running two independent training runs that happen to share the same experimental infrastructure.
 
-For P1-P4 (Partial Sharing), layer-specific aggregation applies FedAvg only to designated shared layers while preserving cluster-specific layers unchanged. For example, in P4, the input block and all 19 residual blocks are aggregated across nodes within each cluster and then synchronized between clusters, while policy and value heads remain cluster-specific.
+For E1-E4 (Partial Sharing), layer-specific aggregation applies FedAvg only to designated shared layers while preserving cluster-specific layers unchanged. For example, in E4, the input block and all 19 residual blocks are aggregated across nodes within each cluster and then synchronized between clusters, while policy and value heads remain cluster-specific.
 
 The aggregation threshold (0.8) requires 80\% of cluster nodes to participate before aggregation occurs. If fewer nodes participate in a given round, that round's aggregation is skipped and models retain their previous weights. This prevents a single node from dominating the cluster model and ensures robustness to occasional node failures.

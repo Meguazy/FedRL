@@ -98,8 +98,8 @@ This comparison validates hypothesis H4 (playstyle clusters emerge naturally) by
 
 The baseline comparison motivates the design space explored in Phase 2. B1 and B2 represent extreme points: sharing all layers or sharing no layers. The performance and behavioral characteristics of these extremes inform which intermediate configurations are worth testing.
 
-If B1 converges faster but achieves lower final performance, it suggests that early layers (which learn general features) should be shared to accelerate learning, while late layers (which make final decisions) should remain cluster-specific for specialization. This motivates experiment P4 (share all except heads).
+If B1 converges faster but achieves lower final performance, it suggests that early layers (which learn general features) should be shared to accelerate learning, while late layers (which make final decisions) should remain cluster-specific for specialization. This motivates experiment E4 (share all except heads).
 
-If B2 shows strong specialization but slow convergence, it suggests that some knowledge transfer is beneficial but full sharing is excessive. This motivates experiments P1-P3, which selectively share different layer groups to balance knowledge transfer and specialization.
+If B2 shows strong specialization but slow convergence, it suggests that some knowledge transfer is beneficial but full sharing is excessive. This motivates experiments E1-E3, which selectively share different layer groups to balance knowledge transfer and specialization.
 
 The baselines also establish performance bounds for statistical testing. Hypothesis H1 requires that partial sharing outperforms B1 (full sharing), while hypothesis H3 requires that partial sharing outperforms B2 (no sharing). Together, these constraints define success: the optimal partial sharing configuration should beat both baselines by achieving stronger final performance than B1 while converging faster than B2.
