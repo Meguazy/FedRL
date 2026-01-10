@@ -129,15 +129,3 @@ E3 (Share Late) shares approximately 50\% of model parameters (late residual + b
 E4 (Share Backbone) shares approximately 86\% of model parameters (entire backbone), keeping only 18\% cluster-specific (heads only). This maximal-sharing configuration tests whether compact specialization suffices.
 
 Together, these configurations span sharing ratios from 23\% to 86\%, providing good coverage of the design space. The baselines B1 (100\% shared) and B2 (0\% shared) bookend this range.
-
-\subsubsection{Key Research Questions}
-
-The partial sharing experiments address three central questions about selective aggregation:
-
-\textbf{Which layers encode playstyle differences?} By comparing divergence patterns across E1-E4, we can identify where specialization occurs. If a layer group shows high divergence when cluster-specific but near-zero divergence when shared, it indicates that the layer encodes playstyle-dependent patterns. We hypothesize that heads will show the highest divergence in all configurations where they're cluster-specific, with late residual blocks also showing substantial divergence.
-
-\textbf{What is the optimal sharing strategy?} By comparing ELO ratings and convergence speed across E1-E4 and against baselines B1-B2, we can identify which configuration best balances knowledge transfer and specialization. We hypothesize that E4 will achieve the best ELO (or E1 as a close second) because it maximizes shared general knowledge while maintaining targeted specialization. Configurations that perform poorly (like E3) reveal which layers should not be shared.
-
-\textbf{Is there a tradeoff between performance and specialization?} By plotting ELO against playstyle separation metrics for all experiments, we can examine whether more sharing leads to higher performance but lower behavioral differentiation. We expect to find a sweet spot where sufficient specialization enables playstyle differences without sacrificing the knowledge transfer benefits. If E4 achieves both high ELO and strong playstyle separation, it would demonstrate that this tradeoff can be minimized through careful layer selection.
-
-The answers to these questions will not only validate the specific framework design but also provide insights applicable to other federated learning domains where clients have different task distributions or objectives. The principle of selective aggregation, sharing task-agnostic layers while specializing task-specific layers, generalizes beyond chess to any scenario where cluster-level customization is valuable.
