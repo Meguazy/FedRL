@@ -50,6 +50,7 @@ P3 (Late) & 0.82 & 0.59 & 0.81 & 0.00 & 0.00 \\
 P4 (Backbone) & 0.00 & 0.70 & 0.86 & 0.21 & 0.77 \\
 \hline
 \end{tabular}
+\\[0.2cm]
 \end{table}
 
 The divergence patterns validate the expected sharing configurations. B1 shows zero divergence in shared layers (input block and heads) but non-zero divergence in residual blocks (0.56-0.67), which appears inconsistent since B1 shares all parameters. This likely reflects measurement noise or numerical precision artifacts in layers with many parameters. P3 exhibits zero divergence in policy and value heads as intended by its sharing configuration.

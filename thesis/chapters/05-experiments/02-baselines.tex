@@ -12,7 +12,7 @@ The B1 experiment uses a shared layer configuration that includes every paramete
 
 During aggregation, both clusters (tactical and positional) collect updates from their respective nodes and compute weighted averages using FedAvg~\cite{mcmahan2017communication}. However, since all layers are designated as shared, the aggregation mechanism (Section~\ref{sec:aggregation-system}) synchronizes these layers between clusters. This effectively forces both clusters to converge toward identical models, with any cluster-specific knowledge being averaged away during aggregation.
 
-The training runs for 200 rounds, with each round consisting of local training on 400 puzzles per node followed by model aggregation. The aggregation threshold is set to 0.8, requiring at least 80\% of cluster nodes (4 out of 4 nodes, with some tolerance) to participate before aggregation occurs. The timeout per round is 1,200 seconds (20 minutes), providing sufficient time for local training, model uploads, and aggregation.
+The training runs for 350 rounds, with each round consisting of local training on 400 games per node followed by model aggregation. The aggregation threshold is set to 0.8, requiring at least 80\% of cluster nodes (with some tolerance for node failures) to participate before aggregation occurs. The timeout per round is 1,200 seconds (20 minutes), providing sufficient time for local training, model uploads, and aggregation.
 
 \subsubsection{Expected Behavior}
 
@@ -20,11 +20,11 @@ The B1 baseline represents the standard federated learning approach without clus
 
 \textbf{Near-zero divergence.} Since all layers are synchronized between clusters after each round, the cluster divergence metrics should remain close to zero throughout training. Any temporary divergence that emerges during local training will be eliminated by the aggregation step. This provides a lower bound on divergence, the minimum possible separation when no specialization is allowed.
 
-\textbf{Minimal playstyle separation.} Despite training on different puzzle sets (tactical vs. positional), the two clusters should develop similar playing styles because their models are forced to converge. The tactical score differences between clusters will be minimal, as the shared policy head cannot maintain distinct strategic preferences. This serves as a negative control for hypothesis H4, demonstrating that playstyle separation requires some form of model specialization.
+\textbf{Minimal playstyle separation.} Despite training on different game sets (tactical vs. positional), the two clusters should develop similar playing styles because their models are forced to converge. The tactical score differences between clusters will be minimal, as the shared policy head cannot maintain distinct strategic preferences. This serves as a negative control for hypothesis H4, demonstrating that playstyle separation requires some form of model specialization.
 
 \textbf{Fast convergence.} Full knowledge sharing means each cluster benefits from the training data of all 8 nodes, effectively doubling the training data size compared to independent training. We expect relatively fast convergence and good sample efficiency, with ELO ratings improving steadily across both clusters.
 
-\textbf{Moderate performance.} The B1 baseline should achieve reasonable playing strength since it benefits from the combined training data of both clusters. However, it may underperform compared to partial sharing experiments if forcing all nodes toward a single model creates a "jack of all trades, master of none" effect. The model must compromise between tactical and positional puzzle distributions rather than specializing in either.
+\textbf{Moderate performance.} The B1 baseline should achieve reasonable playing strength since it benefits from the combined training data of both clusters. However, it may underperform compared to partial sharing experiments if forcing all nodes toward a single model creates a "jack of all trades, master of none" effect. The model must compromise between tactical and positional game distributions rather than specializing in either.
 
 \subsubsection{Metrics Collection}
 
@@ -44,21 +44,21 @@ The second baseline, B2 (No Sharing), represents the opposite extreme: complete 
 
 The B2 configuration reverses the pattern from B1. The \texttt{shared\_layer\_patterns} list is empty, indicating that no layers are synchronized between clusters. Instead, the \texttt{cluster\_specific\_patterns} list includes all layer groups: \texttt{input\_conv.*}, \texttt{input\_bn.*}, \texttt{res\_blocks.*}, \texttt{policy\_head.*}, and \texttt{value\_head.*}.
 
-This configuration allows each cluster to maintain its own independent model. While intra-cluster aggregation still occurs (nodes within each cluster combine their updates using FedAvg), there is no inter-cluster aggregation. The tactical cluster's model evolves based solely on tactical puzzles from its 4 nodes, while the positional cluster's model evolves based solely on positional puzzles from its 4 nodes.
+This configuration allows each cluster to maintain its own independent model. While intra-cluster aggregation still occurs (nodes within each cluster combine their updates using FedAvg), there is no inter-cluster aggregation. The tactical cluster's model evolves based solely on tactical games from its 4 nodes, while the positional cluster's model evolves based solely on positional games from its 4 nodes.
 
-The training schedule and hyperparameters match B1 exactly: 200 rounds, 400 puzzles per node per round, 0.8 aggregation threshold, and 1,200-second timeout. This ensures that any performance differences between B1 and B2 can be attributed to the sharing policy rather than confounding variables.
+The training schedule and hyperparameters match B1 exactly: 350 rounds, 400 games per node per round, 0.8 aggregation threshold, and 1,200-second timeout. This ensures that any performance differences between B1 and B2 can be attributed to the sharing policy rather than confounding variables.
 
 \subsubsection{Expected Behavior}
 
 The B2 baseline tests whether cluster specialization is beneficial when taken to the extreme. We expect several contrasting behaviors compared to B1:
 
-\textbf{High divergence.} With no cross-cluster aggregation, the tactical and positional models will evolve along completely different trajectories. Divergence should increase steadily during early training as each model adapts to its specific puzzle distribution. By the end of training, we expect divergence values significantly higher than B1 across all layer groups, providing an upper bound on model separation.
+\textbf{High divergence.} With no cross-cluster aggregation, the tactical and positional models will evolve along completely different trajectories. Divergence should increase steadily during early training as each model adapts to its specific game distribution. By the end of training, we expect divergence values significantly higher than B1 across all layer groups, providing an upper bound on model separation.
 
 \textbf{Maximum playstyle separation.} The B2 configuration provides ideal conditions for behavioral differentiation. The tactical cluster should develop a highly tactical playing style with high tactical scores, frequent captures and checks, and aggressive move preferences. The positional cluster should develop a positional playing style with lower tactical scores, more quiet moves, and focus on long-term planning. This serves as a positive control for hypothesis H4, demonstrating that specialization is possible when models train independently.
 
-\textbf{Slower convergence.} Unlike B1, each cluster only has access to its own 4 nodes' data (1,600 puzzles per round total, compared to 3,200 when sharing with the other cluster). This smaller effective dataset may slow convergence and require more rounds to reach comparable performance. The learning curves should show slower ELO improvement compared to configurations with knowledge sharing.
+\textbf{Slower convergence.} Unlike B1, each cluster only has access to its own 4 nodes' data (1,600 games per round total, compared to 3,200 when sharing with the other cluster). This smaller effective dataset may slow convergence and require more rounds to reach comparable performance. The learning curves should show slower ELO improvement compared to configurations with knowledge sharing.
 
-\textbf{Potentially lower performance.} While specialization allows each cluster to optimize for its specific puzzle distribution, the lack of knowledge transfer means each cluster cannot benefit from patterns learned by the other cluster. General chess knowledge (like piece values, board control, king safety) that applies to both tactical and positional puzzles must be learned independently by each cluster rather than shared. This may result in lower final ELO compared to partial sharing experiments that combine specialization with knowledge transfer.
+\textbf{Potentially lower performance.} While specialization allows each cluster to optimize for its specific game distribution, the lack of knowledge transfer means each cluster cannot benefit from patterns learned by the other cluster. General chess knowledge (like piece values, board control, king safety) that applies to both tactical and positional games must be learned independently by each cluster rather than shared. This may result in lower final ELO compared to partial sharing experiments that combine specialization with knowledge transfer.
 
 \subsubsection{Metrics Collection}
 
@@ -68,7 +68,7 @@ Playstyle evaluation in B2 should reveal clear separation between clusters. We e
 
 Cluster divergence serves as a key indicator of specialization success. Unlike B1 where divergence should be near-zero, B2's divergence should grow over training and stabilize at high values. The divergence breakdown by layer group reveals which layers specialize most strongly, we expect all layers to show high divergence since no sharing occurs.
 
-Move type distribution analysis should show distinct behavioral signatures. The tactical cluster should play more captures, checks, and aggressive moves, while the positional cluster should favor quiet moves, pawn advances, and positional maneuvering. These differences validate that training on different puzzle sets produces measurably different playing styles.
+Move type distribution analysis should show distinct behavioral signatures. The tactical cluster should play more captures, checks, and aggressive moves, while the positional cluster should favor quiet moves, pawn advances, and positional maneuvering. These differences validate that training on different game sets produces measurably different playing styles.
 
 \subsection{Baseline Comparison}
 
@@ -76,7 +76,7 @@ The two baselines represent opposite ends of a spectrum: full sharing versus no 
 
 \subsubsection{Divergence and Specialization}
 
-The most obvious difference between B1 and B2 is cluster divergence. B1 should maintain near-zero divergence throughout training because all layers are synchronized after each round. Any divergence that emerges during local training (due to different puzzle distributions) is eliminated by aggregation. In contrast, B2 should show steadily increasing divergence during early training as each cluster's model adapts to its specific data distribution, eventually plateauing once specialization is complete.
+The most obvious difference between B1 and B2 is cluster divergence. B1 should maintain near-zero divergence throughout training because all layers are synchronized after each round. Any divergence that emerges during local training (due to different game distributions) is eliminated by aggregation. In contrast, B2 should show steadily increasing divergence during early training as each cluster's model adapts to its specific data distribution, eventually plateauing once specialization is complete.
 
 This divergence difference validates hypothesis H2 from a boundary conditions perspective: B1 shows that sharing all layers prevents specialization (divergence $\approx$ 0), while B2 shows that sharing no layers allows maximum specialization (high divergence). The partial sharing experiments will test whether intermediate divergence levels can be achieved by selectively sharing some layers while keeping others cluster-specific.
 

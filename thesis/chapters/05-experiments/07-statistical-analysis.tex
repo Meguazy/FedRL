@@ -19,12 +19,16 @@ Statistical significance only indicates an effect exists; effect size quantifies
 d = \frac{\mu_1 - \mu_2}{\sigma_{\text{pooled}}}, \quad \sigma_{\text{pooled}} = \sqrt{\frac{\sigma_1^2 + \sigma_2^2}{2}}
 \end{equation}
 
+where $\mu_1$ and $\mu_2$ are the means of the two groups being compared, $\sigma_1$ and $\sigma_2$ are the standard deviations of the two groups, and $\sigma_{\text{pooled}}$ is the pooled standard deviation representing the average variability across both groups.
+
 Interpretation follows standard conventions: $|d| = 0.2$ represents a small effect, $|d| = 0.5$ a medium effect, and $|d| = 0.8$ a large effect. We apply Cohen's d to cluster playstyle differences and baseline comparisons.
 
 For ANOVA, we calculate eta-squared ($\eta^2$) to represent the proportion of variance explained:
 \begin{equation}
 \eta^2 = \frac{SS_{\text{between}}}{SS_{\text{total}}}
 \end{equation}
+
+where $SS_{\text{between}}$ is the sum of squares between groups (variance explained by group differences) and $SS_{\text{total}}$ is the total sum of squares (total variance in the data). The ratio indicates what proportion of the total variance is attributable to differences between experimental configurations.
 
 Interpretation: $\eta^2 = 0.01$ indicates a small effect, $\eta^2 = 0.06$ a medium effect, and $\eta^2 = 0.14$ a large effect. This metric applies to P1-P4 configuration comparisons.
 
@@ -44,12 +48,12 @@ Each hypothesis has specific success criteria:
 \item \textbf{H7}: Plateau detected (divergence stabilizes) and no reconvergence in final 50 rounds
 \end{itemize}
 
-%\subsection{Reporting Standards}
+\subsection{Reporting Standards}
 
-%For transparency and reproducibility, we report comprehensive statistics for each test. Sample sizes ($n$) are provided for each group or condition. Descriptive statistics include mean ($M$), standard deviation ($SD$), and median when distributions are skewed. Test statistics specify the $t$-value with degrees of freedom for t-tests or $F$-statistic with $df_{\text{between}}$ and $df_{\text{within}}$ for ANOVA.
+For transparency and reproducibility, we report comprehensive statistics for each test following APA guidelines. Descriptive statistics include mean ($M$), standard deviation ($SD$), and sample size ($n$) for each group. Test statistics specify the $t$-value with degrees of freedom for t-tests, where the notation $t(df)$ indicates the t-statistic value with $df$ degrees of freedom. For independent samples t-tests, degrees of freedom are calculated as $df = n_1 + n_2 - 2$, while paired t-tests use $df = n - 1$ where $n$ is the number of matched pairs. ANOVA results report $F$-statistics with $df_{\text{between}}$ and $df_{\text{within}}$.
 
-%Exact $p$-values are reported rather than inequality statements like "$p < 0.05$". Effect sizes include interpretation labels (small, medium, or large) based on conventional thresholds. Confidence intervals are provided at 95\% level for both mean differences and effect sizes. Each result concludes with a clear statement linking findings to the relevant hypothesis.
+Exact $p$-values are reported rather than inequality statements like "$p < 0.05$". Effect sizes include Cohen's $d$ with interpretation labels (small, medium, or large) based on conventional thresholds. Confidence intervals are provided at 95\% level for both mean differences and effect sizes. Each result concludes with a clear statement linking findings to the relevant hypothesis.
 
-%For example: "Tactical cluster ($M = 0.68$, $SD = 0.12$, $n = 500$) showed significantly higher tactical scores than positional cluster ($M = 0.45$, $SD = 0.11$, $n = 500$), $t(998) = 28.5$, $p < 0.001$, $d = 1.92$, 95\% CI [0.21, 0.25]. This large effect supports H4."
+For example: "Tactical cluster ($M = 0.68$, $SD = 0.12$, $n = 350$) showed significantly higher tactical scores than positional cluster ($M = 0.45$, $SD = 0.11$, $n = 350$), $t(698) = 28.5$, $p < 0.001$, Cohen's $d = 1.92$, 95\% CI [0.21, 0.25]. This very large effect supports H4." Here, $t(698)$ means the t-statistic is 28.5 with 698 degrees of freedom (350 + 350 - 2).
 
-%All statistical analyses are performed using Python (scipy.stats, statsmodels) and results are included in the results chapter with supporting visualizations.
+All statistical analyses are performed using Python (scipy.stats, statsmodels) and results are included in the results chapter with supporting visualizations.

@@ -26,17 +26,17 @@ The first partial sharing experiment, P1, tests the hypothesis that low-level fe
 
 The P1 experiment designates the input block (\texttt{input\_conv.*}, \texttt{input\_bn.*}) and early residual blocks (\texttt{res\_blocks.0.*} through \texttt{res\_blocks.5.*}) as shared layers. These approximately 2.5 million parameters are aggregated across both tactical and positional clusters after each training round.
 
-All remaining layers, middle residual blocks (6-12), late residual blocks (13-18), and both heads, are marked as cluster-specific. These approximately 8.5 million parameters remain separate for each cluster, allowing independent specialization based on the respective puzzle distributions.
+All remaining layers, middle residual blocks (6-12), late residual blocks (13-18), and both heads, are marked as cluster-specific. These approximately 8.5 million parameters remain separate for each cluster, allowing independent specialization based on the respective game distributions.
 
 The aggregation protocol works as follows: after local training, nodes within each cluster combine their updates using FedAvg to produce a cluster model. Then, for shared layers only, the tactical and positional cluster models synchronize their parameters using weighted averaging. The cluster-specific layers remain unchanged during this cross-cluster synchronization step.
 
 \subsubsection{Hypothesis and Expected Behavior}
 
-The P1 configuration is motivated by the observation that all chess positions require the same basic piece recognition and board understanding regardless of playing style. A tactical player and a positional player both need to recognize where pieces are located, what pieces attack which squares, and basic board geometry. These fundamental features should be learnable from both tactical and positional puzzles.
+The P1 configuration is motivated by the observation that all chess positions require the same basic piece recognition and board understanding regardless of playing style. A tactical player and a positional player both need to recognize where pieces are located, what pieces attack which squares, and basic board geometry. These fundamental features should be learnable from both tactical and positional games.
 
 By sharing early layers, both clusters benefit from the combined training data when learning these universal features. This should accelerate convergence compared to B2 (no sharing) because each cluster effectively has access to 8 nodes' worth of data for early feature learning rather than just 4.
 
-However, strategic reasoning and move selection preferences differ between playing styles. Tactical positions reward aggressive piece activity, forcing moves, and material exchanges. Positional positions reward pawn structure, piece coordination, and long-term planning. By keeping middle layers, late layers, and heads cluster-specific, each cluster can develop specialized representations optimized for its puzzle distribution.
+However, strategic reasoning and move selection preferences differ between playing styles. Tactical positions reward aggressive piece activity, forcing moves, and material exchanges. Positional positions reward pawn structure, piece coordination, and long-term planning. By keeping middle layers, late layers, and heads cluster-specific, each cluster can develop specialized representations optimized for its game distribution.
 
 We expect the following divergence pattern: near-zero divergence in input block and early residual blocks (these layers are synchronized), gradually increasing divergence in middle residual blocks (these layers begin to specialize), high divergence in late residual blocks (strategic reasoning differs), and very high divergence in both heads (move preferences and position evaluation strongly reflect playstyle).
 

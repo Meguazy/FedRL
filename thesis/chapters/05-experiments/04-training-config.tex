@@ -10,25 +10,25 @@ The model contains approximately 11 million parameters: 20K in the input block, 
 
 \subsection{Training Hyperparameters}
 
-Each experiment runs for 200 training rounds, with each round consisting of local client training followed by model aggregation according to the experiment's sharing policy.
+Each experiment runs for 350 training rounds, with each round consisting of local client training followed by model aggregation according to the experiment's sharing policy.
 
 \textbf{Federated learning parameters:}
 \begin{itemize}
-\item Total rounds: 200
+\item Total rounds: 350
 \item Nodes per cluster: 4 tactical + 4 positional (8 total)
-\item Puzzles per node per round: 400 (3,200 puzzles total per round)
-\item Local training epochs: 5 epochs over the 400 puzzles before aggregation
+\item Games per node per round: 400 (3,200 games total per round)
+\item Local training epochs: 5 epochs over the 400 games before aggregation
 \item Aggregation threshold: 0.8 (80\% of cluster nodes must participate)
 \item Round timeout: 1,200 seconds (20 minutes)
 \end{itemize}
 
-The aggregation threshold of 0.8 requires at least 4 out of 4 nodes in each cluster to participate (with some tolerance for occasional failures). If fewer nodes participate in a round, aggregation is skipped and models retain their previous weights.
+The aggregation threshold of 0.8 requires at least 80\% of cluster nodes to participate (with some tolerance for occasional node failures). If fewer nodes participate in a round, aggregation is skipped and models retain their previous weights.
 
 \textbf{Neural network optimization:}
 \begin{itemize}
 \item Optimizer: Adam with default parameters ($\beta_1 = 0.9$, $\beta_2 = 0.999$)
 \item Learning rate: $1 \times 10^{-3}$ (constant, no decay schedule)
-\item Batch size: 64 puzzles
+\item Batch size: 64 games
 \item Weight decay: $1 \times 10^{-4}$ for L2 regularization
 \item Gradient clipping: Not used (Adam's adaptive learning rate provides sufficient stability)
 \end{itemize}
@@ -49,6 +49,6 @@ The tactical cluster trains on games from sharp tactical openings emphasizing dy
 
 The game sets are completely disjoint by ECO code, no opening classification appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than from shared games.
 
-Each node samples 400 games per round from its cluster's filtered game set using deterministic offset-based sampling. Over 200 rounds, each node trains on 80,000 game positions, providing sufficient data for convergence. Data augmentation is applied through board flips (horizontal reflection with move translation) and color swaps (playing from black's perspective), effectively doubling the training data size and improving generalization to symmetrically equivalent positions.
+Each node samples 400 games per round from its cluster's filtered game set using deterministic offset-based sampling. Over 350 rounds, each node trains on 140,000 game positions, providing sufficient data for convergence. Data augmentation is applied through board flips (horizontal reflection with move translation) and color swaps (playing from black's perspective), effectively doubling the training data size and improving generalization to symmetrically equivalent positions.
 
 Each game is converted into training examples by extracting positions and moves from the game record, creating a 119-plane tensor representation of each position (Section~\ref{sec:network-architecture}) as input, the actual move played as the policy target, and the game outcome as the value target. This supervised learning approach trains the network to predict expert-level moves in games exhibiting tactical versus positional characteristics, providing a foundation for subsequent self-play reinforcement learning if desired.

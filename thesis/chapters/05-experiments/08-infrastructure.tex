@@ -4,7 +4,7 @@ This section describes the computational resources, software environment, and re
 
 \subsection{Computational Resources}
 
-All experiments are conducted on a single machine with the following specifications. The GPU is an NVIDIA RTX 3090 with 24 GB VRAM, maintaining 80-95\% utilization during training primarily for neural network forward/backward passes during local training epochs. The 24 GB VRAM is sufficient to hold the 11M parameter model plus gradients and optimizer states. The CPU is an AMD Ryzen 9 5900X with 12 cores and 24 threads, handling data loading, puzzle preprocessing, metric computation, and Stockfish evaluation. CPU utilization varies by training phase, peaking during evaluation rounds when multiple Stockfish games run in parallel. The system includes 64 GB DDR4 RAM required for in-memory storage of puzzle data during training (each node loads 400 puzzles per round), MCTS tree storage during game play, and metric aggregation across clusters. Storage consists of a 1 TB NVMe SSD, where fast I/O is critical for loading model checkpoints and saving metrics at every round.
+All experiments are conducted on a single machine with the following specifications. The GPU is an NVIDIA RTX 4090 with 24 GB VRAM, maintaining 80-95\% utilization during training primarily for neural network forward/backward passes during local training epochs. The 24 GB VRAM is sufficient to hold the 11M parameter model plus gradients and optimizer states. The CPU is an Intel i9-13900K with 24 cores and 32 threads, handling data loading, game preprocessing, metric computation, and Stockfish evaluation. CPU utilization varies by training phase, peaking during evaluation rounds when multiple Stockfish games run in parallel. The system includes 64 GB DDR4 RAM required for in-memory storage of game data during training (each node loads 400 games per round), MCTS tree storage during game play, and metric aggregation across clusters. Storage consists of a 1 TB NVMe SSD, where fast I/O is critical for loading model checkpoints and saving metrics at every round.
 
 \subsection{Software Environment}
 
@@ -26,17 +26,17 @@ Dependencies are managed via pip and recorded in \texttt{requirements.txt} with 
 Per-experiment storage breakdown:
 
 \begin{itemize}
-\item Model checkpoints: 50 MB per checkpoint × 200 rounds × 2 clusters = 20 GB
+\item Model checkpoints: 50 MB per checkpoint × 350 rounds × 2 clusters = 35 GB
 \item Metrics JSON files: Approximately 500 MB per experiment (playstyle, divergence, weights, move types stored every round)
 \item With checkpoint cleanup (keeping every 10th round): 5-10 GB per experiment
 \end{itemize}
 
-Total storage for all experiments: 30-60 GB (6 experiments × 5-10 GB each). Training data (Lichess puzzle database) requires an additional 10-20 GB.
+Total storage for all experiments: 30-60 GB (6 experiments × 5-10 GB each). Training data (Lichess game database) requires an additional 10-20 GB.
 
 \subsection{Reproducibility Measures}
 
 To ensure reproducible results, we employ several strategies. Fixed random seeds are set for PyTorch (\texttt{torch.manual\_seed(42)}), NumPy (\texttt{np.random.seed(42)}), and Python random (\texttt{random.seed(42)}) to enable deterministic initialization and data sampling. PyTorch is configured with \texttt{torch.backends.cudnn.deterministic = True} and \texttt{torch.backends.cudnn.benchmark = False} to ensure reproducible GPU operations, though this may slightly reduce performance while guaranteeing identical results across runs.
 
-Complete YAML configurations are saved for each experiment run in \texttt{storage/.metadata/\{run\_id\}.json}, including model architecture, hyperparameters, layer sharing patterns, and Git commit hash. The puzzle database version is tracked, and train/validation/test splits are fixed and stored with the experiment metadata. Each run receives a unique ID in the format \texttt{run\_YYYYMMDD\_HHMMSS\_uuid}, with all metrics timestamped and linked to the run ID enabling precise reconstruction of experiment conditions.
+Complete YAML configurations are saved for each experiment run in \texttt{storage/.metadata/\{run\_id\}.json}, including model architecture, hyperparameters, layer sharing patterns, and Git commit hash. The game database version is tracked, and train/validation/test splits are fixed and stored with the experiment metadata. Each run receives a unique ID in the format \texttt{run\_YYYYMMDD\_HHMMSS\_uuid}, with all metrics timestamped and linked to the run ID enabling precise reconstruction of experiment conditions.
 
 The Git repository tracks all source code, with tagged releases marking major experiment milestones. The exact commit hash is recorded in experiment metadata. These measures ensure that another researcher with similar hardware and the specified software versions can reproduce the experiments by following the protocol in this chapter and using the saved configurations.
