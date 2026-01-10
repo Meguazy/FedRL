@@ -1,12 +1,14 @@
 % Main thesis document
 \documentclass[11pt,a4paper,twoside]{report}
 
+% PDF/A compliance (must be loaded first)
+\usepackage[a-1b]{pdfx}
+
 % Packages
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb}
-\usepackage{hyperref}
 \usepackage{cite}
 \usepackage{setspace}
 \usepackage{geometry}
@@ -29,12 +31,16 @@
 % Line spacing
 \singlespacing
 
-% Hyperref setup
+% Hyperref setup (pdfx loads hyperref automatically)
 \hypersetup{
     colorlinks=true,
     linkcolor=blue,
     citecolor=blue,
-    urlcolor=blue
+    urlcolor=blue,
+    pdfauthor={Francesco Finucci},
+    pdftitle={Clustered Federated Learning for Chess AI},
+    pdfsubject={Master's Thesis},
+    pdfkeywords={federated learning, reinforcement learning, chess, AlphaZero}
 }
 
 % Define fullwidth environment (if not using tufte-book class)
