@@ -2,6 +2,16 @@
 
 This section describes how experimental results are analyzed and compared to validate the seven research hypotheses. Rather than relying on formal statistical inference, we employ empirical comparison of performance metrics, effect size analysis, and convergence trajectory examination to assess hypothesis validity.
 
+\subsection{Comparison Groups and Data Structure}
+
+The analysis involves two types of comparisons, each with different group definitions and sample sizes.
+
+For performance comparisons between configurations, each group represents one experimental configuration trained through 350 rounds. When comparing two configurations (for example, E2 versus B1), each group consists of 350 ELO measurements, one per training round. The comparison examines whether the two configurations achieve different performance levels across their training trajectories. Metrics include both final ELO (round 350) and average ELO (mean across all 350 rounds).
+
+For behavioral comparisons within a configuration, each group represents one cluster (tactical or positional) evaluated across training rounds. When comparing tactical versus positional clusters within a configuration, each group again consists of 350 measurements of behavioral metrics (tactical scores, aggressive move percentages) collected at each training round. The comparison examines whether the two clusters exhibit different playing styles throughout training.
+
+Effect sizes and descriptive statistics are computed from these time series measurements. While sequential training rounds exhibit temporal dependencies (each round builds on previous learning), the 350-round trajectories provide sufficient observations to characterize each configuration's performance and each cluster's behavioral patterns.
+
 \subsection{Performance Comparison Approach}
 
 Configuration performance is assessed through direct comparison of ELO ratings measured throughout training. Two primary metrics characterize each configuration: the final ELO rating achieved at round 350, representing ultimate playing strength after complete training, and the average ELO across all training rounds, indicating overall training efficiency and stability.
