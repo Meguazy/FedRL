@@ -14,6 +14,7 @@
 \usepackage{array}
 \usepackage{tikz}
 \usepackage[htt]{hyphenat}
+\usepackage[protrusion=true,expansion=false]{microtype}  % Improves text justification, disable expansion
 \usetikzlibrary{positioning}
 \usetikzlibrary{shapes.geometric}
 
@@ -29,12 +30,23 @@
 % Line spacing
 \singlespacing
 
+% Prevent overfull boxes - enforce strict margins
+\sloppy  % Allow more flexible spacing to prevent overflow
+\emergencystretch=3em  % Allow extra stretch in extreme cases
+\tolerance=9999  % High tolerance for line breaking
+\hbadness=9999  % Don't complain about underfull boxes
+
+% Break long URLs and file paths
+\PassOptionsToPackage{hyphens}{url}
+\def\UrlBreaks{\do\/\do-\do_\do.\do=\do?\do\&}
+
 % Hyperref setup
 \hypersetup{
     colorlinks=true,
-    linkcolor=blue,
-    citecolor=blue,
-    urlcolor=blue
+    linkcolor=black,
+    citecolor=black,
+    urlcolor=black,
+    breaklinks=true
 }
 
 % Define fullwidth environment (if not using tufte-book class)
