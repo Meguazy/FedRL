@@ -14,9 +14,9 @@ Furthermore, the tactical-positional distinction may be specific to chess strate
 
 \subsection{Training Duration}
 
-The experimental campaign used 350 training rounds with 400 games per node per round, totaling 80,000 game positions per node. While sufficient to observe convergence and plateau behavior, extended training might reveal additional patterns. P4's poor performance might improve with adaptive learning rate scheduling or extended optimization allowing the constrained architecture to escape suboptimal basins. The plateau after round 200 suggests 350 rounds provides adequate training, but longer runs (500-1000 rounds) could validate whether specialization remains stable or eventually reconverges at longer timescales.
+The experimental campaign used 350 training rounds with 400 games per node per round, totaling 80,000 game positions per node. While sufficient to observe convergence and plateau behavior, extended training might reveal additional patterns. E4's poor performance might improve with adaptive learning rate scheduling or extended optimization allowing the constrained architecture to escape suboptimal basins. The plateau after round 200 suggests 350 rounds provides adequate training, but longer runs (500-1000 rounds) could validate whether specialization remains stable or eventually reconverges at longer timescales.
 
-Additionally, all configurations used identical hyperparameters (learning rate, batch size, optimizer settings). Configuration-specific tuning might improve relative performance, particularly for P4 where gradient conflicts suggest different learning rates for shared versus independent layers could reduce optimization interference.
+Additionally, all configurations used identical hyperparameters (learning rate, batch size, optimizer settings). Configuration-specific tuning might improve relative performance, particularly for E4 where gradient conflicts suggest different learning rates for shared versus independent layers could reduce optimization interference.
 
 \subsection{Baseline Comparisons}
 

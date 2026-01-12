@@ -8,15 +8,15 @@ The evaluation framework tests seven research hypotheses that span model perform
 
 \subsubsection{Performance Hypotheses}
 
-\textbf{H1: Clustered FL outperforms centralized training.} The first hypothesis tests whether allowing clusters to specialize through selective layer sharing produces stronger models than forcing all nodes to converge to a single shared model. We expect that partial sharing (experiments P1-P4) will achieve higher ELO ratings than full sharing (baseline B1) because clusters can develop specialized strategies while still benefiting from shared knowledge in common layers.
+\textbf{H1: Clustered FL outperforms centralized training.} The first hypothesis tests whether allowing clusters to specialize through selective layer sharing produces stronger models than forcing all nodes to converge to a single shared model. We expect that partial sharing (experiments E1-E4) will achieve higher ELO ratings than full sharing (baseline B1) because clusters can develop specialized strategies while still benefiting from shared knowledge in common layers.
 
 \textbf{H2: Selective aggregation improves cluster models.} This hypothesis examines whether the layer sharing mechanism allows clusters to develop distinct specializations. We measure this through cluster divergence metrics, expecting to see high divergence in cluster-specific layers (like policy heads) and low divergence in shared layers (like early residual blocks). The divergence pattern should fall between the two extremes: B1 (full sharing, near-zero divergence) and B2 (no sharing, maximum divergence).
 
-\textbf{H3: Cross-cluster learning enables knowledge transfer.} While H2 validates specialization, H3 tests whether shared layers enable useful knowledge transfer between clusters. We expect partial sharing experiments (P1-P4) to outperform the no-sharing baseline (B2) because shared layers allow clusters to learn from each other's experience, even while maintaining specialized heads.
+\textbf{H3: Cross-cluster learning enables knowledge transfer.} While H2 validates specialization, H3 tests whether shared layers enable useful knowledge transfer between clusters. We expect partial sharing experiments (E1-E4) to outperform the no-sharing baseline (B2) because shared layers allow clusters to learn from each other's experience, even while maintaining specialized heads.
 
 \subsubsection{Behavioral Hypotheses}
 
-\textbf{H4: Playstyle clusters emerge naturally.} This hypothesis tests whether training on different puzzle sets causes measurable differences in playing style. The tactical cluster should achieve significantly higher tactical scores (measuring aggressive play, captures, and checks) compared to the positional cluster. We use independent t-tests with a stringent threshold ($p < 0.001$) and expect a large effect size (Cohen's $d > 0.8$).
+\textbf{H4: Playstyle clusters emerge naturally.} This hypothesis tests whether training on games from different ECO opening classifications causes measurable differences in playing style. The tactical cluster (trained on tactical openings) should achieve significantly higher tactical scores (measuring aggressive play, captures, and checks) compared to the positional cluster (trained on positional openings). We use independent t-tests with a stringent threshold ($p < 0.001$) and expect a large effect size (Cohen's $d > 0.8$).
 
 \textbf{H5: Different clusters develop distinct strategies.} Beyond overall tactical scores, H5 examines whether clusters show different strategic preferences in their move choices. The tactical cluster should play more aggressive moves (captures and checks), while the positional cluster should favor quiet moves, pawn advances, and positional maneuvering. Move type distribution analysis provides the primary evidence for this hypothesis.
 
@@ -36,31 +36,31 @@ Phase 1 establishes the performance boundaries by testing two extreme configurat
 
 These baselines serve multiple purposes. First, they validate that the framework can reproduce standard federated learning (B1) and independent training (B2) as special cases. Second, they provide comparison points for the partial sharing experiments. Third, they help isolate the effect of selective aggregation by controlling for other variables like model architecture, training data, and hyperparameters.
 
-Both baselines run for 200 rounds with identical training configurations. Each round involves local training on 400 puzzles per node (3,200 puzzles total across 8 nodes), followed by model aggregation according to the experiment's sharing policy. Metrics are collected every round for playstyle evaluation, weight statistics, and cluster divergence, with ELO estimation and move type analysis conducted every 10 rounds.
+Both baselines run for 350 rounds with identical training configurations. Each round involves local training on 400 games per node (3,200 games total across 8 nodes), followed by model aggregation according to the experiment's sharing policy. Metrics are collected every round for playstyle evaluation, weight statistics, and cluster divergence, with ELO estimation and move type analysis conducted every 10 rounds.
 
 \subsubsection{Phase 2: Partial Layer Sharing Experiments}
 
 Phase 2 explores four different layer sharing configurations to identify which layers should be shared versus specialized. The configurations are motivated by the AlphaZero architecture's~\cite{silver2018general} hierarchical structure (Section~\ref{sec:network-architecture}), where early layers learn low-level patterns, middle layers learn strategic concepts, and late layers (especially heads) make final decisions.
 
-Experiment P1 (Share Early Layers Only) shares the input block and early residual blocks (0-5) while keeping middle layers, late layers, and heads cluster-specific. The hypothesis is that low-level feature extraction generalizes across playing styles, but strategic and tactical reasoning should specialize.
+Experiment E1 (Share Early Layers Only) shares the input block and early residual blocks (0-5) while keeping middle layers, late layers, and heads cluster-specific. The hypothesis is that low-level feature extraction generalizes across playing styles, but strategic and tactical reasoning should specialize.
 
-Experiment P2 (Share Middle Layers Only) keeps input and early layers cluster-specific, shares middle residual blocks (6-12), and keeps late layers cluster-specific. This tests whether mid-level strategic concepts can be shared while allowing specialization in both feature extraction and final decision-making.
+Experiment E2 (Share Middle Layers Only) keeps input and early layers cluster-specific, shares middle residual blocks (6-12), and keeps late layers cluster-specific. This tests whether mid-level strategic concepts can be shared while allowing specialization in both feature extraction and final decision-making.
 
-Experiment P3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive, it allows specialization in low-level features but forces convergence in high-level decision-making.
+Experiment E3 (Share Late Layers Only) shares late residual blocks (13-18) and both heads while keeping early and middle layers cluster-specific. This configuration is counterintuitive, it allows specialization in low-level features but forces convergence in high-level decision-making.
 
-Experiment P4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific (Section~\ref{sec:selective-aggregation}). This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
+Experiment E4 (Share All Except Heads) shares the entire backbone (input block and all 19 residual blocks) while keeping only the policy and value heads cluster-specific (Section~\ref{sec:selective-aggregation}). This represents minimal specialization, testing whether head-only specialization is sufficient for behavioral differentiation.
 
-Each experiment runs for 200 rounds with identical training procedures and metric collection protocols. The goal is to compare performance, convergence speed, and behavioral differentiation across configurations to identify the optimal layer sharing strategy.
+Each experiment runs for 350 rounds with identical training procedures and metric collection protocols. The goal is to compare performance, convergence speed, and behavioral differentiation across configurations to identify the optimal layer sharing strategy.
 
 \subsubsection{Phase 3: Performance Evaluation}
 
 Phase 3 conducts comprehensive offline analysis after all training experiments complete. Unlike Phases 1 and 2, which collect metrics during training, Phase 3 uses the final trained models for in-depth evaluation.
 
-Evaluation E1 (Playstyle Analysis) generates 500 self-play games per cluster model to compute comprehensive playstyle statistics with tight confidence intervals. This validates H4 and H5 by comparing tactical scores and move type distributions between clusters with statistical significance tests.
+Evaluation 1 (Playstyle Analysis) generates 500 self-play games per cluster model to compute comprehensive playstyle statistics with tight confidence intervals. This validates H4 and H5 by comparing tactical scores and move type distributions between clusters with statistical significance tests.
 
-Evaluation E2 (Move Type Analysis) generates 200 games per cluster and classifies every move by type (captures, checks, aggressive moves, pawn advances, quiet moves). The analysis computes cluster comparison statistics to quantify behavioral differences and validate H6.
+Evaluation 2 (Move Type Analysis) generates 200 games per cluster and classifies every move by type (captures, checks, aggressive moves, pawn advances, quiet moves). The analysis computes cluster comparison statistics to quantify behavioral differences and validate H6.
 
-Evaluation E3 (Generalization Test) prepares benchmark position sets spanning tactical puzzles (mate-in-N, forks, pins), positional puzzles (endgame techniques, pawn structure), and mixed complexity positions. Each model is evaluated on all position types, including cross-testing tactical models on positional puzzles and vice versa.
+Evaluation 3 (Generalization Test) evaluates model performance against Stockfish at multiple skill levels (1000, 1200, 1400 ELO) to assess playing strength. Models are cross-evaluated by testing tactical cluster models against positional cluster models in head-to-head matches to quantify behavioral differences.
 
 \subsection{Cluster Configuration}
 
@@ -68,17 +68,17 @@ The experiments use a fixed cluster configuration with two clusters and eight to
 
 \subsubsection{Cluster Assignment}
 
-The tactical cluster consists of four nodes (IDs: tactical-1, tactical-2, tactical-3, tactical-4), each assigned to train on tactical puzzles. The tactical puzzle set includes themes like forks, pins, skewers, discovered attacks, double attacks, sacrifices, deflections, and other sharp tactical patterns. These puzzles emphasize concrete calculation and forcing moves.
+The tactical cluster consists of four nodes (IDs: tactical-1, tactical-2, tactical-3, tactical-4), each assigned to train on games from tactical ECO opening classifications. The tactical game set includes sharp tactical openings like the Sicilian Defence (B20-B99), King's Gambit (C30-C39), and other aggressive opening systems characterized by early tactical complications and forcing play.
 
-The positional cluster consists of four nodes (IDs: positional-1, positional-2, positional-3, positional-4), each assigned to train on positional puzzles. The positional puzzle set includes endgame techniques (rook endgames, pawn endgames), positional advantages, pawn structure themes, space advantage, weak squares, and piece activity. These puzzles emphasize long-term planning and strategic understanding.
+The positional cluster consists of four nodes (IDs: positional-1, positional-2, positional-3, positional-4), each assigned to train on games from positional ECO opening classifications. The positional game set includes strategic openings like the Queen's Gambit (D00-D69), Nimzo-Indian Defence (E20-E59), and other systems emphasizing long-term planning, pawn structure, and strategic maneuvering.
 
-The 4-4 split ensures balanced representation of both playing styles and prevents one cluster from dominating aggregation due to having more participating nodes. The aggregation threshold is set to 0.8 (80\%), meaning at least 4 out of 5 nodes in each cluster must participate for aggregation to occur (with some tolerance for node failures).
+The 4-4 split ensures balanced representation of both playing styles and prevents one cluster from dominating aggregation due to having more participating nodes. The aggregation threshold is set to 0.8 (80\%), meaning at least 80\% of cluster nodes must participate for aggregation to occur (with some tolerance for node failures).
 
 \subsubsection{Training Data Distribution}
 
-Each node samples 400 puzzles per round from its cluster's puzzle set. The sampling is random with replacement, allowing the model to revisit puzzles across rounds but ensuring diversity within each round. Over 200 rounds, each node trains on 80,000 puzzle positions, providing sufficient data for convergence.
+Each node samples 400 games per round from its cluster's game set. The sampling is random with replacement, allowing the model to revisit games across rounds but ensuring diversity within each round. Over 350 rounds, each node trains on 140,000 game positions, providing sufficient data for convergence.
 
-The puzzle sets are disjoint, no puzzle appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than shared examples. The Lichess puzzle database provides over 2 million tagged puzzles, making it straightforward to create large non-overlapping sets.
+The game sets are completely disjoint by ECO code classification, no opening appears in both the tactical and positional sets. This ensures that behavioral differences emerge from the training distribution rather than shared games. The Lichess database provides millions of high-quality games with ECO opening classifications, making it straightforward to create large non-overlapping sets based on opening characteristics.
 
 Data augmentation is applied during training through board flips (horizontal flip with move translation) and color swaps (playing from black's perspective). This effectively doubles the training data size and improves generalization by exposing models to symmetrically equivalent positions.
 
@@ -90,6 +90,6 @@ For B1 (Full Sharing), all layers are aggregated using FedAvg weighted by the nu
 
 For B2 (No Sharing), no aggregation occurs, each cluster maintains its own model checkpoint without combining updates. This is equivalent to running two independent training runs that happen to share the same experimental infrastructure.
 
-For P1-P4 (Partial Sharing), layer-specific aggregation applies FedAvg only to designated shared layers while preserving cluster-specific layers unchanged. For example, in P4, the input block and all 19 residual blocks are aggregated across nodes within each cluster and then synchronized between clusters, while policy and value heads remain cluster-specific.
+For E1-E4 (Partial Sharing), layer-specific aggregation applies FedAvg only to designated shared layers while preserving cluster-specific layers unchanged. For example, in E4, the input block and all 19 residual blocks are aggregated across nodes within each cluster and then synchronized between clusters, while policy and value heads remain cluster-specific.
 
 The aggregation threshold (0.8) requires 80\% of cluster nodes to participate before aggregation occurs. If fewer nodes participate in a given round, that round's aggregation is skipped and models retain their previous weights. This prevents a single node from dominating the cluster model and ensures robustness to occasional node failures.

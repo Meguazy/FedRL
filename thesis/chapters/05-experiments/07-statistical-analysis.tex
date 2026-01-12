@@ -1,55 +1,79 @@
-\section{Statistical Analysis}
+\section{Results Analysis and Evaluation Methodology}
 
-Statistical validation ensures that observed differences between experiments are meaningful rather than artifacts of random variation. This section defines the hypothesis tests, effect size metrics, and reporting standards applied to validate the seven research hypotheses.
+This section describes how experimental results are analyzed and compared to validate the seven research hypotheses. Rather than relying on formal statistical inference, we employ empirical comparison of performance metrics, effect size analysis, and convergence trajectory examination to assess hypothesis validity.
 
-\subsection{Hypothesis Testing Procedures}
+\subsection{Comparison Groups and Data Structure}
 
-Different comparisons require different statistical tests based on the data structure and hypotheses. For within-configuration comparisons, we use paired t-tests to compare partial sharing configurations (P1-P4) against baselines (B1, B2) using matched pairs from the same training rounds. The null hypothesis states no difference in ELO between configurations, while the alternative proposes that partial sharing achieves higher ELO than the baseline. This validates H1 (comparing against B1) and H3 (comparing against B2).
+The analysis involves two types of comparisons, each with different group definitions and sample sizes.
 
-For cluster comparisons, independent samples t-tests compare tactical cluster versus positional cluster playstyle metrics. The null hypothesis states no difference in tactical scores between clusters, while the alternative allows for any significant difference. These tests validate H4 (playstyle emergence) and H5 (distinct strategies).
+For performance comparisons between configurations, each group represents one experimental configuration trained through 350 rounds. When comparing two configurations (for example, E2 versus B1), each group consists of 350 ELO measurements, one per training round. The comparison examines whether the two configurations achieve different performance levels across their training trajectories. Metrics include both final ELO (round 350) and average ELO (mean across all 350 rounds).
 
-Multi-configuration comparison uses one-way ANOVA with Tukey HSD post-hoc tests to simultaneously compare all P1-P4 configurations. The null hypothesis states no difference in ELO across the four partial sharing experiments, while the alternative suggests at least one configuration differs significantly. The Tukey HSD post-hoc test identifies which specific pairs differ, helping identify the optimal layer sharing strategy.
+For behavioral comparisons within a configuration, each group represents one cluster (tactical or positional) evaluated across training rounds. When comparing tactical versus positional clusters within a configuration, each group again consists of 350 measurements of behavioral metrics (tactical scores, aggressive move percentages) collected at each training round. The comparison examines whether the two clusters exhibit different playing styles throughout training.
 
-When testing multiple hypotheses on the same dataset, we apply Bonferroni correction to control family-wise error rate. The corrected significance level is $\alpha_{\text{corrected}} = 0.05 / n_{\text{tests}}$. For example, comparing four partial sharing configurations requires six pairwise comparisons, yielding $\alpha = 0.05/6 \approx 0.008$.
+Effect sizes and descriptive statistics are computed from these time series measurements. While sequential training rounds exhibit temporal dependencies (each round builds on previous learning), the 350-round trajectories provide sufficient observations to characterize each configuration's performance and each cluster's behavioral patterns.
 
-\subsection{Effect Size Metrics}
+\subsection{Performance Comparison Approach}
 
-Statistical significance only indicates an effect exists; effect size quantifies its practical importance. For t-tests, we compute Cohen's d as:
+Configuration performance is assessed through direct comparison of ELO ratings measured throughout training. Two primary metrics characterize each configuration: the final ELO rating achieved at round 350, representing ultimate playing strength after complete training, and the average ELO across all training rounds, indicating overall training efficiency and stability.
+
+Performance differences are reported as both absolute ELO point differences and relative percentage improvements or degradations. Convergence trajectories visualized as ELO progression curves reveal learning dynamics and stability characteristics that final values alone cannot capture. Configurations that reach higher final ELO demonstrate superior ultimate capability, while those with higher average ELO show more efficient learning progression.
+
+\subsection{Behavioral Comparison Approach}
+
+Playstyle differentiation is evaluated by comparing tactical scores and move selection patterns between the tactical and positional clusters within each configuration. The tactical score quantifies a cluster's preference for aggressive, forcing play versus quiet strategic maneuvering. Larger differences between clusters indicate stronger behavioral specialization.
+
+Move type analysis examines the proportion of moves classified as aggressive (captures, checks, forcing moves) versus positional (quiet moves, pawn advances, strategic improvements). Configurations with substantial differences in aggressive move percentages demonstrate that clusters have developed distinct strategic preferences aligned with their training data distributions.
+
+Temporal stability is assessed by examining whether cluster differences remain consistent across training rounds rather than fluctuating or collapsing. Stable specialization persisting through later training indicates genuine strategic differentiation rather than transient artifacts.
+
+\subsection{Effect Size Analysis}
+
+To quantify the practical magnitude of observed differences, we compute Cohen's d as a standardized effect size measure:
+
 \begin{equation}
 d = \frac{\mu_1 - \mu_2}{\sigma_{\text{pooled}}}, \quad \sigma_{\text{pooled}} = \sqrt{\frac{\sigma_1^2 + \sigma_2^2}{2}}
 \end{equation}
 
-Interpretation follows standard conventions: $|d| = 0.2$ represents a small effect, $|d| = 0.5$ a medium effect, and $|d| = 0.8$ a large effect. We apply Cohen's d to cluster playstyle differences and baseline comparisons.
+where $\mu_1$ and $\mu_2$ are the means of the two groups being compared, and $\sigma_{\text{pooled}}$ represents the pooled standard deviation.
 
-For ANOVA, we calculate eta-squared ($\eta^2$) to represent the proportion of variance explained:
-\begin{equation}
-\eta^2 = \frac{SS_{\text{between}}}{SS_{\text{total}}}
-\end{equation}
+Effect size interpretation follows standard conventions: $|d| < 0.2$ indicates negligible differences, $0.2 \leq |d| < 0.5$ represents small but noticeable effects, $0.5 \leq |d| < 0.8$ indicates medium effects with substantial practical impact, and $|d| \geq 0.8$ demonstrates large effects of considerable practical importance.
 
-Interpretation: $\eta^2 = 0.01$ indicates a small effect, $\eta^2 = 0.06$ a medium effect, and $\eta^2 = 0.14$ a large effect. This metric applies to P1-P4 configuration comparisons.
-
-All effect sizes include 95\% confidence intervals. If the confidence interval includes zero, the effect may not be reliable despite achieving statistical significance.
+Unlike raw metric differences, Cohen's d accounts for variability in measurements, making it a more robust indicator of whether observed differences represent meaningful practical distinctions. This scale-independent measure enables comparison across different types of metrics including ELO ratings, tactical scores, and move percentages.
 
 \subsection{Hypothesis Validation Criteria}
 
-Each hypothesis has specific success criteria:
+Each hypothesis has specific empirical criteria for validation:
 
 \begin{itemize}
-\item \textbf{H1}: Best partial sharing ELO $>$ B1 ELO, paired t-test $p < 0.05$, Cohen's $d > 0.5$
-\item \textbf{H2}: $0 < \text{divergence}(P_i) < \text{divergence}(B2)$ for all partial sharing configs
-\item \textbf{H3}: Partial sharing ELO $>$ B2 ELO, paired t-test $p < 0.05$
-\item \textbf{H4}: Cluster tactical scores significantly different, independent t-test $p < 0.001$, Cohen's $d > 0.8$
-\item \textbf{H5}: Move type distributions differ, independent t-test on aggressive move \%, $p < 0.05$, $d > 0.5$
-\item \textbf{H6}: Effect sizes for behavioral metrics $> 0.5$ (Cohen's d for move type comparisons)
-\item \textbf{H7}: Plateau detected (divergence stabilizes) and no reconvergence in final 50 rounds
+\item \textbf{H1}: Best partial sharing configuration achieves final ELO exceeding B1 final ELO, with Cohen's $d > 0.5$
+
+\item \textbf{H2}: Partial sharing configurations exhibit parameter divergence strictly between B1 (near-zero) and B2 (maximum), satisfying $0 < \text{divergence}(E_i) < \text{divergence}(B2)$
+
+\item \textbf{H3}: Partial sharing configurations achieve final ELO exceeding B2 final ELO
+
+\item \textbf{H4}: Tactical and positional clusters exhibit tactical score differences with Cohen's $d > 0.8$
+
+\item \textbf{H5}: Clusters show different aggressive move percentages with Cohen's $d > 0.5$
+
+\item \textbf{H6}: All behavioral metrics exhibit effect sizes Cohen's $d > 0.5$
+
+\item \textbf{H7}: Divergence metrics stabilize (plateau) and show no reconvergence in final 50 rounds
 \end{itemize}
 
-%\subsection{Reporting Standards}
+A hypothesis is considered \textbf{supported} if empirical results meet all specified criteria, \textbf{partially supported} if major criteria are met with minor exceptions, and \textbf{rejected} if key criteria fail.
 
-%For transparency and reproducibility, we report comprehensive statistics for each test. Sample sizes ($n$) are provided for each group or condition. Descriptive statistics include mean ($M$), standard deviation ($SD$), and median when distributions are skewed. Test statistics specify the $t$-value with degrees of freedom for t-tests or $F$-statistic with $df_{\text{between}}$ and $df_{\text{within}}$ for ANOVA.
+\subsection{Reporting Standards}
 
-%Exact $p$-values are reported rather than inequality statements like "$p < 0.05$". Effect sizes include interpretation labels (small, medium, or large) based on conventional thresholds. Confidence intervals are provided at 95\% level for both mean differences and effect sizes. Each result concludes with a clear statement linking findings to the relevant hypothesis.
+For each comparison, results are reported using descriptive statistics (mean $M$ and standard deviation $SD$), effect sizes (Cohen's $d$ with qualitative interpretation), and both absolute and relative differences. Visual representations include line plots showing convergence trajectories, bar charts comparing final metrics, and scatter plots examining relationships between variables.
 
-%For example: "Tactical cluster ($M = 0.68$, $SD = 0.12$, $n = 500$) showed significantly higher tactical scores than positional cluster ($M = 0.45$, $SD = 0.11$, $n = 500$), $t(998) = 28.5$, $p < 0.001$, $d = 1.92$, 95\% CI [0.21, 0.25]. This large effect supports H4."
+Example report format: "E2 achieves a final ELO of 1137.5 compared to B1's 1012.5, representing a 125-point improvement (12.3\% increase). Average ELO across training is 926.1 for E2 versus 896.0 for B1, a difference of 30.1 points. Cohen's $d = 0.69$ indicates a medium-to-large practical effect."
 
-%All statistical analyses are performed using Python (scipy.stats, statsmodels) and results are included in the results chapter with supporting visualizations.
+This approach emphasizes practical significance (the magnitude of differences that matter for real applications) over statistical significance based on probabilistic inference. Given the computational expense of training six complete models through 350 rounds each, the experimental design employs single runs per configuration rather than multiple random seeds, which is standard practice in deep reinforcement learning research.
+
+\subsection{Methodological Considerations}
+
+Several factors shape result interpretation. Each configuration is trained once rather than across multiple random initializations, limiting assessment of variance due to random factors but following standard practice for computationally expensive experiments. Metrics measured across sequential training rounds exhibit temporal dependencies, as each round builds on previous learning, so convergence trajectories represent learning dynamics rather than independent samples.
+
+The six experimental configurations share identical infrastructure, data distributions, and hyperparameters, differing only in layer sharing policies. This controlled design enables clear attribution of performance differences to architectural choices. The analysis prioritizes effect sizes and absolute magnitudes, recognizing that a 100-point ELO difference has practical importance regardless of variance estimates, while a barely detectable 5-point difference may be statistically measurable but practically negligible.
+
+The results chapter presents empirical findings following this methodology, enabling assessment of hypothesis validity through direct comparison of observed outcomes and their practical magnitudes.

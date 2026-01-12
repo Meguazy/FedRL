@@ -22,9 +22,9 @@ Meta-learning could optimize sharing policies automatically. An outer optimizati
 
 \subsection{Gradient Conflict Analysis}
 
-P4's failure suggests gradient conflicts between tactical and positional training objectives, but this hypothesis lacks direct empirical validation. Future work should measure gradient alignment in shared layers, computing cosine similarity between tactical and positional gradients to quantify conflict magnitude. Identifying which specific residual blocks experience the strongest conflicts would refine understanding of where specialization is most critical.
+E4's failure suggests gradient conflicts between tactical and positional training objectives, but this hypothesis lacks direct empirical validation. Future work should measure gradient alignment in shared layers, computing cosine similarity between tactical and positional gradients to quantify conflict magnitude. Identifying which specific residual blocks experience the strongest conflicts would refine understanding of where specialization is most critical.
 
-Gradient conflict mitigation techniques could improve extensive sharing configurations. Gradient projection methods that remove conflicting gradient components before aggregation might allow P4-style architectures to succeed. Alternating optimization updating tactical and positional clusters in separate phases could reduce interference. Multi-objective optimization techniques balancing multiple cluster objectives simultaneously might find better compromises than simple averaging.
+Gradient conflict mitigation techniques could improve extensive sharing configurations. Gradient projection methods that remove conflicting gradient components before aggregation might allow E4-style architectures to succeed. Alternating optimization updating tactical and positional clusters in separate phases could reduce interference. Multi-objective optimization techniques balancing multiple cluster objectives simultaneously might find better compromises than simple averaging.
 
 \subsection{Generalization and Transfer Testing}
 

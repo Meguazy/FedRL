@@ -1,12 +1,14 @@
 % Main thesis document
 \documentclass[11pt,a4paper,twoside]{report}
 
+% PDF/A compliance (must be loaded first)
+\usepackage[a-1b]{pdfx}
+
 % Packages
 \usepackage[utf8]{inputenc}
 \usepackage[T1]{fontenc}
 \usepackage{graphicx}
 \usepackage{amsmath,amssymb}
-\usepackage{hyperref}
 \usepackage{cite}
 \usepackage{setspace}
 \usepackage{geometry}
@@ -73,11 +75,11 @@
     \textbf{\Large A Framework for Chess Playstyle Preservation}
     \vspace{5 em}
     \vspace{-.75cm}
-    \begin{tabular}[H]{p{220pt}p{35pt}p{130pt}}
-      \normalsize{\textit{\textbf{Supervisor}}\vspace{0.3em}} &&  \normalsize{\textit{\textbf{Student}}}  \\
-      \normalsize{Prof. Massimo Callisto De Donato\vspace{0.3em}}  && {Francesco Finucci}\\
-      \normalsize{\textit{\textbf{Co-Supervisor}}\vspace{0.3em}} && \\
-      \normalsize{PhD. Student Martina Zannotti\vspace{0.3em}}  && \\
+    \begin{tabular}[H]{p{130pt}p{120pt}p{220pt}}
+      \normalsize{\textit{\textbf{Student}}} &&  \normalsize{\textit{\textbf{Supervisor}}\vspace{0.3em}}  \\
+      {Francesco Finucci}  && \normalsize{Prof. Massimo Callisto De Donato\vspace{0.3em}}\\
+       && \normalsize{\textit{\textbf{Co-Supervisor}}\vspace{0.3em}} \\
+       && \normalsize{PhD. Student Martina Zannotti\vspace{0.3em}}  \\
     \vspace{2 em}
     \end{tabular}\\
     \vspace{1.2 em} \vfill
@@ -112,7 +114,7 @@
 \include{chapters/07-conclusion}
 
 % Acknowledgements
-\include{chapters/acknowledgements}
+%\include{chapters/acknowledgements}
 
 % Bibliography
 \bibliographystyle{plain}
